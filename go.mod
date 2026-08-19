@@ -1,12 +1,13 @@
 module telegram-emulator
 
-go 1.23.0
+go 1.24.0
 
 toolchain go1.24.6
 
 require (
 	github.com/gin-gonic/gin v1.10.1
 	github.com/gorilla/websocket v1.5.3
+	github.com/max-messenger/max-bot-api-client-go v1.7.1
 	github.com/spf13/viper v1.18.2
 	go.uber.org/zap v1.26.0
 	gorm.io/driver/sqlite v1.5.4
