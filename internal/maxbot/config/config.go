@@ -6,6 +6,8 @@ import (
 	"strings"
 	"time"
 
+	"telegram-emulator/internal/maxbot/calendar"
+
 	"github.com/spf13/viper"
 )
 
@@ -15,9 +17,43 @@ type Config struct {
 	Database     DatabaseConfig     `mapstructure:"database"`
 	Organization OrganizationConfig `mapstructure:"organization"`
 	Coordinator  CoordinatorConfig  `mapstructure:"coordinator"`
+	Access       AccessConfig       `mapstructure:"access"`
 	Intake       IntakeConfig       `mapstructure:"intake"`
-	Stop1        Stop1Config        `mapstructure:"stop1"`
+	Calendar     calendar.Config    `mapstructure:"working_calendar"`
+	Policies     PoliciesConfig     `mapstructure:"policies"`
+	Consent      ConsentConfig      `mapstructure:"consent"`
 	Logging      LoggingConfig      `mapstructure:"logging"`
+}
+
+// PoliciesConfig путь к файлу утверждаемых правил
+type PoliciesConfig struct {
+	Path string `mapstructure:"path"`
+}
+
+// ConsentConfig формулировка согласия на обработку персональных данных.
+//
+// Текст задаёт организация: он должен соответствовать утверждённому скрипту
+// и политике обработки данных. Бот не сочиняет юридические формулировки
+// и не обещает удаление записей при отзыве согласия.
+type ConsentConfig struct {
+	Text string `mapstructure:"text"`
+}
+
+// Роли доступа к сведениям об обращениях
+const (
+	RoleNone        = ""
+	RoleViewer      = "viewer"
+	RoleCoordinator = "coordinator"
+	RoleSupervisor  = "supervisor"
+	RoleAdmin       = "admin"
+)
+
+// AccessConfig распределение ролей по идентификаторам пользователей MAX
+type AccessConfig struct {
+	Viewers      []int64 `mapstructure:"viewers"`
+	Coordinators []int64 `mapstructure:"coordinators"`
+	Supervisors  []int64 `mapstructure:"supervisors"`
+	Admins       []int64 `mapstructure:"admins"`
 }
 
 // BotConfig параметры подключения к MAX Bot API
@@ -59,26 +95,18 @@ type CoordinatorConfig struct {
 	UserIDs []int64 `mapstructure:"user_ids"`
 }
 
-// IntakeConfig параметры анкеты первичного обращения
+// IntakeConfig параметры анкеты первичного обращения и контрольных точек
 type IntakeConfig struct {
-	Districts     []string `mapstructure:"districts"`
-	NextStepHours int      `mapstructure:"next_step_hours"`
-}
-
-// Stop1Config закрытый перечень признаков экстренного состояния.
-// Перечень разрабатывает и подписывает медицинский специалист;
-// до получения подписанного перечня линия не открывается.
-type Stop1Config struct {
-	Approved   bool        `mapstructure:"approved"`
-	ApprovedBy string      `mapstructure:"approved_by"`
-	ApprovedAt string      `mapstructure:"approved_at"`
-	Signs      []Stop1Sign `mapstructure:"signs"`
-}
-
-// Stop1Sign один признак из перечня STOP-1
-type Stop1Sign struct {
-	ID       string `mapstructure:"id"`
-	Question string `mapstructure:"question"`
+	Districts []string `mapstructure:"districts"`
+	// NextStepWorkingDays — срок нашего действия в рабочих днях
+	NextStepWorkingDays int `mapstructure:"next_step_working_days"`
+	// FollowUp7Days и FollowUp30Days — контрольные точки в календарных днях
+	FollowUp7Days int `mapstructure:"follow_up_7_days"`
+	// FollowUpMinWorkingDays — контроль не раньше истечения норматива результата
+	FollowUpMinWorkingDays int `mapstructure:"follow_up_min_working_days"`
+	FollowUp30Days         int `mapstructure:"follow_up_30_days"`
+	// ReminderInterval — как часто бот напоминает координатору о наступивших сроках
+	ReminderInterval string `mapstructure:"reminder_interval"`
 }
 
 // LoggingConfig конфигурация логирования
@@ -137,14 +165,25 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("organization.service_name", "Точка входа")
 	v.SetDefault("organization.work_hours", "по будням с 9:00 до 18:00")
 
-	v.SetDefault("intake.next_step_hours", 24)
+	v.SetDefault("policies.path", "configs/policies.yaml")
+
+	v.SetDefault("consent.text", defaultConsentText)
+
+	v.SetDefault("working_calendar.timezone", "Europe/Samara")
+	v.SetDefault("working_calendar.days", []string{"mon", "tue", "wed", "thu", "fri"})
+	v.SetDefault("working_calendar.start", "09:00")
+	v.SetDefault("working_calendar.end", "18:00")
+
+	v.SetDefault("intake.next_step_working_days", 1)
+	v.SetDefault("intake.follow_up_7_days", 7)
+	v.SetDefault("intake.follow_up_min_working_days", 5)
+	v.SetDefault("intake.follow_up_30_days", 30)
+	v.SetDefault("intake.reminder_interval", "30m")
 	v.SetDefault("intake.districts", []string{
 		"Автозаводский район",
 		"Центральный район",
 		"Комсомольский район",
 	})
-
-	v.SetDefault("stop1.approved", false)
 
 	v.SetDefault("logging.level", "info")
 	v.SetDefault("logging.format", "console")
@@ -167,11 +206,88 @@ func (c *Config) Validate() error {
 		return fmt.Errorf("неизвестный режим работы бота: %q (допустимо polling или webhook)", c.Bot.Mode)
 	}
 
-	if c.Stop1.Approved && len(c.Stop1.Signs) == 0 {
-		return fmt.Errorf("перечень STOP-1 отмечен как утверждённый, но пуст")
+	if strings.TrimSpace(c.Policies.Path) == "" {
+		return fmt.Errorf("не указан путь к файлу правил: policies.path")
+	}
+
+	if _, err := c.WorkingCalendar(); err != nil {
+		return fmt.Errorf("некорректный рабочий календарь: %w", err)
+	}
+
+	if strings.TrimSpace(c.Consent.Text) == "" {
+		return fmt.Errorf("не задана формулировка согласия на обработку данных: consent.text")
+	}
+
+	if _, err := c.ReminderInterval(); err != nil {
+		return fmt.Errorf("некорректный интервал напоминаний: %w", err)
 	}
 
 	return nil
+}
+
+// WorkingCalendar собирает рабочий календарь организации
+func (c *Config) WorkingCalendar() (*calendar.Calendar, error) {
+	return calendar.New(c.Calendar)
+}
+
+// ReminderInterval возвращает интервал напоминаний координатору
+func (c *Config) ReminderInterval() (time.Duration, error) {
+	if strings.TrimSpace(c.Intake.ReminderInterval) == "" {
+		return 30 * time.Minute, nil
+	}
+
+	return time.ParseDuration(c.Intake.ReminderInterval)
+}
+
+// Role возвращает роль пользователя: чем выше роль, тем больше доступ
+func (c *Config) Role(userID int64) string {
+	switch {
+	case containsID(c.Access.Admins, userID):
+		return RoleAdmin
+	case containsID(c.Access.Supervisors, userID):
+		return RoleSupervisor
+	case containsID(c.Access.Coordinators, userID), containsID(c.Coordinator.UserIDs, userID):
+		return RoleCoordinator
+	case containsID(c.Access.Viewers, userID):
+		return RoleViewer
+	}
+
+	return RoleNone
+}
+
+// CanSeeFullCard сообщает, вправе ли роль видеть карточку целиком
+func CanSeeFullCard(role string) bool {
+	switch role {
+	case RoleCoordinator, RoleSupervisor, RoleAdmin:
+		return true
+	}
+
+	return false
+}
+
+// CanSeeCases сообщает, вправе ли роль видеть сведения об обращениях
+func CanSeeCases(role string) bool {
+	return role != RoleNone
+}
+
+// CanCompleteActions сообщает, вправе ли роль закрывать действия по случаю
+func CanCompleteActions(role string) bool {
+	switch role {
+	case RoleCoordinator, RoleSupervisor, RoleAdmin:
+		return true
+	}
+
+	return false
+}
+
+func containsID(ids []int64, id int64) bool {
+	for _, item := range ids {
+		if item == id {
+			return true
+		}
+	}
+
+	return false
 }
 
 // GetTimeout возвращает таймаут запросов к MAX Bot API
@@ -183,23 +299,19 @@ func (c *Config) GetTimeout() (time.Duration, error) {
 	return time.ParseDuration(c.Bot.Timeout)
 }
 
-// NextStepDeadline возвращает срок следующего действия по обращению
-func (c *Config) NextStepDeadline(from time.Time) time.Time {
-	hours := c.Intake.NextStepHours
-	if hours <= 0 {
-		hours = 24
-	}
-
-	return from.Add(time.Duration(hours) * time.Hour)
-}
-
-// IsCoordinator сообщает, входит ли пользователь в список координаторов
+// IsCoordinator сообщает, вправе ли пользователь работать с обращениями
 func (c *Config) IsCoordinator(userID int64) bool {
-	for _, id := range c.Coordinator.UserIDs {
-		if id == userID {
-			return true
-		}
-	}
-
-	return false
+	return CanSeeFullCard(c.Role(userID))
 }
+
+// defaultConsentText формулировка согласия по умолчанию.
+//
+// Она намеренно не обещает удаление записи при отзыве согласия: порядок
+// отзыва, основания и сроки хранения определяет политика обработки данных
+// организации. Замените текст на согласованный с вашим юристом.
+const defaultConsentText = "Чтобы мы могли работать с вашим обращением, нужно ваше согласие на обработку данных: " +
+	"имя, контакт, адрес и то, что вы расскажете о состоянии здоровья.\n\n" +
+	"Данные нужны только для того, чтобы определить, куда направить обращение. " +
+	"Отозвать согласие можно в любой момент — порядок отзыва, сроки хранения и основания " +
+	"обработки указаны в политике обработки персональных данных.\n\n" +
+	"Вы согласны?"

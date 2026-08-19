@@ -4,15 +4,23 @@ import (
 	"testing"
 
 	"telegram-emulator/internal/maxbot/models"
+	"telegram-emulator/internal/maxbot/policy"
 )
 
 func testParams() Params {
 	return Params{
 		Districts: []string{"Автозаводский район", "Центральный район"},
-		Stop1Signs: []Sign{
-			{ID: "s1", Question: "Человек без сознания?"},
-			{ID: "s2", Question: "Тяжело дышать?"},
+		Stop1: policy.Stop1{
+			Version:    "test-1",
+			Approved:   true,
+			ApprovedBy: "заведующий отделением ПМП",
+			ApprovedAt: "2026-08-01",
+			Signs: []policy.Stop1Sign{
+				{ID: "s1", Question: "Человек без сознания?", Trigger: "yes", Action: policy.ActionStop1},
+				{ID: "s2", Question: "Тяжело дышать?", Trigger: "yes", Action: policy.ActionStop1},
+			},
 		},
+		ConsentText: "Нужно ваше согласие на обработку данных. Вы согласны?",
 	}
 }
 
@@ -63,8 +71,11 @@ func TestStop1TriggeredStopsSurvey(t *testing.T) {
 	if app.Stop1Mark != "STOP-1" {
 		t.Fatalf("ожидалась отметка STOP-1, получено %q", app.Stop1Mark)
 	}
-	if app.Stop1Sign != "Человек без сознания?" {
-		t.Fatalf("должен фиксироваться сработавший признак, получено %q", app.Stop1Sign)
+	if app.Stop1Sign != "Человек без сознания?" || app.Stop1SignID != "s1" {
+		t.Fatalf("должен фиксироваться сработавший признак, получено %q (%q)", app.Stop1Sign, app.Stop1SignID)
+	}
+	if app.Stop1PolicyVersion != "test-1" {
+		t.Fatalf("должна фиксироваться версия перечня, получено %q", app.Stop1PolicyVersion)
 	}
 	if app.Stop1At == nil {
 		t.Fatal("должно фиксироваться время выявления признака")
@@ -243,6 +254,68 @@ func TestFullSurveyFlow(t *testing.T) {
 	}
 	if app.PreviousRequests != "не обращались" {
 		t.Fatalf("пропуск вопроса должен фиксироваться, получено %q", app.PreviousRequests)
+	}
+	if app.ContactPersonPhone != "+79001234567" {
+		t.Fatalf("контакт для обратной связи должен подставляться от заявителя, получено %q", app.ContactPersonPhone)
+	}
+}
+
+func TestContactPersonOtherCollectsNameAndPhoneSeparately(t *testing.T) {
+	e := NewEngine(testParams())
+	app := &models.Application{State: StateContactPerson, ApplicantName: "Мария", ApplicantPhone: "+79001234567"}
+
+	answer(t, e, app, Input{Payload: ContactPersonOther})
+	if app.State != StateContactName {
+		t.Fatalf("ожидался вопрос об имени контактного лица, получено %q", app.State)
+	}
+
+	answer(t, e, app, Input{Text: "Пётр Иванов"})
+	if app.State != StateContactPhone {
+		t.Fatalf("ожидался отдельный вопрос о телефоне, получено %q", app.State)
+	}
+
+	if out := e.Accept(app, Input{Text: "не знаю"}); out.Accepted {
+		t.Fatal("нераспознанный телефон не должен приниматься")
+	}
+
+	answer(t, e, app, Input{Text: "8 900 765-43-21"})
+	if app.ContactPersonName != "Пётр Иванов" || app.ContactPersonPhone != "+79007654321" {
+		t.Fatalf("имя и телефон должны храниться раздельно: %q / %q",
+			app.ContactPersonName, app.ContactPersonPhone)
+	}
+}
+
+func TestStop1PolicyNotApprovedClosesSurvey(t *testing.T) {
+	params := testParams()
+	params.Stop1.Approved = false
+	e := NewEngine(params)
+
+	app := &models.Application{}
+	if state := e.FirstState(app); state == StateStop1 {
+		t.Fatal("неутверждённый перечень не должен использоваться в анкете")
+	}
+	if len(params.Stop1Signs()) != 0 {
+		t.Fatal("неутверждённый перечень не выдаёт признаков")
+	}
+}
+
+func TestStop1TriggerFromPolicy(t *testing.T) {
+	params := testParams()
+	// Признак с trigger "no": срабатывание определяет перечень, а не код
+	params.Stop1.Signs = []policy.Stop1Sign{
+		{ID: "n1", Question: "Человек в сознании и отвечает на вопросы?", Trigger: "no", Action: policy.ActionStop1},
+	}
+	e := NewEngine(params)
+
+	app := &models.Application{}
+	app.State = e.FirstState(app)
+
+	out := answer(t, e, app, Input{Payload: AnswerNo})
+	if !out.Stop1 {
+		t.Fatal("признак с trigger \"no\" должен срабатывать на ответ «Нет»")
+	}
+	if app.Stop1SignID != "n1" {
+		t.Fatalf("должен фиксироваться идентификатор признака, получено %q", app.Stop1SignID)
 	}
 }
 

@@ -5,89 +5,72 @@ import (
 	"strings"
 
 	"telegram-emulator/internal/maxbot/models"
-)
-
-// Коды маршрутов матрицы М1–М5 (приложение 3 методических рекомендаций)
-const (
-	RouteM1 = "М1"
-	RouteM2 = "М2"
-	RouteM3 = "М3"
-	RouteM4 = "М4"
-	RouteM5 = "М5"
+	"telegram-emulator/internal/maxbot/policy"
 )
 
 // RouteDescriptions расшифровка маршрутов для карточки координатора
 var RouteDescriptions = map[string]string{
-	RouteM1: "медицинский контур — отделение паллиативной медицинской помощи",
-	RouteM2: "социальный контур — КЦСОН по району",
-	RouteM3: "контур долговременного ухода — ТКЦ СДУ либо уполномоченный орган",
-	RouteM4: "спорный случай — решение эксперта по нуждаемости",
-	RouteM5: "межведомственный контур — несколько получателей",
+	"М1": "медицинский контур — отделение паллиативной медицинской помощи",
+	"М2": "социальный контур — КЦСОН по району",
+	"М3": "контур долговременного ухода — ТКЦ СДУ либо уполномоченный орган",
+	"М4": "спорный случай — решение эксперта по нуждаемости",
+	"М5": "межведомственный контур — несколько получателей",
 }
 
-// Route возвращает предварительный маршрут и обоснование выбора.
+// CollectFacts собирает признаки случая для матрицы маршрутов.
 //
-// Результат — подсказка координатору, а не решение: маршрут при сомнении
-// определяет координатор, а уровень нуждаемости устанавливает эксперт.
-func Route(app *models.Application) (string, string) {
-	lost := 0
-	partial := 0
-	unknown := 0
+// Бот собирает факты; решение о маршруте принимает координатор,
+// уровень нуждаемости устанавливает эксперт.
+func CollectFacts(app *models.Application) policy.Facts {
+	facts := policy.Facts{
+		MedicalNeed:       app.MedicalNeed,
+		Caregiver:         app.Caregiver,
+		AdditionalSpheres: len(app.SpheresList()),
+		CaregiverKnown:    app.Caregiver != "" && app.Caregiver != CaregiverUnknown,
+		MedicalKnown:      app.MedicalNeed != "" && app.MedicalNeed != AnswerUnknown,
+	}
+
 	for _, v := range []string{app.Mobility, app.Hygiene, app.Food} {
 		switch v {
 		case AbilityCannot:
-			lost++
+			facts.LostCount++
 		case AbilityHelp:
-			partial++
+			facts.PartialCount++
 		case AbilityUnknown:
-			unknown++
+			facts.UnknownCount++
 		}
 	}
 
-	spheres := app.SpheresList()
-	reasons := []string{
-		fmt.Sprintf("ограничения самообслуживания: не может — %d из 3, только с помощью — %d из 3", lost, partial),
+	return facts
+}
+
+// FactsSummary описывает собранные признаки словами — это то, что видит
+// координатор независимо от того, утверждена матрица маршрутов или нет
+func FactsSummary(app *models.Application) string {
+	facts := CollectFacts(app)
+
+	parts := []string{
+		fmt.Sprintf("ограничения самообслуживания: не может — %d из 3, только с помощью — %d из 3, не знаю — %d из 3",
+			facts.LostCount, facts.PartialCount, facts.UnknownCount),
 		"ухаживающий: " + Label(CaregiverOptions, app.Caregiver),
 		"медицинская составляющая со слов заявителя: " + Label(MedicalOptions, app.MedicalNeed),
 	}
-	if len(spheres) > 0 {
+
+	if spheres := app.SpheresList(); len(spheres) > 0 {
 		labels := make([]string, 0, len(spheres))
 		for _, s := range spheres {
 			labels = append(labels, Label(SphereOptions, s))
 		}
-		reasons = append(reasons, "дополнительные сферы: "+strings.Join(labels, ", "))
+		parts = append(parts, "дополнительные сферы: "+strings.Join(labels, ", "))
 	}
 
-	reason := func(code, why string) (string, string) {
-		return code, why + ". Признаки: " + strings.Join(reasons, "; ") +
-			". Маршрут предварительный, решение принимает координатор"
-	}
+	return strings.Join(parts, "; ")
+}
 
-	// Картина неясна — спорный случай, решение принимает эксперт
-	if unknown > 0 || app.Caregiver == CaregiverUnknown || app.MedicalNeed == AnswerUnknown {
-		return reason(RouteM4, "заявитель не смог ответить на часть вопросов, картина неясна")
-	}
-
-	// Потребность охватывает две и более сферы одновременно
-	if len(spheres) > 0 && (lost+partial > 0 || app.MedicalNeed == AnswerYes) {
-		return reason(RouteM5, "потребность охватывает две и более сферы одновременно")
-	}
-
-	if app.MedicalNeed == AnswerYes {
-		return reason(RouteM1, "со слов заявителя есть боль, которая не снимается, либо нужен медицинский контроль на дому")
-	}
-
-	if lost >= 3 {
-		return reason(RouteM3, "значительная утрата самообслуживания по трём позициям")
-	}
-
-	if lost+partial > 0 {
-		if app.Caregiver == CaregiverDaily || app.Caregiver == CaregiverSometimes {
-			return reason(RouteM2, "частичная утрата самообслуживания, ухаживающий есть, медицинский контроль не требуется")
-		}
-
-		return reason(RouteM4, "утрата самообслуживания при отсутствии ухаживающего — уровень нуждаемости определяет эксперт")
-	}
-
-	return reason(RouteM4, "признаков ограничений самообслуживания не зафиксировано, потребность требует уточнения")
+// Route применяет утверждённую матрицу маршрутов к обращению.
+//
+// Если матрица не утверждена или ни одно правило не подошло, предварительное
+// направление не рассчитывается: координатор получает только признаки случая.
+func Route(app *models.Application, matrix policy.Routing) policy.Decision {
+	return matrix.Apply(CollectFacts(app))
 }

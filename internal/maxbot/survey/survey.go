@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"telegram-emulator/internal/maxbot/models"
+	"telegram-emulator/internal/maxbot/policy"
 )
 
 // Состояния диалога
@@ -40,6 +41,7 @@ const (
 	StateSpheres       = "spheres"
 	StateContactPerson = "contact_person"
 	StateContactName   = "contact_name"
+	StateContactPhone  = "contact_phone"
 	StateContactTime   = "contact_time"
 	StateConfirm       = "confirm"
 	StateDone          = "done"
@@ -84,6 +86,12 @@ const (
 	AnswerUnknown = "unknown"
 )
 
+// Значения ответа о том, кто будет на связи
+const (
+	ContactPersonSelf  = "self"
+	ContactPersonOther = "other"
+)
+
 // Значения отношения заявителя к подопечному
 const (
 	RelationSelf       = "self"
@@ -111,16 +119,24 @@ const (
 	Stop2Mark = "STOP-2"
 )
 
-// Sign признак экстренного состояния из утверждённого перечня STOP-1
-type Sign struct {
-	ID       string
-	Question string
+// Params параметры анкеты: справочники конфигурации и утверждаемые правила
+type Params struct {
+	Districts []string
+	// Stop1 — перечень признаков экстренного состояния; применяется,
+	// только если отмечен как утверждённый
+	Stop1 policy.Stop1
+	// ConsentText — формулировка согласия на обработку персональных данных.
+	// Задаётся организацией: бот не сочиняет юридические формулировки
+	ConsentText string
 }
 
-// Params параметры анкеты, задаваемые конфигурацией
-type Params struct {
-	Districts  []string
-	Stop1Signs []Sign
+// Stop1Signs возвращает признаки перечня, если он утверждён
+func (p Params) Stop1Signs() []policy.Stop1Sign {
+	if !p.Stop1.Approved {
+		return nil
+	}
+
+	return p.Stop1.Signs
 }
 
 // Option вариант ответа
@@ -208,7 +224,7 @@ func (e *Engine) Params() Params {
 
 // FirstState возвращает состояние, с которого начинается анкета
 func (e *Engine) FirstState(app *models.Application) string {
-	if len(e.params.Stop1Signs) > 0 {
+	if len(e.params.Stop1Signs()) > 0 {
 		return StateStop1
 	}
 
@@ -275,7 +291,7 @@ func (e *Engine) Accept(app *models.Application, in Input) Outcome {
 func (e *Engine) advanceFrom(app *models.Application, idx int) string {
 	for i := idx + 1; i < len(e.steps); i++ {
 		s := e.steps[i]
-		if s.state == StateStop1 && len(e.params.Stop1Signs) == 0 {
+		if s.state == StateStop1 && len(e.params.Stop1Signs()) == 0 {
 			continue
 		}
 		if s.state == StateStop1Name || s.state == StateStop1Phone {
@@ -314,7 +330,7 @@ func (e *Engine) Progress(app *models.Application) (int, int) {
 			return false
 		}
 
-		return s.state != StateStop1 || len(e.params.Stop1Signs) > 0
+		return s.state != StateStop1 || len(e.params.Stop1Signs()) > 0
 	}
 
 	// Условные шаги учитываются в общем числе, чтобы оно не уменьшалось
@@ -510,8 +526,8 @@ var (
 
 	// ContactPersonOptions варианты ответа о том, кто будет на связи
 	ContactPersonOptions = []Option{
-		{Value: "self", Label: "Я сам(а)"},
-		{Value: "other", Label: "Другой человек"},
+		{Value: ContactPersonSelf, Label: "Я сам(а)"},
+		{Value: ContactPersonOther, Label: "Другой человек"},
 	}
 
 	// ContactTimeOptions варианты удобного времени для звонка
@@ -536,12 +552,13 @@ func now() *time.Time {
 }
 
 func fmtStop1Question(app *models.Application, p Params) string {
-	if app.Stop1Index < 0 || app.Stop1Index >= len(p.Stop1Signs) {
+	signs := p.Stop1Signs()
+	if app.Stop1Index < 0 || app.Stop1Index >= len(signs) {
 		return "Проверка завершена."
 	}
 
 	return fmt.Sprintf("Вопрос %d из %d.\n\n%s",
-		app.Stop1Index+1, len(p.Stop1Signs), p.Stop1Signs[app.Stop1Index].Question)
+		app.Stop1Index+1, len(signs), signs[app.Stop1Index].Question)
 }
 
 func districtOptions(p Params) []Option {

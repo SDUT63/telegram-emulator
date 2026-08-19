@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"telegram-emulator/internal/maxbot/models"
+	"telegram-emulator/internal/maxbot/policy"
 )
 
 // buildSteps описывает последовательность шагов анкеты.
@@ -37,6 +38,7 @@ func (e *Engine) buildSteps() []step {
 		e.stepSpheres(),
 		e.stepContactPerson(),
 		e.stepContactName(),
+		e.stepContactPhone(),
 		e.stepContactTime(),
 		e.stepConfirm(),
 	}
@@ -57,22 +59,29 @@ func (e *Engine) stepStop1() step {
 				return Outcome{Error: "Ответьте, пожалуйста, «Да» или «Нет»."}
 			}
 
-			if value == AnswerYes {
-				sign := ""
-				if app.Stop1Index >= 0 && app.Stop1Index < len(p.Stop1Signs) {
-					sign = p.Stop1Signs[app.Stop1Index].Question
-				}
+			signs := p.Stop1Signs()
+			if app.Stop1Index < 0 || app.Stop1Index >= len(signs) {
+				return Outcome{Error: "Проверка уже завершена."}
+			}
+
+			sign := signs[app.Stop1Index]
+			app.Stop1PolicyVersion = p.Stop1.Version
+
+			// Срабатывание определяет утверждённый перечень, а не код бота
+			if sign.Triggered(value) && sign.Action == policy.ActionStop1 {
 				app.Stop1Mark = Stop1Mark
-				app.Stop1Sign = sign
+				app.Stop1Sign = sign.Question
+				app.Stop1SignID = sign.ID
 				app.Stop1At = now()
 
 				return Outcome{Accepted: true, Stop1: true}
 			}
 
 			app.Stop1Index++
-			if app.Stop1Index >= len(p.Stop1Signs) {
+			if app.Stop1Index >= len(signs) {
 				// Ни один признак не выявлен — формальный допуск в навигацию
 				app.Stop1Mark = Stop2Mark
+				app.Stop1At = now()
 				app.State = e.advanceFrom(app, e.index[StateStop1])
 			}
 
@@ -110,12 +119,8 @@ func (e *Engine) stepConsent() step {
 	return step{
 		state: StateConsent,
 		kind:  KindChoice,
-		text: func(*models.Application, Params) string {
-			return "Чтобы мы могли работать с вашим обращением, нужно ваше согласие на обработку данных: " +
-				"имя, контакт, адрес и то, что вы расскажете о состоянии здоровья.\n\n" +
-				"Данные нужны только для того, чтобы определить, куда направить обращение. " +
-				"Согласие можно отозвать в любой момент — тогда запись будет удалена.\n\n" +
-				"Вы согласны?"
+		text: func(_ *models.Application, p Params) string {
+			return p.ConsentText
 		},
 		hint:    "Согласие на передачу сведений в конкретную организацию оформляется отдельно — когда координатор назовёт эту организацию.",
 		options: func(Params) []Option { return ConsentOptions },
@@ -274,9 +279,10 @@ func (e *Engine) stepAddress() step {
 		state: StateAddress,
 		kind:  KindText,
 		text: func(*models.Application, Params) string {
-			return "Напишите адрес: улица, дом, квартира, этаж и код домофона, если он есть."
+			return "Напишите адрес: улица, дом и квартира."
 		},
-		hint: "Адрес нужен, чтобы выбрать организацию по территории.",
+		hint: "Адрес нужен только для того, чтобы выбрать организацию по территории. " +
+			"Подъезд, этаж и код домофона указывать не нужно — если они понадобятся, их спросит та организация, которая приедет.",
 		accept: textStep(5, "Напишите адрес чуть подробнее: улица и дом.", func(app *models.Application, v string) {
 			app.Address = v
 		}),
@@ -464,11 +470,15 @@ func (e *Engine) stepContactPerson() step {
 		},
 		options: func(Params) []Option { return ContactPersonOptions },
 		accept: choice(ContactPersonOptions, func(app *models.Application, v string) {
-			if v == "self" {
-				app.ContactPerson = "заявитель"
-			} else {
-				app.ContactPerson = ""
+			app.ContactPersonType = v
+			if v == ContactPersonSelf {
+				app.ContactPersonName = app.ApplicantName
+				app.ContactPersonPhone = app.ApplicantPhone
+
+				return
 			}
+			app.ContactPersonName = ""
+			app.ContactPersonPhone = ""
 		}),
 	}
 }
@@ -477,13 +487,37 @@ func (e *Engine) stepContactName() step {
 	return step{
 		state:    StateContactName,
 		kind:     KindText,
-		skipWhen: func(app *models.Application) bool { return app.ContactPerson == "заявитель" },
+		skipWhen: func(app *models.Application) bool { return app.ContactPersonType == ContactPersonSelf },
 		text: func(*models.Application, Params) string {
-			return "Напишите, пожалуйста, имя и телефон человека, который будет на связи."
+			return "Как зовут человека, который будет на связи?"
 		},
-		accept: textStep(3, "Напишите имя и телефон одним сообщением.", func(app *models.Application, v string) {
-			app.ContactPerson = v
+		accept: textStep(2, "Напишите, пожалуйста, имя текстом.", func(app *models.Application, v string) {
+			app.ContactPersonName = v
 		}),
+	}
+}
+
+func (e *Engine) stepContactPhone() step {
+	return step{
+		state:    StateContactPhone,
+		kind:     KindPhone,
+		skipWhen: func(app *models.Application) bool { return app.ContactPersonType == ContactPersonSelf },
+		text: func(*models.Application, Params) string {
+			return "По какому номеру с ним связаться?"
+		},
+		accept: func(app *models.Application, in Input, _ Params) Outcome {
+			raw := in.Phone
+			if strings.TrimSpace(raw) == "" {
+				raw = in.Text
+			}
+			phone, ok := NormalizePhone(raw)
+			if !ok {
+				return Outcome{Error: "Не получилось распознать номер. Напишите его в формате +7 900 000-00-00."}
+			}
+			app.ContactPersonPhone = phone
+
+			return Outcome{Accepted: true}
+		},
 	}
 }
 

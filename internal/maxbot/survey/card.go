@@ -39,7 +39,7 @@ func Summary(app *models.Application, p Params) string {
 		b.WriteString("• Куда уже обращались: " + app.PreviousRequests + "\n")
 	}
 	b.WriteString("• Другие вопросы: " + spheresLabel(app) + "\n")
-	b.WriteString("• На связи через неделю: " + value(app.ContactPerson) + "\n")
+	b.WriteString("• На связи через неделю: " + contactPersonLabel(app) + "\n")
 	b.WriteString("• Удобное время звонка: " + Label(ContactTimeOptions, app.ContactTime) + "\n")
 
 	return b.String()
@@ -57,8 +57,19 @@ func Card(app *models.Application) string {
 	b.WriteString(title + " · " + app.PublicID + "\n")
 	b.WriteString("Канал: " + channelLabel(app.Channel) + "\n")
 	b.WriteString("Дата и время: " + app.CreatedAt.Format("02.01.2006 15:04") + "\n")
-	if app.Repeat {
-		b.WriteString("Пометка: повторное обращение\n")
+	switch {
+	case app.Repeat:
+		b.WriteString("Пометка: повторное обращение о том же человеке")
+		if app.PreviousCase != "" {
+			b.WriteString(", предыдущее — " + app.PreviousCase)
+		}
+		b.WriteString("\n")
+	case app.PossibleRepeat:
+		b.WriteString("Пометка: возможно, повторное обращение — с этого аккаунта уже обращались")
+		if app.PreviousCase != "" {
+			b.WriteString(" (" + app.PreviousCase + ")")
+		}
+		b.WriteString(". Повторность определяет координатор\n")
 	}
 	b.WriteString("Отметка фильтра: " + value(app.Stop1Mark) + "\n")
 	if app.Stop1Sign != "" {
@@ -108,19 +119,31 @@ func Card(app *models.Application) string {
 		}
 		b.WriteString("Дополнительные сферы: " + spheresLabel(app) + "\n")
 
+		b.WriteString("\nПризнаки случая: " + FactsSummary(app) + "\n")
+
 		if app.RouteHint != "" {
-			b.WriteString("\nПредварительный маршрут: " + app.RouteHint)
+			b.WriteString("Предварительное направление: " + app.RouteHint)
 			if d, ok := RouteDescriptions[app.RouteHint]; ok {
 				b.WriteString(" — " + d)
 			}
 			b.WriteString("\n")
 			if app.RouteReason != "" {
-				b.WriteString("Обоснование: " + app.RouteReason + "\n")
+				b.WriteString("Основание правила: " + app.RouteReason + "\n")
 			}
+			b.WriteString("Правило матрицы: " + value(app.RouteRuleID) +
+				", версия " + value(app.RoutePolicyVersion) + "\n")
+			b.WriteString("Решение о маршруте принимает координатор; уровень нуждаемости — эксперт\n")
+		} else {
+			note := app.RouteNote
+			if note == "" {
+				note = "предварительное направление не рассчитано"
+			}
+			b.WriteString("Предварительное направление: не определено — " + note + "\n")
+			b.WriteString("Маршрут определяет координатор по признакам случая\n")
 		}
 	}
 
-	b.WriteString("\nОбратная связь: " + value(app.ContactPerson))
+	b.WriteString("\nОбратная связь: " + contactPersonLabel(app))
 	if app.ContactTime != "" {
 		b.WriteString(", " + Label(ContactTimeOptions, app.ContactTime))
 	}
@@ -132,9 +155,31 @@ func Card(app *models.Application) string {
 	}
 	b.WriteString("\n")
 
-	b.WriteString("\nДиагноз, сведения о доходах и имуществе не собирались.")
+	b.WriteString("\nОтметка фильтра по перечню STOP-1 версии " + value(app.Stop1PolicyVersion) + ".")
+	b.WriteString("\nПрофиль собираемых данных: " + value(app.DataPolicyVersion) +
+		" — состав полей определяется профилем, а не оператором.")
 
 	return b.String()
+}
+
+// contactPersonLabel описывает контактное лицо для обратной связи
+func contactPersonLabel(app *models.Application) string {
+	if app.ContactPersonType == ContactPersonSelf {
+		return "заявитель, " + value(app.ApplicantPhone)
+	}
+
+	name := strings.TrimSpace(app.ContactPersonName)
+	phone := strings.TrimSpace(app.ContactPersonPhone)
+	switch {
+	case name != "" && phone != "":
+		return name + ", " + phone
+	case name != "":
+		return name
+	case phone != "":
+		return phone
+	}
+
+	return "не указано"
 }
 
 // AgeLabel склоняет слово «год» по числу лет
@@ -189,4 +234,41 @@ func yesNo(v bool) string {
 	}
 
 	return "нет"
+}
+
+// CardForViewer формирует карточку без прямых контактных данных.
+//
+// Роль viewer видит состав случая и срок, но не телефон, адрес и профиль
+// заявителя: сведения выдаются в объёме, необходимом для работы.
+func CardForViewer(app *models.Application) string {
+	var b strings.Builder
+
+	title := "ОБРАЩЕНИЕ"
+	if app.Stop1Mark == Stop1Mark {
+		title = "ОБРАЩЕНИЕ · STOP-1"
+	}
+
+	b.WriteString(title + " · " + app.PublicID + "\n")
+	b.WriteString("Дата и время: " + app.CreatedAt.Format("02.01.2006 15:04") + "\n")
+	b.WriteString("Отметка фильтра: " + value(app.Stop1Mark) + "\n")
+	b.WriteString("Район: " + value(app.District) + "\n")
+	if app.WardAge > 0 {
+		b.WriteString("Возраст подопечного: " + AgeLabel(app.WardAge) + "\n")
+	}
+	b.WriteString("Кем приходится заявитель: " + Label(RelationOptions, app.Relation) + "\n")
+
+	if app.Stop1Mark != Stop1Mark {
+		b.WriteString("\nПризнаки случая: " + FactsSummary(app) + "\n")
+		if app.RouteHint != "" {
+			b.WriteString("Предварительное направление: " + app.RouteHint + "\n")
+		}
+	}
+
+	b.WriteString("\nВладелец следующего действия: " + value(app.NextActionOwner))
+	if app.NextActionDue != nil {
+		b.WriteString(", до " + app.NextActionDue.Format("02.01.2006 15:04"))
+	}
+	b.WriteString("\n\nКонтактные данные, адрес и текст обращения в этом объёме не выводятся.")
+
+	return b.String()
 }

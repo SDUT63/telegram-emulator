@@ -4,11 +4,14 @@ package bot
 import (
 	"context"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
+	"telegram-emulator/internal/maxbot/calendar"
 	"telegram-emulator/internal/maxbot/config"
 	"telegram-emulator/internal/maxbot/models"
+	"telegram-emulator/internal/maxbot/policy"
 	"telegram-emulator/internal/maxbot/storage"
 	"telegram-emulator/internal/maxbot/survey"
 
@@ -18,28 +21,35 @@ import (
 
 // Bot обрабатывает обновления MAX и ведёт анкету первичного обращения
 type Bot struct {
-	cfg    *config.Config
-	outbox Outbox
-	store  *storage.Storage
-	engine *survey.Engine
-	log    *zap.Logger
+	cfg      *config.Config
+	outbox   Outbox
+	store    *storage.Storage
+	engine   *survey.Engine
+	policies *policy.Set
+	calendar *calendar.Calendar
+	log      *zap.Logger
 }
 
 // New создаёт бота
-func New(cfg *config.Config, outbox Outbox, store *storage.Storage, log *zap.Logger) *Bot {
-	signs := make([]survey.Sign, 0, len(cfg.Stop1.Signs))
-	for _, s := range cfg.Stop1.Signs {
-		signs = append(signs, survey.Sign{ID: s.ID, Question: s.Question})
-	}
-
+func New(
+	cfg *config.Config,
+	outbox Outbox,
+	store *storage.Storage,
+	policies *policy.Set,
+	workingCalendar *calendar.Calendar,
+	log *zap.Logger,
+) *Bot {
 	return &Bot{
-		cfg:    cfg,
-		outbox: outbox,
-		store:  store,
-		log:    log,
+		cfg:      cfg,
+		outbox:   outbox,
+		store:    store,
+		policies: policies,
+		calendar: workingCalendar,
+		log:      log,
 		engine: survey.NewEngine(survey.Params{
-			Districts:  cfg.Intake.Districts,
-			Stop1Signs: signs,
+			Districts:   cfg.Intake.Districts,
+			Stop1:       policies.Stop1,
+			ConsentText: cfg.Consent.Text,
 		}),
 	}
 }
@@ -54,12 +64,41 @@ func (b *Bot) HandleUpdate(ctx context.Context, update schemes.UpdateInterface) 
 			b.startIntake(ctx, u.User)
 		}
 	case *schemes.MessageCreatedUpdate:
+		// Мессенджер может доставить сообщение повторно
+		if !b.firstTime("msg:" + u.Message.Body.Mid) {
+			return
+		}
 		b.handleMessage(ctx, u)
 	case *schemes.MessageCallbackUpdate:
+		// Повторное нажатие той же кнопки не должно повторять действие
+		if !b.firstTime("cb:" + u.Callback.CallbackID) {
+			b.answerCallback(ctx, u.Callback.CallbackID, "Этот ответ уже принят")
+
+			return
+		}
 		b.handleCallback(ctx, u)
 	default:
 		b.log.Debug("обновление без обработчика", zap.String("type", string(update.GetUpdateType())))
 	}
+}
+
+// firstTime сообщает, обрабатывается ли событие впервые.
+//
+// При ошибке хранилища событие обрабатывается: потерять обращение хуже,
+// чем обработать его дважды.
+func (b *Bot) firstTime(key string) bool {
+	if strings.TrimSpace(key) == "" || strings.HasSuffix(key, ":") {
+		return true
+	}
+
+	fresh, err := b.store.MarkProcessed(key)
+	if err != nil {
+		b.log.Warn("не удалось отметить событие обработанным", zap.Error(err))
+
+		return true
+	}
+
+	return fresh
 }
 
 // handleStart показывает приветствие и главное меню
@@ -116,6 +155,10 @@ func (b *Bot) handleCommand(ctx context.Context, user schemes.User, text string,
 		b.showRecent(ctx, user)
 	case "/card":
 		b.showCard(ctx, user, argument)
+	case "/tasks":
+		b.showTasks(ctx, user)
+	case "/done":
+		b.completeTask(ctx, user, argument)
 	default:
 		b.send(ctx, user.UserId, "Не знаю такой команды.\n\n"+helpText(b.cfg), b.menuKeyboard())
 	}
@@ -171,7 +214,7 @@ func (b *Bot) handleCallback(ctx context.Context, u *schemes.MessageCallbackUpda
 // startIntake начинает или продолжает заполнение анкеты
 func (b *Bot) startIntake(ctx context.Context, user schemes.User) {
 	// До получения подписанного перечня STOP-1 линия не открывается
-	if len(b.cfg.Stop1.Signs) == 0 || !b.cfg.Stop1.Approved {
+	if !b.policies.Stop1.Approved || len(b.policies.Stop1.Signs) == 0 {
 		b.send(ctx, user.UserId, lineClosedText(b.cfg), nil)
 
 		return
@@ -191,17 +234,23 @@ func (b *Bot) startIntake(ctx context.Context, user schemes.User) {
 		return
 	}
 
-	repeat, err := b.store.HasClosedApplications(user.UserId)
+	previous, err := b.store.PreviousApplications(user.UserId, 5)
 	if err != nil {
 		b.log.Warn("не удалось проверить прошлые обращения", zap.Error(err))
 	}
 
 	app = &models.Application{
-		Channel:  "max",
-		UserID:   user.UserId,
-		Username: user.Username,
-		Status:   models.StatusDraft,
-		Repeat:   repeat,
+		Channel:           "max",
+		UserID:            user.UserId,
+		Username:          user.Username,
+		Status:            models.StatusDraft,
+		DataPolicyVersion: b.policies.DataCollection.Version,
+		// Повторность по одному лишь идентификатору MAX не определяется:
+		// с одного аккаунта могут обращаться о разных людях
+		PossibleRepeat: len(previous) > 0,
+	}
+	if len(previous) > 0 {
+		app.PreviousCase = previous[0].PublicID
 	}
 	app.State = b.engine.FirstState(app)
 
@@ -289,25 +338,27 @@ func (b *Bot) processInput(ctx context.Context, user schemes.User, in survey.Inp
 	b.ask(ctx, user.UserId, app)
 }
 
-// handleStop1 выполняет протокол STOP-1: остановка навигации и передача координатору
+// handleStop1 выполняет протокол STOP-1: останавливает навигацию, немедленно
+// оповещает координатора и запрашивает только контакты для обратной связи
 func (b *Bot) handleStop1(ctx context.Context, user schemes.User, app *models.Application) {
 	if app.PublicID == "" {
 		if err := b.assignPublicID(app); err != nil {
 			b.log.Error("не удалось присвоить номер обращения", zap.Error(err))
 		}
 	}
-	app.NextActionOwner = "координатор " + b.cfg.Organization.Name
-	due := b.cfg.NextStepDeadline(time.Now())
-	app.NextActionDue = &due
 
 	b.engine.StartStop1Contacts(app)
 	if err := b.store.Save(app); err != nil {
 		b.log.Error("не удалось сохранить карточку STOP-1", zap.Error(err))
 	}
-	b.logEvent(app, "stop1", "выявлен признак: "+app.Stop1Sign)
+	b.logEvent(app, "stop1", "выявлен признак "+app.Stop1SignID+" по перечню версии "+app.Stop1PolicyVersion)
 
 	b.send(ctx, user.UserId, stop1Text(), nil)
-	b.notifyCoordinator(ctx, app)
+
+	// Немедленное оповещение: координатор должен узнать о признаке сразу,
+	// не дожидаясь, пока заявитель допишет контакты
+	b.alertCoordinator(ctx, app, "STOP-1: выявлен признак экстренного состояния. "+
+		"Заявителю названы 103 и 112, контакты уточняются.")
 
 	if app.State == survey.StateDone {
 		b.finishStop1(ctx, user, app)
@@ -320,14 +371,21 @@ func (b *Bot) handleStop1(ctx context.Context, user schemes.User, app *models.Ap
 
 // finishStop1 завершает ветку STOP-1 после сбора контактов
 func (b *Bot) finishStop1(ctx context.Context, user schemes.User, app *models.Application) {
+	if app.Status == models.StatusStop1 {
+		// Ветка уже завершена: повторно карточку не передаём
+		return
+	}
+
 	app.Status = models.StatusStop1
+	action := b.createAction(app, models.ActionAfterEmergency, b.workingDeadline(time.Now()))
+	b.applyNextAction(app, action)
+
 	if err := b.store.Save(app); err != nil {
 		b.log.Error("не удалось сохранить контакты по STOP-1", zap.Error(err))
 	}
 	b.logEvent(app, "stop1_contacts", "контакты заявителя записаны")
 
-	b.send(ctx, user.UserId, "Спасибо. Координатор свяжется с вами на следующий рабочий день. "+
-		"Номер обращения: "+app.PublicID+".\n\nЕсли состояние ухудшится — звоните 103 или 112.", b.menuKeyboard())
+	b.send(ctx, user.UserId, stop1ClosingText(b.cfg, app), b.menuKeyboard())
 	b.notifyCoordinator(ctx, app)
 }
 
@@ -351,7 +409,9 @@ func (b *Bot) restart(ctx context.Context, user schemes.User, app *models.Applic
 	app.SocialServices = ""
 	app.PreviousRequests = ""
 	app.OtherSpheres = ""
-	app.ContactPerson = ""
+	app.ContactPersonType = ""
+	app.ContactPersonName = ""
+	app.ContactPersonPhone = ""
 	app.ContactTime = ""
 	app.State = survey.StateApplicantName
 
@@ -375,23 +435,36 @@ func (b *Bot) submit(ctx context.Context, user schemes.User, app *models.Applica
 		}
 	}
 
-	route, reason := survey.Route(app)
-	app.RouteHint = route
-	app.RouteReason = reason
+	b.markRepeat(app)
+
+	decision := survey.Route(app, b.policies.Routing)
+	app.RouteHint = decision.Route
+	app.RouteRuleID = decision.RuleID
+	app.RouteReason = decision.Reason
+	app.RoutePolicyVersion = decision.PolicyVersion
+	app.RouteNote = decision.Note
 	app.Status = models.StatusSubmitted
 	app.State = survey.StateDone
 	submitted := time.Now()
 	app.SubmittedAt = &submitted
-	app.NextActionOwner = "координатор " + b.cfg.Organization.Name
-	due := b.cfg.NextStepDeadline(submitted)
-	app.NextActionDue = &due
+
+	// Контрольные точки процесса живут в базе, а не в памяти процесса
+	initial := b.createAction(app, models.ActionInitialContact, b.workingDeadline(submitted))
+	b.createAction(app, models.ActionFollowUp7d, b.followUpDeadline(submitted, b.cfg.Intake.FollowUp7Days))
+	b.createAction(app, models.ActionFollowUp30d, b.followUpDeadline(submitted, b.cfg.Intake.FollowUp30Days))
+	b.applyNextAction(app, initial)
 
 	if err := b.store.Save(app); err != nil {
 		b.fail(ctx, user.UserId, "сохранение обращения", err)
 
 		return
 	}
-	b.logEvent(app, "submitted", "обращение передано координатору, предварительный маршрут "+route)
+
+	routeNote := decision.Route
+	if routeNote == "" {
+		routeNote = "маршрут не рассчитан (" + decision.Note + ")"
+	}
+	b.logEvent(app, "submitted", "обращение передано координатору, "+routeNote)
 
 	b.send(ctx, user.UserId, closingText(b.cfg, app), b.menuKeyboard())
 	b.notifyCoordinator(ctx, app)
@@ -459,8 +532,9 @@ func (b *Bot) showMyApplications(ctx context.Context, user schemes.User) {
 
 // showRecent показывает координатору последние обращения
 func (b *Bot) showRecent(ctx context.Context, user schemes.User) {
-	if !b.cfg.IsCoordinator(user.UserId) {
-		b.send(ctx, user.UserId, "Эта команда доступна только координаторам службы.", nil)
+	role := b.cfg.Role(user.UserId)
+	if !config.CanSeeCases(role) {
+		b.denyAccess(ctx, user, "list_applications")
 
 		return
 	}
@@ -491,10 +565,11 @@ func (b *Bot) showRecent(ctx context.Context, user schemes.User) {
 	b.send(ctx, user.UserId, sb.String(), nil)
 }
 
-// showCard показывает координатору карточку обращения
+// showCard показывает карточку обращения в объёме, доступном роли
 func (b *Bot) showCard(ctx context.Context, user schemes.User, publicID string) {
-	if !b.cfg.IsCoordinator(user.UserId) {
-		b.send(ctx, user.UserId, "Эта команда доступна только координаторам службы.", nil)
+	role := b.cfg.Role(user.UserId)
+	if !config.CanSeeCases(role) {
+		b.denyAccess(ctx, user, "view_card")
 
 		return
 	}
@@ -516,32 +591,239 @@ func (b *Bot) showCard(ctx context.Context, user schemes.User, publicID string) 
 		return
 	}
 
-	b.send(ctx, user.UserId, survey.Card(app), nil)
-}
+	// Каждый просмотр карточки фиксируется в журнале случая
+	b.logEvent(app, "card_viewed", fmt.Sprintf("роль %s, пользователь MAX %d", role, user.UserId))
 
-// notifyCoordinator передаёт карточку обращения в чат координаторов
-func (b *Bot) notifyCoordinator(ctx context.Context, app *models.Application) {
-	card := survey.Card(app)
-
-	if b.cfg.Coordinator.ChatID == 0 && len(b.cfg.Coordinator.UserIDs) == 0 {
-		b.log.Warn("получатель карточек не настроен: укажите coordinator.chat_id или coordinator.user_ids",
-			zap.String("application", app.PublicID))
+	if config.CanSeeFullCard(role) {
+		b.send(ctx, user.UserId, survey.Card(app), nil)
 
 		return
 	}
 
+	b.send(ctx, user.UserId, survey.CardForViewer(app), nil)
+}
+
+// denyAccess отказывает в доступе и фиксирует попытку
+func (b *Bot) denyAccess(ctx context.Context, user schemes.User, operation string) {
+	b.log.Warn("отказано в доступе к сведениям об обращениях",
+		zap.String("operation", operation), zap.Int64("user_id", user.UserId))
+	b.send(ctx, user.UserId, "Эта команда доступна только сотрудникам службы. "+
+		"Если вы координатор, попросите администратора добавить ваш идентификатор в настройки доступа: /id", nil)
+}
+
+// showTasks показывает открытые действия по случаям
+func (b *Bot) showTasks(ctx context.Context, user schemes.User) {
+	role := b.cfg.Role(user.UserId)
+	if !config.CanSeeCases(role) {
+		b.denyAccess(ctx, user, "list_tasks")
+
+		return
+	}
+
+	actions, err := b.store.OpenActions(20)
+	if err != nil {
+		b.fail(ctx, user.UserId, "выборка действий", err)
+
+		return
+	}
+	if len(actions) == 0 {
+		b.send(ctx, user.UserId, "Открытых действий нет.", nil)
+
+		return
+	}
+
+	now := time.Now()
+	var sb strings.Builder
+	sb.WriteString("Открытые действия:\n\n")
+	for i := range actions {
+		action := &actions[i]
+		mark := " "
+		if action.DueAt.Before(now) {
+			mark = "просрочено, "
+		}
+		sb.WriteString(fmt.Sprintf("#%d · %s · %s\n%s%s\n\n",
+			action.ID, action.PublicID, action.Title(),
+			mark, "срок "+action.DueAt.Format("02.01.2006 15:04")))
+	}
+	sb.WriteString("Закрыть действие: /done НОМЕР результат")
+
+	b.send(ctx, user.UserId, sb.String(), nil)
+}
+
+// completeTask закрывает действие с указанием результата
+func (b *Bot) completeTask(ctx context.Context, user schemes.User, argument string) {
+	role := b.cfg.Role(user.UserId)
+	if !config.CanCompleteActions(role) {
+		b.denyAccess(ctx, user, "complete_action")
+
+		return
+	}
+
+	fields := strings.Fields(argument)
+	if len(fields) == 0 {
+		b.send(ctx, user.UserId, "Укажите номер действия: /done 12 связались, помощь началась", nil)
+
+		return
+	}
+
+	id, err := strconv.ParseUint(strings.TrimPrefix(fields[0], "#"), 10, 64)
+	if err != nil {
+		b.send(ctx, user.UserId, "Номер действия должен быть числом: /done 12 результат", nil)
+
+		return
+	}
+
+	action, err := b.store.ActionByID(uint(id))
+	if err != nil {
+		b.fail(ctx, user.UserId, "поиск действия", err)
+
+		return
+	}
+	if action == nil {
+		b.send(ctx, user.UserId, fmt.Sprintf("Действие #%d не найдено.", id), nil)
+
+		return
+	}
+	if action.Status != models.ActionStatusOpen {
+		b.send(ctx, user.UserId, fmt.Sprintf("Действие #%d уже закрыто.", id), nil)
+
+		return
+	}
+
+	result := strings.TrimSpace(strings.TrimPrefix(argument, fields[0]))
+	if result == "" {
+		b.send(ctx, user.UserId, "Опишите результат: /done "+fields[0]+" связались, помощь началась", nil)
+
+		return
+	}
+
+	completed := time.Now()
+	action.Status = models.ActionStatusDone
+	action.Result = result
+	action.CompletedAt = &completed
+	action.CompletedBy = user.UserId
+
+	if err := b.store.SaveAction(action); err != nil {
+		b.fail(ctx, user.UserId, "закрытие действия", err)
+
+		return
+	}
+
+	if err := b.store.LogEvent(action.ApplicationID, "action_completed",
+		fmt.Sprintf("%s: %s (пользователь MAX %d)", action.Type, result, user.UserId)); err != nil {
+		b.log.Warn("не удалось записать закрытие действия", zap.Error(err))
+	}
+
+	b.send(ctx, user.UserId, fmt.Sprintf("Действие #%d закрыто: %s", id, result), nil)
+}
+
+// RemindDueActions напоминает координаторам о наступивших сроках.
+//
+// Метод вызывается по расписанию: контрольные точки хранятся в базе,
+// поэтому напоминания переживают перезапуск приложения.
+func (b *Bot) RemindDueActions(ctx context.Context, now time.Time, repeatAfter time.Duration) int {
+	actions, err := b.store.DueActions(now, now.Add(-repeatAfter), 20)
+	if err != nil {
+		b.log.Error("не удалось выбрать наступившие действия", zap.Error(err))
+
+		return 0
+	}
+
+	reminded := 0
+	for i := range actions {
+		action := &actions[i]
+
+		text := fmt.Sprintf("Наступил срок действия по обращению %s\n#%d · %s\nСрок: %s\nВладелец: %s\n\nЗакрыть: /done %d результат",
+			action.PublicID, action.ID, action.Title(),
+			action.DueAt.Format("02.01.2006 15:04"), action.Owner, action.ID)
+
+		if !b.sendToCoordinators(ctx, text) {
+			continue
+		}
+
+		if err := b.store.MarkReminded(action, now); err != nil {
+			b.log.Warn("не удалось отметить напоминание", zap.Error(err))
+		}
+		reminded++
+	}
+
+	return reminded
+}
+
+// sendToCoordinators отправляет сообщение получателям карточек
+func (b *Bot) sendToCoordinators(ctx context.Context, text string) bool {
+	delivered := false
+
 	if b.cfg.Coordinator.ChatID != 0 {
-		if err := b.outbox.Send(ctx, Message{ChatID: b.cfg.Coordinator.ChatID, Text: card}); err != nil {
-			b.log.Error("не удалось отправить карточку в чат координаторов", zap.Error(err))
+		if err := b.outbox.Send(ctx, Message{ChatID: b.cfg.Coordinator.ChatID, Text: text}); err != nil {
+			b.log.Error("не удалось отправить напоминание в чат координаторов", zap.Error(err))
+		} else {
+			delivered = true
 		}
 	}
 
 	for _, id := range b.cfg.Coordinator.UserIDs {
-		if err := b.outbox.Send(ctx, Message{UserID: id, Text: card}); err != nil {
-			b.log.Error("не удалось отправить карточку координатору",
+		if err := b.outbox.Send(ctx, Message{UserID: id, Text: text}); err != nil {
+			b.log.Error("не удалось отправить напоминание координатору",
 				zap.Int64("user_id", id), zap.Error(err))
+		} else {
+			delivered = true
 		}
 	}
+
+	return delivered
+}
+
+// notifyCoordinator передаёт карточку обращения координаторам
+func (b *Bot) notifyCoordinator(ctx context.Context, app *models.Application) {
+	b.toCoordinators(ctx, survey.Card(app), "card_sent", app)
+}
+
+// alertCoordinator отправляет короткое срочное оповещение по случаю
+func (b *Bot) alertCoordinator(ctx context.Context, app *models.Application, text string) {
+	b.toCoordinators(ctx, app.PublicID+"\n"+text, "alert_sent", app)
+}
+
+// toCoordinators рассылает сообщение получателям карточек и фиксирует результат.
+//
+// В журнал пишется только факт передачи: содержание карточки в логи не попадает.
+func (b *Bot) toCoordinators(ctx context.Context, text, eventType string, app *models.Application) {
+	if b.cfg.Coordinator.ChatID == 0 && len(b.cfg.Coordinator.UserIDs) == 0 {
+		b.log.Warn("получатель карточек не настроен: укажите coordinator.chat_id или coordinator.user_ids",
+			zap.String("application", app.PublicID))
+		b.logEvent(app, "delivery_failed", "получатель карточек не настроен")
+
+		return
+	}
+
+	delivered := 0
+	if b.cfg.Coordinator.ChatID != 0 {
+		if err := b.outbox.Send(ctx, Message{ChatID: b.cfg.Coordinator.ChatID, Text: text}); err != nil {
+			b.log.Error("не удалось отправить карточку в чат координаторов",
+				zap.String("application", app.PublicID), zap.Error(err))
+		} else {
+			delivered++
+		}
+	}
+
+	for _, id := range b.cfg.Coordinator.UserIDs {
+		if err := b.outbox.Send(ctx, Message{UserID: id, Text: text}); err != nil {
+			b.log.Error("не удалось отправить карточку координатору",
+				zap.Int64("user_id", id), zap.String("application", app.PublicID), zap.Error(err))
+		} else {
+			delivered++
+		}
+	}
+
+	if delivered == 0 {
+		// Передача не состоялась: действие остаётся открытым, координатору
+		// напомнят повторно, а разрыв виден в журнале случая
+		b.logEvent(app, "delivery_failed", "ни один получатель не принял сообщение")
+
+		return
+	}
+
+	b.logEvent(app, eventType, fmt.Sprintf("получателей: %d", delivered))
 }
 
 // logEvent записывает событие в журнал обращения
@@ -573,4 +855,102 @@ func statusLabel(status models.Status) string {
 	default:
 		return "заполняется"
 	}
+}
+
+// markRepeat определяет повторность обращения.
+//
+// Совпадения одного лишь идентификатора MAX недостаточно: с одного аккаунта
+// обращаются о разных людях. Repeat ставится только при совпадении подопечного,
+// иначе координатор видит пометку «возможно, повторное» и решает сам.
+func (b *Bot) markRepeat(app *models.Application) {
+	previous, err := b.store.PreviousApplications(app.UserID, 10)
+	if err != nil {
+		b.log.Warn("не удалось проверить прошлые обращения", zap.Error(err))
+
+		return
+	}
+
+	app.Repeat = false
+	app.PossibleRepeat = len(previous) > 0
+
+	ward := normalizeName(app.WardName)
+	for i := range previous {
+		if previous[i].ID == app.ID {
+			continue
+		}
+		if ward != "" && normalizeName(previous[i].WardName) == ward {
+			app.Repeat = true
+			app.PossibleRepeat = false
+			app.PreviousCase = previous[i].PublicID
+
+			return
+		}
+		if app.PreviousCase == "" {
+			app.PreviousCase = previous[i].PublicID
+		}
+	}
+}
+
+// normalizeName приводит ФИО к виду, пригодному для сравнения
+func normalizeName(name string) string {
+	return strings.Join(strings.Fields(strings.ToLower(strings.ReplaceAll(name, "ё", "е"))), " ")
+}
+
+// createAction создаёт действие по случаю с указанным сроком
+func (b *Bot) createAction(app *models.Application, actionType string, due time.Time) *models.Action {
+	action := &models.Action{
+		ApplicationID: app.ID,
+		PublicID:      app.PublicID,
+		Type:          actionType,
+		Owner:         b.coordinatorOwner(),
+		DueAt:         due,
+		Status:        models.ActionStatusOpen,
+	}
+	action.Description = action.Title()
+
+	if err := b.store.CreateAction(action); err != nil {
+		b.log.Error("не удалось создать действие по случаю",
+			zap.String("application", app.PublicID), zap.String("type", actionType), zap.Error(err))
+
+		return nil
+	}
+
+	return action
+}
+
+// applyNextAction переносит ближайшее действие в поля карточки:
+// поле «владелец следующего действия» не может быть пустым
+func (b *Bot) applyNextAction(app *models.Application, action *models.Action) {
+	if action == nil {
+		return
+	}
+
+	app.NextActionOwner = action.Owner
+	due := action.DueAt
+	app.NextActionDue = &due
+}
+
+// coordinatorOwner возвращает владельца следующего действия
+func (b *Bot) coordinatorOwner() string {
+	return "координатор " + b.cfg.Organization.Name
+}
+
+// workingDeadline возвращает срок нашего действия в рабочих днях
+func (b *Bot) workingDeadline(from time.Time) time.Time {
+	days := b.cfg.Intake.NextStepWorkingDays
+	if days < 1 {
+		days = 1
+	}
+
+	return b.calendar.NextWorkingDeadline(from, days)
+}
+
+// followUpDeadline возвращает срок контрольной точки: календарные дни,
+// но не ранее истечения норматива результата в рабочих днях
+func (b *Bot) followUpDeadline(from time.Time, calendarDays int) time.Time {
+	if calendarDays < 1 {
+		calendarDays = 7
+	}
+
+	return b.calendar.CalendarDaysDeadline(from, calendarDays, b.cfg.Intake.FollowUpMinWorkingDays)
 }

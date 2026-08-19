@@ -2,6 +2,7 @@
 package storage
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -12,6 +13,7 @@ import (
 
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 	gormlogger "gorm.io/gorm/logger"
 )
 
@@ -28,25 +30,56 @@ func Open(url string) (*Storage, error) {
 		return nil, fmt.Errorf("пустой путь к базе данных: %q", url)
 	}
 
+	// База содержит персональные данные: каталог и файл доступны только владельцу
 	if dir := filepath.Dir(path); dir != "." && dir != "" {
-		if err := os.MkdirAll(dir, 0o755); err != nil {
+		if err := os.MkdirAll(dir, 0o700); err != nil {
 			return nil, fmt.Errorf("ошибка создания директории базы данных: %w", err)
+		}
+		if err := os.Chmod(dir, 0o700); err != nil {
+			return nil, fmt.Errorf("ошибка установки прав на директорию базы данных: %w", err)
 		}
 	}
 
-	db, err := gorm.Open(sqlite.Open(path), &gorm.Config{
+	// WAL и ожидание блокировки: обращения могут приходить одновременно
+	dsn := fmt.Sprintf("file:%s?_busy_timeout=5000&_journal_mode=WAL&_txlock=immediate", path)
+
+	db, err := gorm.Open(sqlite.Open(dsn), &gorm.Config{
 		Logger: gormlogger.Default.LogMode(gormlogger.Silent),
 	})
 	if err != nil {
 		return nil, fmt.Errorf("ошибка открытия базы данных: %w", err)
 	}
 
-	return New(db)
+	store, err := New(db)
+	if err != nil {
+		return nil, err
+	}
+
+	if err := os.Chmod(path, 0o600); err != nil {
+		return nil, fmt.Errorf("ошибка установки прав на файл базы данных: %w", err)
+	}
+
+	return store, nil
 }
 
 // New создаёт репозиторий поверх готового подключения и применяет миграции
 func New(db *gorm.DB) (*Storage, error) {
-	if err := db.AutoMigrate(&models.Application{}, &models.Event{}); err != nil {
+	// SQLite допускает одного писателя: пул из одного соединения
+	// сериализует транзакции внутри процесса вместо ошибки «database is locked»
+	sqlDB, err := db.DB()
+	if err != nil {
+		return nil, fmt.Errorf("ошибка доступа к подключению: %w", err)
+	}
+	sqlDB.SetMaxOpenConns(1)
+	sqlDB.SetMaxIdleConns(1)
+
+	if err := db.AutoMigrate(
+		&models.Application{},
+		&models.Event{},
+		&models.Action{},
+		&models.ProcessedEvent{},
+		&models.DailySequence{},
+	); err != nil {
 		return nil, fmt.Errorf("ошибка миграции базы данных: %w", err)
 	}
 
@@ -64,7 +97,7 @@ func (s *Storage) Draft(userID int64) (*models.Application, error) {
 	err := s.db.Where("user_id = ? AND status = ?", userID, models.StatusDraft).
 		Order("id DESC").First(&app).Error
 	if err != nil {
-		if err == gorm.ErrRecordNotFound {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, nil
 		}
 
@@ -97,7 +130,7 @@ func (s *Storage) ByPublicID(publicID string) (*models.Application, error) {
 	var app models.Application
 	err := s.db.Where("public_id = ?", publicID).First(&app).Error
 	if err != nil {
-		if err == gorm.ErrRecordNotFound {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, nil
 		}
 
@@ -131,32 +164,159 @@ func (s *Storage) Recent(limit int) ([]models.Application, error) {
 	return apps, nil
 }
 
-// HasClosedApplications сообщает, обращался ли пользователь ранее
-func (s *Storage) HasClosedApplications(userID int64) (bool, error) {
-	var count int64
-	err := s.db.Model(&models.Application{}).
-		Where("user_id = ? AND status <> ?", userID, models.StatusDraft).
-		Count(&count).Error
+// PreviousApplications возвращает ранее поданные обращения того же
+// пользователя мессенджера — основу для определения повторности
+func (s *Storage) PreviousApplications(userID int64, limit int) ([]models.Application, error) {
+	var apps []models.Application
+	err := s.db.Where("user_id = ? AND status <> ?", userID, models.StatusDraft).
+		Order("id DESC").Limit(limit).Find(&apps).Error
 	if err != nil {
-		return false, fmt.Errorf("ошибка подсчёта обращений: %w", err)
+		return nil, fmt.Errorf("ошибка выборки прошлых обращений: %w", err)
 	}
 
-	return count > 0, nil
+	return apps, nil
 }
 
-// NextPublicID формирует публичный номер обращения вида MAX-20260819-0007
+// CreateAction сохраняет действие по случаю
+func (s *Storage) CreateAction(action *models.Action) error {
+	if err := s.db.Create(action).Error; err != nil {
+		return fmt.Errorf("ошибка создания действия: %w", err)
+	}
+
+	return nil
+}
+
+// OpenActions возвращает незавершённые действия в порядке срока
+func (s *Storage) OpenActions(limit int) ([]models.Action, error) {
+	var actions []models.Action
+	err := s.db.Where("status = ?", models.ActionStatusOpen).
+		Order("due_at ASC").Limit(limit).Find(&actions).Error
+	if err != nil {
+		return nil, fmt.Errorf("ошибка выборки действий: %w", err)
+	}
+
+	return actions, nil
+}
+
+// DueActions возвращает действия, срок которых наступил и о которых
+// координатору ещё не напоминали позже указанного момента
+func (s *Storage) DueActions(now time.Time, remindedBefore time.Time, limit int) ([]models.Action, error) {
+	var actions []models.Action
+	err := s.db.Where("status = ? AND due_at <= ? AND (reminded_at IS NULL OR reminded_at < ?)",
+		models.ActionStatusOpen, now, remindedBefore).
+		Order("due_at ASC").Limit(limit).Find(&actions).Error
+	if err != nil {
+		return nil, fmt.Errorf("ошибка выборки наступивших действий: %w", err)
+	}
+
+	return actions, nil
+}
+
+// ActionsByApplication возвращает действия по обращению
+func (s *Storage) ActionsByApplication(applicationID uint) ([]models.Action, error) {
+	var actions []models.Action
+	err := s.db.Where("application_id = ?", applicationID).Order("due_at ASC").Find(&actions).Error
+	if err != nil {
+		return nil, fmt.Errorf("ошибка выборки действий по обращению: %w", err)
+	}
+
+	return actions, nil
+}
+
+// ActionByID возвращает действие по идентификатору
+func (s *Storage) ActionByID(id uint) (*models.Action, error) {
+	var action models.Action
+	err := s.db.Where("id = ?", id).First(&action).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, nil
+		}
+
+		return nil, fmt.Errorf("ошибка поиска действия: %w", err)
+	}
+
+	return &action, nil
+}
+
+// SaveAction обновляет действие
+func (s *Storage) SaveAction(action *models.Action) error {
+	if err := s.db.Save(action).Error; err != nil {
+		return fmt.Errorf("ошибка сохранения действия: %w", err)
+	}
+
+	return nil
+}
+
+// MarkReminded отмечает, что о действии напомнили
+func (s *Storage) MarkReminded(action *models.Action, at time.Time) error {
+	action.RemindedAt = &at
+
+	return s.SaveAction(action)
+}
+
+// MarkProcessed отмечает событие обработанным и сообщает, было ли оно новым.
+//
+// Повторная доставка того же обновления возвращает false: обработчик его пропустит.
+func (s *Storage) MarkProcessed(key string) (bool, error) {
+	err := s.db.Create(&models.ProcessedEvent{Key: key}).Error
+	if err == nil {
+		return true, nil
+	}
+
+	var exists int64
+	if countErr := s.db.Model(&models.ProcessedEvent{}).Where("key = ?", key).Count(&exists).Error; countErr == nil && exists > 0 {
+		return false, nil
+	}
+
+	return false, fmt.Errorf("ошибка отметки обработанного события: %w", err)
+}
+
+// CleanupProcessed удаляет старые отметки об обработанных событиях
+func (s *Storage) CleanupProcessed(before time.Time) error {
+	if err := s.db.Where("created_at < ?", before).Delete(&models.ProcessedEvent{}).Error; err != nil {
+		return fmt.Errorf("ошибка очистки отметок событий: %w", err)
+	}
+
+	return nil
+}
+
+// NextPublicID выдаёт публичный номер обращения вида MAX-20260819-0007.
+//
+// Номер выдаётся атомарно из дневного счётчика: два обращения, поступивших
+// одновременно, никогда не получают одинаковый номер.
 func (s *Storage) NextPublicID(now time.Time) (string, error) {
 	day := now.Format("20060102")
-	prefix := "MAX-" + day + "-"
+	number := 0
 
-	var count int64
-	err := s.db.Model(&models.Application{}).
-		Where("public_id LIKE ?", prefix+"%").Count(&count).Error
+	err := s.db.Transaction(func(tx *gorm.DB) error {
+		sequence := &models.DailySequence{}
+		err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
+			Where("day = ?", day).First(sequence).Error
+
+		switch {
+		case err == nil:
+			sequence.NextNumber++
+			if err := tx.Save(sequence).Error; err != nil {
+				return err
+			}
+		case errors.Is(err, gorm.ErrRecordNotFound):
+			sequence = &models.DailySequence{Day: day, NextNumber: 1}
+			if err := tx.Create(sequence).Error; err != nil {
+				return err
+			}
+		default:
+			return err
+		}
+
+		number = sequence.NextNumber
+
+		return nil
+	})
 	if err != nil {
 		return "", fmt.Errorf("ошибка нумерации обращений: %w", err)
 	}
 
-	return fmt.Sprintf("%s%04d", prefix, count+1), nil
+	return fmt.Sprintf("MAX-%s-%04d", day, number), nil
 }
 
 // LogEvent добавляет запись в журнал обращения

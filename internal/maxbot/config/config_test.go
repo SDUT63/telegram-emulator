@@ -3,6 +3,7 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
@@ -19,11 +20,14 @@ coordinator:
   user_ids: [11, 22]
 intake:
   districts: ["Автозаводский район"]
-stop1:
-  approved: true
-  signs:
-    - id: s1
-      question: "Человек без сознания?"
+working_calendar:
+  timezone: "Europe/Samara"
+  days: ["mon", "tue", "wed", "thu", "fri"]
+  start: "09:00"
+  end: "18:00"
+access:
+  viewers: [33]
+  supervisors: [44]
 `
 	if err := os.WriteFile(filepath.Join(dir, "maxbot.yaml"), []byte(content), 0o600); err != nil {
 		t.Fatalf("не удалось записать конфигурацию: %v", err)
@@ -46,8 +50,23 @@ stop1:
 	if !cfg.IsCoordinator(22) || cfg.IsCoordinator(33) {
 		t.Fatal("проверка координатора работает неверно")
 	}
-	if len(cfg.Stop1.Signs) != 1 || !cfg.Stop1.Approved {
-		t.Fatalf("перечень STOP-1 прочитан неверно: %+v", cfg.Stop1)
+	if cfg.Role(22) != RoleCoordinator || cfg.Role(33) != RoleViewer || cfg.Role(44) != RoleSupervisor {
+		t.Fatalf("роли распределены неверно: %+v", cfg.Access)
+	}
+	if cfg.Role(99) != RoleNone {
+		t.Fatal("посторонний пользователь не должен получать роль")
+	}
+	if !CanSeeFullCard(RoleCoordinator) || CanSeeFullCard(RoleViewer) {
+		t.Fatal("полную карточку видит координатор, но не viewer")
+	}
+	if !CanSeeCases(RoleViewer) || CanCompleteActions(RoleViewer) {
+		t.Fatal("viewer видит случаи, но не закрывает действия")
+	}
+	if strings.TrimSpace(cfg.Consent.Text) == "" {
+		t.Fatal("должна применяться формулировка согласия по умолчанию")
+	}
+	if strings.Contains(cfg.Consent.Text, "запись будет удалена") {
+		t.Fatal("бот не должен обещать удаление записи при отзыве согласия")
 	}
 	if err := cfg.Validate(); err != nil {
 		t.Fatalf("конфигурация должна быть корректной: %v", err)
@@ -81,11 +100,21 @@ func TestValidate(t *testing.T) {
 
 			return c
 		}(),
-		"пустой утверждённый перечень": func() *Config {
+		"некорректный рабочий календарь": func() *Config {
 			c := &Config{}
 			c.Bot.Token = "t"
 			c.Bot.Mode = "polling"
-			c.Stop1.Approved = true
+			c.Policies.Path = "configs/policies.yaml"
+			c.Consent.Text = "текст"
+			c.Calendar.Timezone = "Mars/Olympus"
+
+			return c
+		}(),
+		"без формулировки согласия": func() *Config {
+			c := &Config{}
+			c.Bot.Token = "t"
+			c.Bot.Mode = "polling"
+			c.Policies.Path = "configs/policies.yaml"
 
 			return c
 		}(),
@@ -100,12 +129,25 @@ func TestValidate(t *testing.T) {
 	}
 }
 
-func TestNextStepDeadline(t *testing.T) {
+func TestWorkingCalendarFromConfig(t *testing.T) {
 	cfg := &Config{}
-	cfg.Intake.NextStepHours = 24
+	cfg.Calendar.Timezone = "Europe/Samara"
+	cfg.Calendar.Days = []string{"mon", "tue", "wed", "thu", "fri"}
+	cfg.Calendar.Start = "09:00"
+	cfg.Calendar.End = "18:00"
 
-	from := time.Date(2026, 8, 19, 10, 0, 0, 0, time.UTC)
-	if got := cfg.NextStepDeadline(from); !got.Equal(from.Add(24 * time.Hour)) {
-		t.Fatalf("срок следующего действия рассчитан неверно: %v", got)
+	workingCalendar, err := cfg.WorkingCalendar()
+	if err != nil {
+		t.Fatalf("календарь не собрался: %v", err)
+	}
+
+	friday := time.Date(2026, 8, 14, 17, 55, 0, 0, workingCalendar.Location())
+	deadline := workingCalendar.NextWorkingDeadline(friday, 1)
+
+	if !workingCalendar.IsWorkingDay(deadline) {
+		t.Fatalf("срок должен приходиться на рабочий день: %s", deadline.Format("2006-01-02 15:04"))
+	}
+	if deadline.Before(friday.Add(24 * time.Hour)) {
+		t.Fatal("срок в один рабочий день с вечера пятницы не может истечь в субботу")
 	}
 }
