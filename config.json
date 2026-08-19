@@ -1,0 +1,90 @@
+{
+  "bot": {
+    "name": "СДУТ Опросник",
+    "description": "Чат-бот опросник для сбора информации",
+    "version": "1.0.0"
+  },
+  "survey": {
+    "title": "Опрос СДУТ",
+    "description": "Оставьте свои контактные данные и вопрос",
+    "language": "ru",
+    "questions": [
+      {
+        "id": "name",
+        "text": "Как вас зовут?",
+        "type": "text",
+        "required": true,
+        "placeholder": "Иван Петров"
+      },
+      {
+        "id": "phone",
+        "text": "Укажите ваш номер телефона:",
+        "type": "phone",
+        "required": true,
+        "placeholder": "+7 (495) 123-45-67"
+      },
+      {
+        "id": "email",
+        "text": "Укажите ваш email:",
+        "type": "email",
+        "required": true,
+        "placeholder": "name@example.com"
+      },
+      {
+        "id": "organization",
+        "text": "Ваша организация / место работы:",
+        "type": "text",
+        "required": false,
+        "placeholder": "ООО, Больница, Клиника"
+      },
+      {
+        "id": "inquiry_type",
+        "text": "Тип вашего запроса:",
+        "type": "choice",
+        "required": true,
+        "options": [
+          "Консультация",
+          "Обучение",
+          "Партнерство",
+          "Другое"
+        ]
+      },
+      {
+        "id": "message",
+        "text": "Опишите вашу проблему или вопрос:",
+        "type": "text",
+        "required": true,
+        "placeholder": "Подробное описание вашего запроса...",
+        "multiline": true
+      }
+    ]
+  },
+  "messages": {
+    "welcome": "Добро пожаловать в систему опроса СДУТ!\n\nЭто быстрый опросник, который поможет нам лучше понять ваши потребности.\n\nНажмите 'Начать' для начала опроса.",
+    "start_button": "Начать",
+    "success": "✓ Ответ сохранен",
+    "error": "Произошла ошибка. Пожалуйста, попробуйте позже.",
+    "completed": "Спасибо за ответы! Ваши данные сохранены.",
+    "cancel": "Опрос отменен. Введите 'Начать' для нового опроса"
+  },
+  "validation": {
+    "email_regex": "^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$",
+    "phone_min_digits": 10,
+    "text_min_length": 1,
+    "text_max_length": 1000
+  },
+  "storage": {
+    "type": "json",
+    "filepath": "survey_responses.json",
+    "backup_enabled": true,
+    "backup_interval": 86400
+  },
+  "api": {
+    "max": {
+      "version": "1.0",
+      "endpoint": "/webhook",
+      "timeout": 30,
+      "retry_attempts": 3
+    }
+  }
+}

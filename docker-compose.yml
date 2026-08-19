@@ -1,0 +1,21 @@
+version: '3.8'
+
+services:
+  survey-bot:
+    build: .
+    ports:
+      - "5000:5000"
+    environment:
+      MAX_ACCESS_TOKEN: ${MAX_ACCESS_TOKEN:-}
+      MAX_SKILL_ID: ${MAX_SKILL_ID:-}
+      DEBUG: ${DEBUG:-False}
+      PORT: 5000
+      ADMIN_TOKEN: ${ADMIN_TOKEN:-admin123}
+    volumes:
+      - ./survey_responses.json:/app/survey_responses.json
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
