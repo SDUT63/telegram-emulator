@@ -332,6 +332,65 @@ details.q[open] > summary::after { transform: rotate(-135deg); margin-top: -2px;
 }
 .setup code { font: 400 12px/1.4 var(--f-mono); }
 
+/* ---------- Группа внутри объёмной вкладки ---------- */
+.group { display: flex; flex-direction: column; gap: 10px; }
+.group__head { display: flex; align-items: baseline; gap: 9px; padding-top: 6px; }
+.group__num {
+  font: 500 11px/1 var(--f-mono); color: var(--accent);
+  background: var(--accent-soft); border-radius: 4px; padding: 4px 6px; flex: none;
+}
+
+/* ---------- Карточки уровней нуждаемости ---------- */
+.lvl {
+  background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius);
+  padding: 14px; display: grid; grid-template-columns: auto 1fr; gap: 4px 14px; align-items: baseline;
+}
+.lvl__badge {
+  grid-row: 1 / span 2; align-self: start;
+  font: 500 13px/1 var(--f-mono); color: var(--on-accent); background: var(--accent);
+  border-radius: 7px; padding: 9px 10px; min-width: 42px; text-align: center;
+}
+.lvl__hours { font-size: 19px; font-weight: 700; letter-spacing: -.01em; font-variant-numeric: tabular-nums; }
+.lvl__mins  { font: 400 12.5px/1.4 var(--f-mono); color: var(--muted); font-variant-numeric: tabular-nums; }
+.lvl__who   { grid-column: 1 / -1; font-size: 14.5px; color: var(--ink-soft); margin-top: 6px; }
+.lvl__ex    { grid-column: 1 / -1; font-size: 13.5px; color: var(--muted); }
+
+/* ---------- Медиа: картинки и видео по ссылке ---------- */
+.media {
+  display: block; margin: 0; border-radius: var(--radius); overflow: hidden;
+  background: var(--surface-sunk); border: 1px solid var(--line);
+}
+.media img { display: block; width: 100%; height: auto; }
+.media figcaption { padding: 9px 12px; font-size: 13px; color: var(--muted); }
+
+.media--play { position: relative; text-decoration: none; color: inherit; }
+.media--play .media__badge {
+  position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
+  width: 54px; height: 54px; border-radius: 50%;
+  background: rgba(176, 36, 24, .94); color: #fff;
+  display: grid; place-items: center; font-size: 19px; padding-left: 4px;
+  box-shadow: 0 4px 16px rgba(0,0,0,.35);
+}
+.media--play .media__label { display: block; padding: 9px 12px; font-size: 13.5px; color: var(--ink-soft); }
+.media--play:hover .media__badge { background: var(--critical); }
+
+.media--embed { position: relative; padding-top: 56.25%; height: 0; }
+.media--embed iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; }
+
+.media.is-broken { border-style: dashed; }
+.media.is-broken img, .media.is-broken .media__badge { display: none; }
+.media.is-broken::before {
+  content: "Материал недоступен по указанной ссылке";
+  display: block; padding: 22px 14px; text-align: center;
+  font-size: 13.5px; color: var(--muted);
+}
+
+/* ---------- Источники ---------- */
+.src { display: flex; flex-direction: column; gap: 7px; }
+.src a { font-size: 14px; color: var(--accent); text-decoration: none; border-bottom: 1px solid var(--accent-soft); align-self: flex-start; }
+.src a:hover { border-bottom-color: var(--accent); }
+.src__note { font-size: 12.5px; color: var(--muted); }
+
 @media (min-width: 560px) {
   :root { --pad: 22px; }
   h1 { font-size: 25px; }
@@ -361,6 +420,7 @@ details.q[open] > summary::after { transform: rotate(-135deg); margin-top: -2px;
       <button class="tab" role="tab" id="tab-now"   aria-controls="p-now"   aria-selected="true">Что делать сейчас</button>
       <button class="tab" role="tab" id="tab-line"  aria-controls="p-line"  aria-selected="false">Горячая линия</button>
       <button class="tab" role="tab" id="tab-form"  aria-controls="p-form"  aria-selected="false">Опрос</button>
+      <button class="tab" role="tab" id="tab-sdu"   aria-controls="p-sdu"   aria-selected="false">Модель СДУ</button>
       <button class="tab" role="tab" id="tab-faq"   aria-controls="p-faq"   aria-selected="false">Вопросы</button>
       <button class="tab" role="tab" id="tab-docs"  aria-controls="p-docs"  aria-selected="false">Документы</button>
     </nav>
@@ -665,7 +725,307 @@ details.q[open] > summary::after { transform: rotate(-135deg); margin-top: -2px;
 
 </section>
 
-<!-- ============ 4. ВОПРОСЫ ============ -->
+<!-- ============ 4. МОДЕЛЬ СДУ И ПРИКАЗ № 731 ============ -->
+<section class="panel" id="p-sdu" role="tabpanel" aria-labelledby="tab-sdu" tabindex="-1" hidden>
+
+  <div>
+    <h1>Модель СДУ и приказ № 731</h1>
+    <p class="lede" style="margin-top:8px">Система долговременного ухода работает по Типовой модели, которую Минтруд утверждает приказом на каждый год. На 2026 год действует приказ от 23.12.2025 № 731.</p>
+  </div>
+
+  <div class="note"><b>Это справочный пересказ, а не нормативный источник.</b> Регионы реализуют модель с местными особенностями: перечень услуг, организации и порядок обращения могут отличаться. Сверяйтесь с текстом приказа и решениями регионального органа соцзащиты.</div>
+
+  <!-- ── 1. Что это ── -->
+  <div class="group">
+    <div class="group__head"><span class="group__num">01</span><h2>Что это за система</h2></div>
+
+    <div class="faq">
+      <details class="q" open>
+        <summary>Что такое система долговременного ухода?</summary>
+        <div class="q__body">
+          <p>Это способ организовать постоянную помощь человеку, который сам не справляется с повседневными делами — из-за возраста, болезни или инвалидности. Помощь получает не только сам человек, но и семья, которая за ним ухаживает.</p>
+          <p>Ключевая идея модели — связать между собой социальную и медицинскую помощь, чтобы человек не выпадал из поля зрения при переходе из больницы домой и обратно.</p>
+        </div>
+      </details>
+
+      <details class="q">
+        <summary>Что именно утверждает приказ № 731?</summary>
+        <div class="q__body">
+          <p>Приказ Минтруда России от 23.12.2025 № 731 называется «О реализации в Российской Федерации в 2026 году Типовой модели системы долговременного ухода за гражданами пожилого возраста и инвалидами, нуждающимися в уходе».</p>
+          <p>Он утверждает саму Типовую модель — то есть описывает, как система должна быть устроена: кто и как выявляет нуждающихся, как определяется уровень нуждаемости, какой объём помощи положен и кто её оказывает.</p>
+          <p>Приказ действует в рамках федерального проекта «Старшее поколение» национального проекта «Семья».</p>
+        </div>
+      </details>
+
+      <details class="q">
+        <summary>Почему приказ каждый год новый?</summary>
+        <div class="q__body">
+          <p>Пока СДУ реализуется как проект, Типовая модель утверждается на очередной год: на 2025 год действовал приказ № 732 от 27.12.2024, на 2026 год — приказ № 731 от 23.12.2025.</p>
+          <p>С 1 января 2027 года систему долговременного ухода планируется закрепить на федеральном законодательном уровне — тогда ежегодные приказы уступят место постоянной норме.</p>
+        </div>
+      </details>
+
+      <details class="q">
+        <summary>Это работает только в отдельных регионах?</summary>
+        <div class="q__body">
+          <p>Нет. До сентября 2023 года в пилотном проекте участвовали 34 региона, а с 1 сентября 2023 года система распространена на все регионы страны.</p>
+          <p>При этом объём и организация помощи на местах отличаются: конкретный перечень услуг и уполномоченные организации определяются регионом.</p>
+        </div>
+      </details>
+    </div>
+  </div>
+
+  <!-- ── 2. Как попасть ── -->
+  <div class="group">
+    <div class="group__head"><span class="group__num">02</span><h2>Как попасть в систему</h2></div>
+
+    <div class="faq">
+      <details class="q">
+        <summary>С чего начать и куда обращаться?</summary>
+        <div class="q__body">
+          <p>Обратиться нужно в орган или организацию социального обслуживания по месту жительства — как правило, это комплексный центр социального обслуживания населения. Обратиться может сам человек, его родственник или законный представитель.</p>
+          <p>Заявку также может передать медицинская организация: выявление людей, нуждающихся в уходе, — часть модели, а не только личная инициатива семьи.</p>
+          <div id="cta-sdu"></div>
+        </div>
+      </details>
+
+      <details class="q">
+        <summary>Что такое типизация?</summary>
+        <div class="q__body">
+          <p>Типизация — это оценка дефицитов самообслуживания: что человек может делать сам, а что уже нет. По результатам оценки начисляются баллы, и в зависимости от их количества определяется уровень нуждаемости в уходе.</p>
+          <p>Оценивают не диагноз, а способность к повседневным действиям: передвижение, гигиена, приём пищи, ориентация в происходящем.</p>
+          <div class="note">Наличие инвалидности само по себе не определяет уровень ухода, а её отсутствие не закрывает дорогу в систему. Значение имеет реальная утрата самостоятельности.</div>
+        </div>
+      </details>
+
+      <details class="q">
+        <summary>Сколько ждать решения?</summary>
+        <div class="q__body">
+          <p>Первичная типизация проводится в течение пяти рабочих дней после обращения за социальными услугами в рамках СДУ. Признание гражданина нуждающимся в социальном обслуживании также занимает не более пяти рабочих дней.</p>
+          <p>Признание нуждающимся в услугах СДУ идёт параллельно с обычной процедурой по Федеральному закону № 442-ФЗ «Об основах социального обслуживания граждан в Российской Федерации» — это не две отдельные очереди.</p>
+        </div>
+      </details>
+
+      <details class="q">
+        <summary>Что такое ИППСУ?</summary>
+        <div class="q__body">
+          <p>Индивидуальная программа предоставления социальных услуг — документ, который составляют представители уполномоченной организации вместе с получателем ухода или его законным представителем.</p>
+          <p>В программе указываются виды услуг и их объём в часах. Именно ИППСУ, а не устная договорённость, определяет, что и в каком количестве человек получает.</p>
+          <div class="note">Просите выдать вам экземпляр ИППСУ на руки и сверяйте его с тем, что происходит фактически. Расхождение — повод обратиться к координатору, а не терпеть.</div>
+        </div>
+      </details>
+
+      <details class="q">
+        <summary>Уровень определили один раз и навсегда?</summary>
+        <div class="q__body">
+          <p>Нет. Результаты типизации пересматриваются регулярно — это плановая типизация. Кроме того, проводится внеплановая типизация, если появились обстоятельства, которые улучшили или ухудшили условия жизни человека.</p>
+          <p>Выписка из стационара, перелом, инсульт, уход из семьи ухаживающего родственника — всё это основания просить о внеплановом пересмотре.</p>
+        </div>
+      </details>
+    </div>
+  </div>
+
+  <!-- ── 3. Уровни и объём ── -->
+  <div class="group">
+    <div class="group__head"><span class="group__num">03</span><h2>Уровни нуждаемости и объём помощи</h2></div>
+
+    <p style="font-size:14.5px;color:var(--muted)">По результатам типизации устанавливается один из трёх уровней. От уровня зависит предельный объём социального пакета долговременного ухода.</p>
+
+    <div class="lvl">
+      <div class="lvl__badge">I</div>
+      <div class="lvl__hours">до 14 часов в неделю</div>
+      <div class="lvl__mins">840 минут</div>
+      <p class="lvl__who">Человек в основном справляется сам, но нуждается в регулярной поддержке.</p>
+      <p class="lvl__ex">Например: сопровождение в поликлинику, покупка продуктов, помощь с оплатой услуг.</p>
+    </div>
+
+    <div class="lvl">
+      <div class="lvl__badge">II</div>
+      <div class="lvl__hours">до 21 часа в неделю</div>
+      <div class="lvl__mins">1260 минут</div>
+      <p class="lvl__who">Помощь нужна ежедневно, от одного до нескольких часов в день.</p>
+      <p class="lvl__ex">Например: кормление, гигиенические процедуры, смена одежды, стирка.</p>
+    </div>
+
+    <div class="lvl">
+      <div class="lvl__badge">III</div>
+      <div class="lvl__hours">до 28 часов в неделю</div>
+      <div class="lvl__mins">1680 минут</div>
+      <p class="lvl__who">Самостоятельность утрачена практически полностью, помощь требуется почти постоянно, включая ночное время.</p>
+      <p class="lvl__ex">Например: смена постельного белья лежачему человеку, кормление через зонд, профилактика пролежней.</p>
+    </div>
+
+    <div class="faq">
+      <details class="q">
+        <summary>Это платно?</summary>
+        <div class="q__body">
+          <p>Социальный пакет долговременного ухода предоставляется бесплатно. Услуги сверх пакета и вне рамок ИППСУ могут оказываться на других условиях — уточняйте у координатора до начала работ.</p>
+        </div>
+      </details>
+
+      <details class="q">
+        <summary>Что входит в социальный пакет?</summary>
+        <div class="q__body">
+          <p>Помощь в повседневных делах и уходе: приготовление пищи и кормление, гигиенические процедуры и купание, смена одежды и белья, помощь при перемещении и позиционирование, наблюдение за состоянием и выполнение назначений врача, помощь по дому.</p>
+          <p>Конкретный перечень утверждается регионом, поэтому в разных субъектах он различается.</p>
+        </div>
+      </details>
+
+      <details class="q">
+        <summary>Часы «до 14 / 21 / 28» — это гарантия?</summary>
+        <div class="q__body">
+          <p>Это предельный объём для уровня, а не фиксированная выдача. Фактический объём фиксируется в ИППСУ исходя из реальной потребности человека.</p>
+          <p>Если фактический объём заметно меньше вашей потребности, это повод инициировать внеплановую типизацию и пересмотр программы.</p>
+        </div>
+      </details>
+    </div>
+  </div>
+
+  <!-- ── 4. Кто оказывает помощь ── -->
+  <div class="group">
+    <div class="group__head"><span class="group__num">04</span><h2>Кто оказывает помощь</h2></div>
+
+    <div class="faq">
+      <details class="q">
+        <summary>Кто такой помощник по уходу?</summary>
+        <div class="q__body">
+          <p>Это специалист, который непосредственно выполняет уход на дому или в организации: помогает с гигиеной, кормлением, перемещением, наблюдает за состоянием и сообщает об изменениях ответственному лицу.</p>
+          <p>Помощник по уходу проходит специальное обучение. Медицинское образование для этой роли не обязательно, но и объём допустимых действий у него ограничен — медицинские манипуляции остаются за сотрудниками с соответствующим допуском.</p>
+          <p>В нашей системе документов эта роль обозначается кодом <span style="font-family:var(--f-mono);font-size:13px">У</span>, а границы её компетенции описаны в технологических картах ухода.</p>
+        </div>
+      </details>
+
+      <details class="q">
+        <summary>Может ли ухаживать родственник?</summary>
+        <div class="q__body">
+          <p>Да, и модель прямо это предусматривает: обучение родственников входит в перечень мероприятий, а семья рассматривается как участник ухода, а не как помеха.</p>
+          <p>Но объём допустимых действий определяется обучением и допуском. У нас это оформляется Протоколом обучения родственника, а роль обозначается кодом <span style="font-family:var(--f-mono);font-size:13px">Р</span> — «родственник после обучения и допуска».</p>
+        </div>
+      </details>
+
+      <details class="q">
+        <summary>Чем СДУ отличается от обычного соцобслуживания на дому?</summary>
+        <div class="q__body">
+          <p>Социальное обслуживание на дому существует по 442-ФЗ само по себе. СДУ надстраивается над ним: добавляет типизацию, увеличенный объём помощи для тяжёлых случаев, связку с медицинской помощью и работу с семьёй.</p>
+          <p>Человек может получать обычное соцобслуживание, а после типизации перейти в контур долговременного ухода с бо́льшим объёмом.</p>
+        </div>
+      </details>
+
+      <details class="q">
+        <summary>Как это связано с медицинской помощью?</summary>
+        <div class="q__body">
+          <p>Модель предполагает межведомственное взаимодействие: медицинская организация передаёт информацию в социальную службу и наоборот. Именно на этом стыке чаще всего теряются люди — поэтому в нашей системе есть Лист передачи уходовых назначений и регламенты межведомственного взаимодействия.</p>
+          <p>Паллиативная медицинская помощь — отдельный контур со своими документами и маршрутом.</p>
+        </div>
+      </details>
+    </div>
+  </div>
+
+  <!-- ── 5. Спорные ситуации ── -->
+  <div class="group">
+    <div class="group__head"><span class="group__num">05</span><h2>Если что-то пошло не так</h2></div>
+
+    <div class="faq">
+      <details class="q">
+        <summary>Нам отказали. Что делать?</summary>
+        <div class="q__body">
+          <p>Запросите письменный отказ с указанием основания — устная формулировка «вам не положено» основанием не является.</p>
+          <p>Дальше есть три пути: обратиться к вышестоящему органу социальной защиты региона, инициировать внеплановую типизацию, если состояние изменилось, и обратиться на нашу горячую линию — мы поможем разобраться, действительно ли отказ обоснован.</p>
+        </div>
+      </details>
+
+      <details class="q">
+        <summary>У человека нет инвалидности. Мы не подходим?</summary>
+        <div class="q__body">
+          <p>Инвалидность не является обязательным условием. Модель адресована гражданам пожилого возраста и инвалидам, нуждающимся в уходе, а решающим фактором является утрата способности к самообслуживанию, которую определяет типизация.</p>
+        </div>
+      </details>
+
+      <details class="q">
+        <summary>Объём помощи по факту меньше, чем в программе</summary>
+        <div class="q__body">
+          <p>Расхождение между ИППСУ и фактическим обслуживанием — предмет обращения к координатору и основание для проверки. Фиксируйте даты и фактически оказанные услуги: без записей разговор сводится к взаимным впечатлениям.</p>
+        </div>
+      </details>
+
+      <details class="q">
+        <summary>Ухаживающий родственник выгорает</summary>
+        <div class="q__body">
+          <p>Это штатная ситуация, а не слабость. Скажите об этом координатору прямо: поддержка семьи входит в задачи системы, и обсуждать нужно перераспределение нагрузки, а не терпение.</p>
+          <p>Отдельно уточните возможности вашего региона — набор форм поддержки семьи определяется на региональном уровне.</p>
+        </div>
+      </details>
+    </div>
+  </div>
+
+  <!-- ── 6. Материалы ── -->
+  <div class="group">
+    <div class="group__head"><span class="group__num">06</span><h2>Видео и материалы</h2></div>
+    <p style="font-size:14.5px;color:var(--muted)">Разборы, записи вебинаров и памятки. Блок заполняется редакцией — как добавлять материалы, описано в комментарии внутри файла.</p>
+
+    <div class="faq" id="media-slot">
+
+      <!-- Шаблоны вставки лежат ниже в блоке text/plain: он не выполняется
+           и не отображается, из него просто копируют нужный кусок. -->
+      <script type="text/plain" id="media-templates">
+        КАК ДОБАВИТЬ КАРТИНКУ ИЛИ ВИДЕО
+        Скопируйте нужный блок отсюда в разметку выше и замените ссылки.
+        Ничего собирать и устанавливать не нужно.
+
+        1) КАРТИНКА ПО ССЫЛКЕ
+        <figure class="media">
+          <img src="https://ваш-адрес/схема.jpg" alt="Что изображено" loading="lazy">
+          <figcaption>Подпись под картинкой</figcaption>
+        </figure>
+
+        2) ВИДЕО КАРТОЧКОЙ — открывается в плеере RuTube, VK Видео и т. п.
+        <a class="media media--play" href="https://rutube.ru/video/ССЫЛКА/" target="_blank" rel="noopener">
+          <img src="https://ваш-адрес/обложка.jpg" alt="" loading="lazy">
+          <span class="media__badge" aria-hidden="true">&#9654;</span>
+          <span class="media__label">Название ролика · 12 мин</span>
+        </a>
+
+        3) ВИДЕО ВСТРОЕННЫМ ПЛЕЕРОМ — нужен адрес именно для встраивания (embed)
+        <div class="media media--embed">
+          <iframe src="https://rutube.ru/play/embed/ID/" title="Название" allowfullscreen loading="lazy"></iframe>
+        </div>
+
+        Если картинка по ссылке не открывается, блок сам покажет
+        «Материал недоступен» вместо пустого места.
+      </script>
+
+      <details class="q" open>
+        <summary>Как проходит типизация: что будут спрашивать</summary>
+        <div class="q__body">
+          <p>Специалист оценит повседневные действия: как человек встаёт, ходит, ест, моется, ориентируется во времени и месте. Отвечайте по факту сегодняшнего дня, а не по «обычно бывает лучше» — заниженная оценка потребности оборачивается заниженным объёмом помощи.</p>
+          <div class="setup">Сюда добавьте видеоразбор или схему процедуры — шаблоны вставки лежат в комментарии прямо над этим блоком в файле <code>index.html</code>.</div>
+        </div>
+      </details>
+
+      <details class="q">
+        <summary>Документы, которые стоит подготовить заранее</summary>
+        <div class="q__body">
+          <p>Паспорт человека, за которым нужен уход, и паспорт заявителя. Справка об инвалидности, если она есть. Выписки из стационара за последний период. СНИЛС. Полис ОМС.</p>
+          <p>Точный перечень уточните в своей организации социального обслуживания — региональные требования отличаются.</p>
+        </div>
+      </details>
+    </div>
+  </div>
+
+  <!-- ── Источники ── -->
+  <div class="card">
+    <h2>Источники</h2>
+    <div class="src">
+      <a href="https://www.consultant.ru/document/cons_doc_LAW_526140/" target="_blank" rel="noopener">Приказ Минтруда России от 23.12.2025 № 731 — КонсультантПлюс</a>
+      <a href="https://www.garant.ru/products/ipo/prime/doc/413376498/" target="_blank" rel="noopener">Тот же приказ — ГАРАНТ</a>
+      <a href="https://mintrud.gov.ru/docs/mintrud/orders" target="_blank" rel="noopener">Приказы Минтруда России</a>
+      <p class="src__note">Федеральный закон от 28.12.2013 № 442-ФЗ «Об основах социального обслуживания граждан в Российской Федерации» — базовый закон, в связке с которым работает модель.</p>
+    </div>
+  </div>
+
+</section>
+
+<!-- ============ 5. ВОПРОСЫ ============ -->
 <section class="panel" id="p-faq" role="tabpanel" aria-labelledby="tab-faq" tabindex="-1" hidden>
 
   <div>
@@ -789,7 +1149,7 @@ details.q[open] > summary::after { transform: rotate(-135deg); margin-top: -2px;
   </div>
 </section>
 
-<!-- ============ 5. ДОКУМЕНТЫ ============ -->
+<!-- ============ 6. ДОКУМЕНТЫ ============ -->
 <section class="panel" id="p-docs" role="tabpanel" aria-labelledby="tab-docs" tabindex="-1" hidden>
 
   <div>
@@ -1056,6 +1416,7 @@ details.q[open] > summary::after { transform: rotate(-135deg); margin-top: -2px;
     }
 
     $("#cta-line-1").appendChild(callButton("btn--ghost", "Позвонить на горячую линию"));
+    $("#cta-sdu").appendChild(callButton("btn--ghost", "Спросить на горячей линии"));
     $("#cta-form").appendChild(botButton("Пройти опрос в чат-боте"));
 
     var dock = $("#dock");
@@ -1065,6 +1426,25 @@ details.q[open] > summary::after { transform: rotate(-135deg); margin-top: -2px;
     $("#foot-version").textContent = CONFIG.org + " · редакция " + CONFIG.version +
       " · обновлено " + new Date().toLocaleDateString("ru-RU");
   })();
+
+  /* ---------- Медиа: битые ссылки и открытие видео ----------------------
+     Картинки и обложки вставляют вручную по ссылке, поэтому часть из них
+     рано или поздно перестанет открываться. Вместо пустого места блок
+     честно сообщает, что материал недоступен.
+     --------------------------------------------------------------------- */
+  $$(".media img").forEach(function (img) {
+    img.addEventListener("error", function () {
+      var box = img.closest(".media");
+      if (box) box.classList.add("is-broken");
+    });
+  });
+
+  $$(".media--play").forEach(function (link) {
+    link.addEventListener("click", function (e) {
+      host.tap();
+      if (host.open(link.href)) e.preventDefault();
+    });
+  });
 
   host.ready();
 })();
