@@ -9,6 +9,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy application
 COPY chatbot_survey.py .
 COPY max_bot_integration.py .
+COPY webapp/ ./webapp/
 
 # Create data directory
 RUN mkdir -p /app/data

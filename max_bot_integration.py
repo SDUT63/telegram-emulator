@@ -7,7 +7,7 @@ Handles webhook callbacks from MAX platform
 import json
 import os
 import logging
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, send_from_directory
 from chatbot_survey import SurveyBot
 
 logging.basicConfig(level=logging.INFO)
@@ -129,6 +129,22 @@ def webhook():
     
     response = max_integration.handle_request(payload)
     return jsonify(response)
+
+
+WEBAPP_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "webapp")
+
+
+@app.route("/app", methods=["GET"])
+@app.route("/app/", methods=["GET"])
+def webapp_index():
+    """Serve the MAX mini app: hotline info, FAQ and survey details."""
+    response = send_from_directory(WEBAPP_DIR, "index.html")
+    # The page is public reference material, but it is also embedded in a
+    # messenger webview, so keep it framable only by the MAX client and let
+    # the CDN cache it briefly.
+    response.headers["Cache-Control"] = "public, max-age=300"
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    return response
 
 
 @app.route("/health", methods=["GET"])

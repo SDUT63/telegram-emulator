@@ -1,0 +1,1073 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Навигатор помощи СДУТ</title>
+<meta name="description" content="Горячая линия АНО «СДУТ»: что делать при ухудшении, как проходит обращение, что спрашивает опросник и ответы на частые вопросы.">
+<meta name="color-scheme" content="light dark">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Golos+Text:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* ============================================================
+   Навигатор помощи СДУТ — токены
+   Светлая палитра объявлена целиком в :root, тёмная только
+   переопределяет значения. Ни один цвет не живёт исключительно
+   внутри media/[data-theme] — иначе он не применится в состоянии
+   «системная тема», когда на :root нет никакого штампа.
+   ============================================================ */
+:root {
+  --ground:      #F6F8F7;
+  --surface:     #FFFFFF;
+  --surface-sunk:#EFF3F2;
+  --ink:         #0F1E1B;
+  --ink-soft:    #354B47;
+  --muted:       #5B6E6A;
+  --line:        #DCE5E3;
+  --line-strong: #C3D1CE;
+
+  --accent:      #0E5A52;
+  --accent-ink:  #0A3F39;
+  --accent-soft: #E1EEEB;
+  --on-accent:   #FFFFFF;
+
+  --critical:    #B02418;
+  --critical-soft:#FBE9E7;
+  --caution:     #8A5700;
+  --caution-soft:#FBF0DC;
+  --ok:          #24695B;
+
+  --radius:   14px;
+  --radius-s: 9px;
+  --shadow:   0 1px 2px rgba(15,30,27,.06), 0 6px 18px -10px rgba(15,30,27,.22);
+
+  --f-text: "Golos Text", "Segoe UI", Roboto, system-ui, -apple-system, "Helvetica Neue", Arial, sans-serif;
+  --f-mono: "IBM Plex Mono", "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+
+  --col: 640px;
+  --pad: 16px;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --ground:      #0D1513;
+    --surface:     #161F1D;
+    --surface-sunk:#111A18;
+    --ink:         #E9EEEC;
+    --ink-soft:    #C2CFCC;
+    --muted:       #93A4A0;
+    --line:        #253230;
+    --line-strong: #35443F;
+
+    --accent:      #4FC0AE;
+    --accent-ink:  #8AD8CA;
+    --accent-soft: #123029;
+    --on-accent:   #06211D;
+
+    --critical:    #F07567;
+    --critical-soft:#311714;
+    --caution:     #E0A63C;
+    --caution-soft:#2B2110;
+    --ok:          #6BC4B2;
+
+    --shadow: 0 1px 2px rgba(0,0,0,.4), 0 8px 20px -12px rgba(0,0,0,.7);
+  }
+}
+:root[data-theme="dark"] {
+  --ground:      #0D1513;
+  --surface:     #161F1D;
+  --surface-sunk:#111A18;
+  --ink:         #E9EEEC;
+  --ink-soft:    #C2CFCC;
+  --muted:       #93A4A0;
+  --line:        #253230;
+  --line-strong: #35443F;
+
+  --accent:      #4FC0AE;
+  --accent-ink:  #8AD8CA;
+  --accent-soft: #123029;
+  --on-accent:   #06211D;
+
+  --critical:    #F07567;
+  --critical-soft:#311714;
+  --caution:     #E0A63C;
+  --caution-soft:#2B2110;
+  --ok:          #6BC4B2;
+
+  --shadow: 0 1px 2px rgba(0,0,0,.4), 0 8px 20px -12px rgba(0,0,0,.7);
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body {
+  margin: 0;
+  background: var(--ground);
+  color: var(--ink);
+  font: 400 16px/1.55 var(--f-text);
+  padding-bottom: calc(84px + env(safe-area-inset-bottom));
+  overflow-x: hidden;
+}
+:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
+@media (prefers-reduced-motion: reduce) {
+  * { animation-duration: .01ms !important; transition-duration: .01ms !important; }
+}
+
+.wrap { max-width: var(--col); margin: 0 auto; padding: 0 var(--pad); }
+
+/* ---------- Шапка ---------- */
+.top {
+  position: sticky; top: 0; z-index: 30;
+  background: var(--surface);
+  background: color-mix(in srgb, var(--surface) 92%, transparent);
+  backdrop-filter: saturate(1.4) blur(10px);
+  border-bottom: 1px solid var(--line);
+  padding-top: env(safe-area-inset-top);
+}
+.top__bar { display: flex; align-items: center; gap: 10px; min-height: 52px; }
+.brand { display: flex; align-items: center; gap: 9px; min-width: 0; }
+.brand__mark {
+  width: 30px; height: 30px; flex: none; border-radius: 8px;
+  background: var(--accent); color: var(--on-accent);
+  display: grid; place-items: center;
+  font: 500 11px/1 var(--f-mono); letter-spacing: .02em;
+}
+.brand__text { min-width: 0; overflow: hidden; }
+.brand__name { font-weight: 600; font-size: 15px; letter-spacing: -.01em; white-space: nowrap; }
+.brand__sub  { font-size: 11.5px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.icon-btn {
+  margin-left: auto; flex: none;
+  width: 36px; height: 36px; border-radius: 9px;
+  border: 1px solid var(--line); background: var(--surface); color: var(--ink-soft);
+  display: grid; place-items: center; cursor: pointer;
+}
+.icon-btn:hover { border-color: var(--line-strong); }
+.icon-btn svg { width: 18px; height: 18px; display: block; }
+
+/* ---------- Вкладки ---------- */
+.tabs { display: flex; gap: 2px; overflow-x: auto; scrollbar-width: none; margin: 0 calc(var(--pad) * -1); padding: 0 var(--pad); }
+.tabs::-webkit-scrollbar { display: none; }
+.tab {
+  flex: none; appearance: none; border: 0; background: none; cursor: pointer;
+  padding: 9px 11px 10px; font: 500 14px/1 var(--f-text); color: var(--muted);
+  border-bottom: 2px solid transparent; white-space: nowrap;
+}
+.tab[aria-selected="true"] { color: var(--accent); border-bottom-color: var(--accent); font-weight: 600; }
+
+/* ---------- Панели ---------- */
+.panel { padding: 18px 0 8px; }
+.panel[hidden] { display: none; }
+.panel > * + * { margin-top: 14px; }
+
+h1 { font-size: 22px; line-height: 1.22; font-weight: 700; letter-spacing: -.02em; margin: 0; text-wrap: balance; }
+h2 { font-size: 17px; line-height: 1.3; font-weight: 600; letter-spacing: -.01em; margin: 0; text-wrap: balance; }
+h3 { font-size: 14.5px; line-height: 1.35; font-weight: 600; margin: 0; }
+p  { margin: 0; }
+.lede { color: var(--ink-soft); font-size: 15px; }
+.eyebrow {
+  font: 500 11px/1 var(--f-mono); letter-spacing: .09em; text-transform: uppercase; color: var(--muted);
+}
+
+/* ---------- Карточки тяжести ---------- */
+.stop {
+  background: var(--surface); border: 1px solid var(--line);
+  border-left-width: 5px; border-radius: var(--radius);
+  padding: 15px 15px 15px 14px; box-shadow: var(--shadow);
+  display: flex; flex-direction: column; gap: 11px;
+}
+.stop--2 { border-left-color: var(--critical); background: var(--critical-soft); border-color: color-mix(in srgb, var(--critical) 26%, var(--line)); }
+.stop--1 { border-left-color: var(--caution);  background: var(--caution-soft);  border-color: color-mix(in srgb, var(--caution) 26%, var(--line)); }
+.stop__head { display: flex; align-items: baseline; gap: 9px; flex-wrap: wrap; }
+.stop__code { font: 500 12px/1 var(--f-mono); letter-spacing: .04em; padding: 4px 7px; border-radius: 5px; }
+.stop--2 .stop__code { background: var(--critical); color: #fff; }
+.stop--1 .stop__code { background: var(--caution);  color: #fff; }
+.stop__title { font-size: 16.5px; font-weight: 700; letter-spacing: -.01em; }
+.stop--2 .stop__title { color: var(--critical); }
+.stop--1 .stop__title { color: var(--caution); }
+
+/* ---------- Общая карточка ---------- */
+.card {
+  background: var(--surface); border: 1px solid var(--line);
+  border-radius: var(--radius); padding: 15px;
+  display: flex; flex-direction: column; gap: 11px;
+}
+.card--flat { background: var(--surface-sunk); border-style: dashed; }
+
+/* ---------- Списки ---------- */
+.list { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 7px; }
+.list li { position: relative; padding-left: 17px; font-size: 15px; color: var(--ink-soft); }
+.list li::before {
+  content: ""; position: absolute; left: 3px; top: .62em;
+  width: 5px; height: 5px; border-radius: 50%; background: var(--line-strong);
+}
+.list--do    li::before { background: var(--ok); }
+.list--dont  li::before {
+  background: none; width: 8px; height: 8px; left: 1px; top: .5em;
+  border-left: 2px solid var(--critical); border-bottom: 2px solid var(--critical);
+  transform: rotate(-45deg) scale(.9); border-radius: 0;
+}
+.list--num { counter-reset: n; }
+.list--num li { padding-left: 25px; }
+.list--num li::before {
+  counter-increment: n; content: counter(n);
+  width: auto; height: auto; background: none; border-radius: 0;
+  left: 0; top: 0; font: 500 12px/1.5 var(--f-mono); color: var(--accent);
+}
+
+/* ---------- Красные флаги ---------- */
+.flags { display: flex; flex-wrap: wrap; gap: 6px; }
+.flag {
+  font-size: 13.5px; padding: 6px 10px; border-radius: 100px;
+  background: var(--surface); border: 1px solid var(--line-strong);
+  border-color: color-mix(in srgb, var(--critical) 30%, var(--line));
+  color: var(--ink-soft);
+}
+
+/* ---------- Шаги обращения ---------- */
+.steps { display: flex; flex-direction: column; gap: 0; }
+.step { display: grid; grid-template-columns: 62px 1fr; gap: 12px; padding: 12px 0; border-top: 1px solid var(--line); }
+.step:first-child { border-top: 0; padding-top: 2px; }
+.step__code { font: 500 11.5px/1.5 var(--f-mono); color: var(--accent); letter-spacing: .01em; }
+.step__body h3 { margin-bottom: 3px; }
+.step__body p { font-size: 14.5px; color: var(--muted); }
+
+/* ---------- Пары «код — значение» ---------- */
+.defs { display: grid; grid-template-columns: 52px 1fr; gap: 9px 12px; align-items: baseline; }
+.defs dt {
+  font: 500 12px/1.4 var(--f-mono); color: var(--accent);
+  background: var(--accent-soft); border-radius: 5px; padding: 3px 0; text-align: center;
+}
+.defs dd { margin: 0; font-size: 14.5px; color: var(--ink-soft); }
+
+/* ---------- Маршруты ---------- */
+.routes { display: flex; flex-direction: column; gap: 8px; }
+.route {
+  display: flex; align-items: center; gap: 10px; font-size: 14.5px; color: var(--ink-soft);
+  padding: 10px 12px; background: var(--surface-sunk); border-radius: var(--radius-s);
+}
+.route::before {
+  content: ""; flex: none; width: 6px; height: 6px; border-radius: 50%;
+  background: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+/* ---------- FAQ ---------- */
+.faq { display: flex; flex-direction: column; gap: 8px; }
+details.q {
+  background: var(--surface); border: 1px solid var(--line);
+  border-radius: var(--radius-s); overflow: hidden;
+}
+details.q[open] { border-color: var(--line-strong); }
+details.q > summary {
+  list-style: none; cursor: pointer; padding: 13px 40px 13px 14px; position: relative;
+  font-weight: 500; font-size: 15px; color: var(--ink);
+}
+details.q > summary::-webkit-details-marker { display: none; }
+details.q > summary::after {
+  content: ""; position: absolute; right: 15px; top: 50%;
+  width: 8px; height: 8px; margin-top: -5px;
+  border-right: 2px solid var(--muted); border-bottom: 2px solid var(--muted);
+  transform: rotate(45deg); transition: transform .18s ease;
+}
+details.q[open] > summary::after { transform: rotate(-135deg); margin-top: -2px; }
+.q__body { padding: 0 14px 14px; display: flex; flex-direction: column; gap: 9px; }
+.q__body p { font-size: 14.5px; color: var(--ink-soft); }
+
+/* ---------- Правильно / неправильно ---------- */
+.compare { display: grid; gap: 8px; }
+.compare > div { padding: 11px 12px; border-radius: var(--radius-s); font-size: 14.5px; }
+.compare__bad  { background: var(--critical-soft); color: var(--ink-soft); border: 1px solid var(--line); border-color: color-mix(in srgb, var(--critical) 22%, var(--line)); }
+.compare__good { background: var(--accent-soft);   color: var(--ink-soft); border: 1px solid var(--line); border-color: color-mix(in srgb, var(--accent) 22%, var(--line)); }
+.compare b { display: block; font-size: 12px; text-transform: uppercase; letter-spacing: .06em; margin-bottom: 3px; font-family: var(--f-mono); font-weight: 500; }
+.compare__bad b  { color: var(--critical); }
+.compare__good b { color: var(--accent); }
+
+/* ---------- Поток ---------- */
+.flow { display: flex; flex-wrap: wrap; gap: 5px; align-items: center; }
+.flow__s { display: inline-flex; align-items: center; gap: 5px; }
+.flow__s i { color: var(--line-strong); font-style: normal; font-size: 13px; }
+.flow__s b { font: 500 12.5px/1 var(--f-mono); padding: 6px 9px; border-radius: 6px; background: var(--accent-soft); color: var(--accent-ink); }
+
+/* ---------- Заметка ---------- */
+.note {
+  font-size: 14px; color: var(--ink-soft);
+  border-left: 3px solid var(--accent); background: var(--accent-soft);
+  padding: 11px 13px; border-radius: 0 var(--radius-s) var(--radius-s) 0;
+}
+.note--warn { border-left-color: var(--caution); background: var(--caution-soft); }
+.note b { font-weight: 600; }
+
+/* ---------- Кнопки ---------- */
+.btn {
+  appearance: none; border: 0; cursor: pointer; text-decoration: none;
+  display: flex; align-items: center; justify-content: center; gap: 8px;
+  min-height: 48px; padding: 0 16px; border-radius: 11px;
+  font: 600 15px/1 var(--f-text); text-align: center;
+}
+.btn svg { width: 17px; height: 17px; flex: none; }
+.btn--primary  { background: var(--accent); color: var(--on-accent); }
+.btn--danger   { background: var(--critical); color: #fff; }
+.btn--ghost    { background: var(--surface); color: var(--ink); border: 1px solid var(--line-strong); }
+.btn--unset    { background: var(--surface-sunk); color: var(--muted); border: 1px dashed var(--line-strong); font-weight: 500; font-size: 13.5px; cursor: default; }
+
+/* ---------- Нижняя панель действий ---------- */
+.dock {
+  position: fixed; left: 0; right: 0; bottom: 0; z-index: 40;
+  background: var(--surface);
+  background: color-mix(in srgb, var(--surface) 94%, transparent);
+  backdrop-filter: saturate(1.4) blur(10px);
+  border-top: 1px solid var(--line);
+  padding: 9px var(--pad) calc(9px + env(safe-area-inset-bottom));
+}
+.dock__inner { max-width: var(--col); margin: 0 auto; display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+
+/* ---------- Подвал ---------- */
+.foot { border-top: 1px solid var(--line); margin-top: 22px; padding: 16px 0 4px; display: flex; flex-direction: column; gap: 6px; }
+.foot p { font-size: 12.5px; color: var(--muted); }
+.foot code { font: 400 12px/1.4 var(--f-mono); }
+
+.setup {
+  font-size: 13px; color: var(--caution); background: var(--caution-soft);
+  border: 1px dashed var(--line-strong);
+  border-color: color-mix(in srgb, var(--caution) 40%, var(--line));
+  border-radius: var(--radius-s); padding: 10px 12px;
+}
+.setup code { font: 400 12px/1.4 var(--f-mono); }
+
+@media (min-width: 560px) {
+  :root { --pad: 22px; }
+  h1 { font-size: 25px; }
+  .defs { grid-template-columns: 60px 1fr; }
+}
+</style>
+</head>
+<body>
+
+<header class="top">
+  <div class="wrap">
+    <div class="top__bar">
+      <div class="brand">
+        <div class="brand__mark" aria-hidden="true">СДУ</div>
+        <div class="brand__text">
+          <div class="brand__name">Навигатор помощи</div>
+          <div class="brand__sub">АНО «Система долговременного ухода Тольятти»</div>
+        </div>
+      </div>
+      <button class="icon-btn" id="theme-toggle" type="button" aria-label="Переключить тему">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true">
+          <path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/>
+        </svg>
+      </button>
+    </div>
+    <nav class="tabs" role="tablist" aria-label="Разделы">
+      <button class="tab" role="tab" id="tab-now"   aria-controls="p-now"   aria-selected="true">Что делать сейчас</button>
+      <button class="tab" role="tab" id="tab-line"  aria-controls="p-line"  aria-selected="false">Горячая линия</button>
+      <button class="tab" role="tab" id="tab-form"  aria-controls="p-form"  aria-selected="false">Опрос</button>
+      <button class="tab" role="tab" id="tab-faq"   aria-controls="p-faq"   aria-selected="false">Вопросы</button>
+      <button class="tab" role="tab" id="tab-docs"  aria-controls="p-docs"  aria-selected="false">Документы</button>
+    </nav>
+  </div>
+</header>
+
+<main class="wrap">
+
+<!-- ============ 1. ЧТО ДЕЛАТЬ СЕЙЧАС ============ -->
+<section class="panel" id="p-now" role="tabpanel" aria-labelledby="tab-now" tabindex="-1">
+
+  <div>
+    <h1>Сначала оцените, насколько это срочно</h1>
+    <p class="lede" style="margin-top:8px">В системе ухода два уровня остановки. Определите свой — от этого зависит, кому звонить в ближайшую минуту.</p>
+  </div>
+
+  <div class="stop stop--2">
+    <div class="stop__head">
+      <span class="stop__code">STOP-2</span>
+      <span class="stop__title">Угроза жизни — звоните 103</span>
+    </div>
+    <p style="font-size:15px;color:var(--ink-soft)">Немедленно прекратите процедуру, обеспечьте безопасность, выполняйте только базовые допустимые действия и вызывайте помощь. Не продолжайте уход до решения вопроса.</p>
+    <ul class="list">
+      <li>Потеря сознания</li>
+      <li>Нарастающая дыхательная недостаточность</li>
+      <li>Резкое падение сатурации</li>
+      <li>Кровь в аспирате или другой опасный признак</li>
+      <li>Выраженное ухудшение состояния</li>
+      <li>Иные признаки немедленной угрозы</li>
+    </ul>
+    <a class="btn btn--danger" href="tel:103">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1 1 .4 1.9.7 2.8a2 2 0 0 1-.4 2.1L8.1 9.9a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.5c.9.4 1.8.6 2.8.8a2 2 0 0 1 1.7 2z"/></svg>
+      Вызвать скорую — 103
+    </a>
+    <p style="font-size:13px;color:var(--muted)">С мобильного также 112. Скорая помощь вызывается по маршруту пациента.</p>
+  </div>
+
+  <div class="stop stop--1">
+    <div class="stop__head">
+      <span class="stop__code">STOP-1</span>
+      <span class="stop__title">Нужна оценка — остановитесь</span>
+    </div>
+    <p style="font-size:15px;color:var(--ink-soft)">Прекратите действие, зафиксируйте ситуацию, оцените состояние и сообщите ответственному лицу. Продолжать можно только после оценки и разрешения.</p>
+    <ul class="list">
+      <li>Человек испытывает выраженный дискомфорт</li>
+      <li>У вас появились сомнения в правильности выполнения</li>
+      <li>Изменение состояния незначимое, но требует оценки</li>
+    </ul>
+    <div id="cta-line-1"></div>
+  </div>
+
+  <div class="card">
+    <h2>Красные флаги</h2>
+    <p style="font-size:14.5px;color:var(--muted)">Краткая версия Навигатора ухода. Если вы видите что-то из списка — это повод обратиться, даже когда прямой угрозы нет.</p>
+    <div class="flags">
+      <span class="flag">Боль</span>
+      <span class="flag">Одышка</span>
+      <span class="flag">Нарушение сознания</span>
+      <span class="flag">Тошнота, рвота</span>
+      <span class="flag">Запор</span>
+      <span class="flag">Проблемы с питанием и питьём</span>
+      <span class="flag">Повреждение кожи</span>
+      <span class="flag">Проблема со стомой или катетером</span>
+      <span class="flag">Падение</span>
+      <span class="flag">Резкое ухудшение</span>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Что приготовить до звонка</h2>
+    <p style="font-size:14.5px;color:var(--muted)">Это сокращает разговор в несколько раз и убирает уточняющие перезвоны.</p>
+    <ul class="list list--num">
+      <li>ФИО человека, за которым ухаживают, и адрес</li>
+      <li>Что именно изменилось и когда вы это заметили</li>
+      <li>Что вы уже сделали и что произошло после</li>
+      <li>Лист передачи уходовых назначений, если он у вас на руках</li>
+      <li>Перечень назначенных препаратов</li>
+      <li>Кто сейчас рядом с человеком</li>
+    </ul>
+  </div>
+
+  <div class="card">
+    <h2>Ночь, выходные и отсутствие связи</h2>
+    <p style="font-size:14.5px;color:var(--ink-soft)">Порядок действий в нерабочее время — обязательное поле Листа передачи уходовых назначений. Там указано, куда звонить, кто принимает решение и что делать, если связь недоступна.</p>
+    <div class="note note--warn"><b>Если Листа передачи у вас нет</b> — запросите его у координатора при первом же контакте. Без него ночной маршрут не определён, и вам придётся решать самостоятельно то, что решать не нужно.</div>
+  </div>
+
+  <div class="card">
+    <h2>После остановки — запишите</h2>
+    <p style="font-size:14.5px;color:var(--muted)">Запись должна отвечать на один вопрос: почему действие остановили и что сделали дальше.</p>
+    <ul class="list">
+      <li>Дата и время</li>
+      <li>Что именно произошло</li>
+      <li>Какой STOP применён</li>
+      <li>Кто был уведомлён</li>
+      <li>Что предпринято и каков исход</li>
+      <li>Потребовалась ли эскалация</li>
+    </ul>
+  </div>
+
+</section>
+
+<!-- ============ 2. ГОРЯЧАЯ ЛИНИЯ ============ -->
+<section class="panel" id="p-line" role="tabpanel" aria-labelledby="tab-line" tabindex="-1" hidden>
+
+  <div>
+    <h1>Горячая линия «Точка входа»</h1>
+    <p class="lede" style="margin-top:8px">Единый вход в систему долговременного ухода. Вы описываете проблему обычными словами — маршрут подбирают за вас.</p>
+  </div>
+
+  <div class="card" id="contact-card"></div>
+
+  <div class="card">
+    <h2>Что происходит после звонка</h2>
+    <p style="font-size:14.5px;color:var(--muted)">Пять шагов регламента. Коды слева — реальные документы, по которым работает оператор.</p>
+    <div class="steps">
+      <div class="step">
+        <div class="step__code">ГЛ-001</div>
+        <div class="step__body">
+          <h3>Приём обращения</h3>
+          <p>Оператор принимает обращение по скрипту и фиксирует его в CRM.</p>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step__code">ГЛ-002</div>
+        <div class="step__body">
+          <h3>Первичная классификация</h3>
+          <p>Обращение типизируется: тип потребности, источник, анкета.</p>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step__code">ГЛ-003</div>
+        <div class="step__body">
+          <h3>Определение срочности</h3>
+          <p>Координатор оценивает срочность по скрипту и красным флагам.</p>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step__code">ГЛ-004</div>
+        <div class="step__body">
+          <h3>Передача специалисту</h3>
+          <p>Координатор открывает Навигатор ухода и маршрутизирует вас в нужный контур.</p>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step__code">ГЛ-005</div>
+        <div class="step__body">
+          <h3>Обработка персональных данных</h3>
+          <p>Данные обрабатываются на основании согласия или иного законного основания.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Куда вас могут направить</h2>
+    <div class="routes">
+      <div class="route">Паллиативная медицинская помощь</div>
+      <div class="route">Социальное обслуживание на дому</div>
+      <div class="route">Система долговременного ухода (СДУ)</div>
+      <div class="route">Консультация эксперта</div>
+      <div class="route">Межведомственное сопровождение</div>
+    </div>
+    <div class="note">Маршрут выбирается не по названию услуги, а по проблеме человека. Поэтому важно описать, что именно происходит, а не то, какую услугу вы предполагаете получить.</div>
+  </div>
+
+  <div class="card">
+    <h2>Контрольные звонки</h2>
+    <p style="font-size:14.5px;color:var(--ink-soft)">После маршрутизации и закрытия случая вам перезвонят дважды: <b>через 7 дней</b> и <b>через 30 дней</b>. Это не формальность — по результату случай либо закрывается, либо эскалируется заново.</p>
+  </div>
+
+  <div class="card">
+    <h2>Границы работы оператора</h2>
+    <p style="font-size:14.5px;color:var(--muted)">Первичное обращение может принимать волонтёр-оператор, прошедший обучение по скрипту <span style="font-family:var(--f-mono);font-size:13px">АЛГ-ВОЛ-001</span>. Его полномочия ограничены намеренно.</p>
+    <h3 style="margin-top:2px">Оператор может</h3>
+    <ul class="list list--do">
+      <li>Принять первичное обращение по скрипту</li>
+      <li>Зафиксировать факты</li>
+      <li>Передать обращение координатору</li>
+      <li>Помочь с маршрутизацией по формальным признакам</li>
+    </ul>
+    <h3 style="margin-top:4px">Оператор не может</h3>
+    <ul class="list list--dont">
+      <li>Ставить диагноз</li>
+      <li>Принимать клинические решения</li>
+      <li>Назначать уход</li>
+      <li>Самостоятельно менять маршрут</li>
+    </ul>
+    <div class="note">Если оператор говорит «я передам координатору» — это не отказ и не отписка, а обязательный шаг регламента.</div>
+  </div>
+
+  <div class="card">
+    <h2>Другие способы обратиться</h2>
+    <p style="font-size:14.5px;color:var(--muted)">Канал обратной связи многоканальный — выбирайте любой удобный.</p>
+    <ul class="list">
+      <li>Телефон горячей линии</li>
+      <li>Чат-бот с опросником</li>
+      <li>Электронная форма обращения</li>
+      <li>Письменное обращение</li>
+      <li>Личное обращение</li>
+    </ul>
+    <div class="note">Для людей с нарушением слуха и зрения предусмотрены альтернативные каналы связи, видеосвязь, адаптированные памятки и электронные форматы, пригодные для экранных дикторов. Скажите об этом при первом контакте — канал подберут.</div>
+  </div>
+
+</section>
+
+<!-- ============ 3. ОПРОС ============ -->
+<section class="panel" id="p-form" role="tabpanel" aria-labelledby="tab-form" tabindex="-1" hidden>
+
+  <div>
+    <h1>Опросник в чат-боте</h1>
+    <p class="lede" style="margin-top:8px">Шесть вопросов, около двух минут. Бот собирает то же, что оператор спрашивает голосом, — чтобы к моменту разговора у координатора уже была картина.</p>
+  </div>
+
+  <div class="note note--warn"><b>Опрос — не скорая помощь.</b> Бот не оценивает состояние и не вызывает врача. Если это STOP-2 — закройте опрос и звоните 103.</div>
+
+  <div class="card">
+    <h2>О чём спросит бот и зачем</h2>
+    <div class="steps">
+      <div class="step">
+        <div class="step__code">1 / 6</div>
+        <div class="step__body">
+          <h3>Как вас зовут</h3>
+          <p>Обращение регистрируется на конкретного человека, а не на анонимный номер.</p>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step__code">2 / 6</div>
+        <div class="step__body">
+          <h3>Номер телефона</h3>
+          <p>Основной канал ответа и контрольных звонков через 7 и 30 дней.</p>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step__code">3 / 6</div>
+        <div class="step__body">
+          <h3>Электронная почта</h3>
+          <p>Туда направляют памятки, формы и документы, которые неудобно диктовать голосом.</p>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step__code">4 / 6</div>
+        <div class="step__body">
+          <h3>Организация или место работы</h3>
+          <p>Необязательный вопрос. Он разделяет обращения семей и обращения коллег из организаций.</p>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step__code">5 / 6</div>
+        <div class="step__body">
+          <h3>Тип запроса</h3>
+          <p>Консультация, обучение, партнёрство или другое. Определяет, к кому обращение попадёт.</p>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step__code">6 / 6</div>
+        <div class="step__body">
+          <h3>Описание вопроса</h3>
+          <p>Самое важное поле. Пишите тем же языком, каким рассказали бы соседке.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Как описать проблему</h2>
+    <p style="font-size:14.5px;color:var(--muted)">Тот же принцип, по которому заполняется Лист передачи: конкретное действие вместо общей фразы.</p>
+    <div class="compare">
+      <div class="compare__bad">
+        <b>Так не поможет</b>
+        Нужен уход по состоянию, помогите.
+      </div>
+      <div class="compare__good">
+        <b>Так сработает</b>
+        Мама не встаёт две недели, кожа на крестце покраснела, переворачиваем сами два раза в день, функциональной кровати нет.
+      </div>
+    </div>
+    <div class="note">Ровно с такого обращения начинается сквозной пример в регламенте: координатор открывает Навигатор, определяет риск пролежня, подбирает технологическую карту и медицинский СОП, а родственник проходит обучение и получает Протокол.</div>
+  </div>
+
+  <div class="card">
+    <h2>Что происходит с ответами</h2>
+    <ul class="list">
+      <li>Обращение попадает в CRM: источник, анкета, тип потребности, маршрут, исполнитель, результат, дата контроля</li>
+      <li>Данные разделены на навигационно-бытовой и медицинский сегменты</li>
+      <li>Доступ выдаётся по ролям, все обращения к данным журналируются</li>
+      <li>Обработка персональных данных ведётся по регламенту <span style="font-family:var(--f-mono);font-size:13px">ГЛ-005</span> на основании согласия или иного законного основания</li>
+    </ul>
+    <div class="note">Опрос можно прервать в любой момент — напишите боту «Отмена». Незавершённые ответы не маршрутизируются.</div>
+  </div>
+
+  <div class="card card--flat">
+    <h2>Команды бота</h2>
+    <dl class="defs" style="grid-template-columns:104px 1fr">
+      <dt>Начать</dt><dd>запустить опрос заново</dd>
+      <dt>Результаты</dt><dd>показать свои ответы</dd>
+      <dt>Отмена</dt><dd>прервать текущий опрос</dd>
+    </dl>
+  </div>
+
+  <div id="cta-form"></div>
+
+</section>
+
+<!-- ============ 4. ВОПРОСЫ ============ -->
+<section class="panel" id="p-faq" role="tabpanel" aria-labelledby="tab-faq" tabindex="-1" hidden>
+
+  <div>
+    <h1>Частые вопросы</h1>
+    <p class="lede" style="margin-top:8px">Ответы взяты из действующей архитектуры документов по уходу СДУТ, редакция v1.2.</p>
+  </div>
+
+  <div class="faq">
+
+    <details class="q">
+      <summary>Кто вообще имеет право выполнять уход?</summary>
+      <div class="q__body">
+        <p>Это определяет Матрица компетенций — отдельный обязательный слой системы. Она отвечает на вопрос «кто вправе выполнять действие» до того, как открывается любая инструкция.</p>
+        <dl class="defs">
+          <dt>В</dt><dd>врач</dd>
+          <dt>Мс</dt><dd>медицинская сестра</dd>
+          <dt>Ф</dt><dd>фельдшер</dd>
+          <dt>У</dt><dd>помощник по уходу, исполнитель СДУ</dd>
+          <dt>Р</dt><dd>родственник — после обучения и допуска</dd>
+          <dt>С</dt><dd>социальное сопровождение</dd>
+          <dt>Вол</dt><dd>волонтёр-оператор</dd>
+        </dl>
+        <p>Для каждого действия матрица указывает допустимых исполнителей, условия допуска, документ допуска, место оказания помощи, STOP-условия и показатели.</p>
+      </div>
+    </details>
+
+    <details class="q">
+      <summary>Может ли родственник делать медицинские процедуры?</summary>
+      <div class="q__body">
+        <p>Только те действия, которые матрица разрешает роли «Р», и только после обучения с оформленным Протоколом. Если действие требует медицинского допуска, это прямо указано в Листе передачи.</p>
+        <p>Формулировка «родственник обучен» без расшифровки конкретного навыка не считается достаточной.</p>
+      </div>
+    </details>
+
+    <details class="q">
+      <summary>Как проходит обучение родственника?</summary>
+      <div class="q__body">
+        <p>Практически, а не в формате лекции: короткое объяснение — показ действия — повторение родственником — проверка понимания — фиксация результата.</p>
+        <p>В Протоколе фиксируют дату и место, тему, продемонстрированные навыки, что человек выполнил самостоятельно, какие STOP-критерии разъяснены, результат проверки, срок действия допуска и подписи обеих сторон.</p>
+        <div class="note note--warn">Если родственник не смог безопасно воспроизвести действие, обучение <b>не засчитывается</b> — фиксируется необходимость повторного. Это защита, а не бюрократия.</div>
+      </div>
+    </details>
+
+    <details class="q">
+      <summary>Что такое Лист передачи и почему он так важен?</summary>
+      <div class="q__body">
+        <p>Это центральный связующий документ. Он заполняется при выписке, переводе, передаче в СДУ, подключении семьи, смене уровня нуждаемости и изменении плана ухода.</p>
+        <p>В нём указывают проблемы ухода, перечень действий, частоту, исполнителя по каждому действию, особые указания, STOP-условия, порядок действий в нерабочее время, контакты и подпись ответственного лица.</p>
+        <div class="compare">
+          <div class="compare__bad"><b>Неправильно</b>Уход по состоянию.</div>
+          <div class="compare__good"><b>Правильно</b>Позиционирование каждые 2 часа, контроль состояния кожи 1 раз в смену, сообщение врачу при покраснении кожи, боли, влажности или усилении одышки.</div>
+        </div>
+        <p>В листе не должно быть противоречий между назначением врача, технологической картой, памяткой родственника и дневником ухода.</p>
+      </div>
+    </details>
+
+    <details class="q">
+      <summary>Я отказался подписывать согласие. Мне откажут в помощи?</summary>
+      <div class="q__body">
+        <p>Нет. Отказ не блокирует помощь, если по маршруту она уже нужна и допустима.</p>
+        <p>При отказе фиксируют сам факт отказа, что было разъяснено, что предложено, какие контакты выданы и какая помощь остаётся доступной.</p>
+      </div>
+    </details>
+
+    <details class="q">
+      <summary>Человек одинок, законного представителя нет</summary>
+      <div class="q__body">
+        <p>Для такой ситуации предусмотрен отдельный статус в системе: особый контроль, отметка о необходимости межведомственного сопровождения, инициирование вопроса об опеке и отдельная эскалация.</p>
+        <p>Скажите об этом оператору сразу — маршрут будет другим.</p>
+      </div>
+    </details>
+
+    <details class="q">
+      <summary>Дома нет функциональной кровати и подъёмника</summary>
+      <div class="q__body">
+        <p>Это штатная ситуация, а не препятствие. Технологические карты и памятки содержат отдельный раздел о том, что делать при отсутствии оборудования и как использовать доступные альтернативы.</p>
+        <p>Там же описано, как запросить технические средства реабилитации или прокатное оборудование.</p>
+      </div>
+    </details>
+
+    <details class="q">
+      <summary>Что делать ночью, если состояние изменилось?</summary>
+      <div class="q__body">
+        <p>Сначала определите уровень: STOP-2 — сразу 103, без ожидания. STOP-1 — действуйте по полю «порядок действий в нерабочее время» из Листа передачи.</p>
+        <p>На дому нет круглосуточного врача и время реакции ограничено, поэтому отдельный алгоритм экстренной ситуации отвечает на четыре вопроса: что я вижу, это STOP-1 или STOP-2, кого вызываю, что делаю до приезда помощи.</p>
+      </div>
+    </details>
+
+    <details class="q">
+      <summary>У нас паллиативный пациент. Что-то отличается?</summary>
+      <div class="q__body">
+        <p>Да, для паллиативных пациентов выделен отдельный контур: блок документов «Последние дни жизни», выездная патронажная служба и чек-лист идентификации для скорой помощи <span style="font-family:var(--f-mono);font-size:13px">ЧК-СМП-001</span>.</p>
+        <p>Чек-лист нужен, чтобы бригада скорой распознала профиль маршрута и не направила человека не в то отделение. В Листе передачи для таких случаев есть поля с датой последнего визита, рекомендациями, датой следующего визита и контактом выездной службы.</p>
+      </div>
+    </details>
+
+    <details class="q">
+      <summary>Мне выдали памятку, но я в ней не разобрался</summary>
+      <div class="q__body">
+        <p>Это считается дефектом документа, а не вашей ошибкой: «родственник не понимает памятку» входит в перечень основных рисков системы, а непонятная памятка — основание для внепланового пересмотра.</p>
+        <p>Сообщите координатору. Памятка пересматривается при каждом изменении соответствующей технологической карты или СОП.</p>
+      </div>
+    </details>
+
+    <details class="q">
+      <summary>Мне дали документ, а у соседки по палате он другой</summary>
+      <div class="q__body">
+        <p>Приоритет всегда у последней утверждённой версии. Каждый документ имеет код, номер версии и дату — например <span style="font-family:var(--f-mono);font-size:13px">ТК-СДУ-ГИГ-01 v.2 от 15.09.2026</span>.</p>
+        <p>До устранения расхождения документ временно не используется как основание для новых действий, а устаревшие экземпляры изымаются из оборота в течение 3 рабочих дней.</p>
+      </div>
+    </details>
+
+    <details class="q">
+      <summary>Куда пожаловаться, если что-то пошло не так?</summary>
+      <div class="q__body">
+        <p>По любому из каналов обратной связи. Жалоба — прямое основание для внепланового пересмотра документа, наравне со STOP-2 событием и результатом аудита.</p>
+        <p>Проверяются Листы передачи, Протоколы обучения, записи STOP, дневники ухода, правильность маршрутизации и полнота фиксации показателей. На этапе пилота аудит ежемесячный, после стабилизации — ежеквартальный.</p>
+      </div>
+    </details>
+
+  </div>
+</section>
+
+<!-- ============ 5. ДОКУМЕНТЫ ============ -->
+<section class="panel" id="p-docs" role="tabpanel" aria-labelledby="tab-docs" tabindex="-1" hidden>
+
+  <div>
+    <h1>Как устроена система</h1>
+    <p class="lede" style="margin-top:8px">Документы СДУТ — не набор разрозненных бумаг, а один маршрут принятия решения. Этот раздел полезен коллегам из организаций и родственникам, которые хотят понимать логику.</p>
+  </div>
+
+  <div class="card">
+    <h2>Маршрут решения</h2>
+    <div class="flow">
+      <span class="flow__s"><b>Навигатор</b></span>
+      <span class="flow__s"><i aria-hidden="true">→</i><b>Матрица</b></span>
+      <span class="flow__s"><i aria-hidden="true">→</i><b>Документ</b></span>
+      <span class="flow__s"><i aria-hidden="true">→</i><b>Действие</b></span>
+      <span class="flow__s"><i aria-hidden="true">→</i><b>Запись</b></span>
+      <span class="flow__s"><i aria-hidden="true">→</i><b>STOP</b></span>
+      <span class="flow__s"><i aria-hidden="true">→</i><b>KPI</b></span>
+      <span class="flow__s"><i aria-hidden="true">→</i><b>Передача</b></span>
+    </div>
+    <p style="font-size:14.5px;color:var(--ink-soft)">У каждого действия должен быть понятный ответ на пять вопросов: что делать, кто может делать, в каких условиях, когда остановиться и куда передать информацию дальше.</p>
+  </div>
+
+  <div class="card">
+    <h2>Типы документов</h2>
+    <dl class="defs">
+      <dt>НАВ</dt><dd>Навигатор ухода — входная точка системы</dd>
+      <dt>СОП</dt><dd>Стандартная операционная процедура</dd>
+      <dt>ТК</dt><dd>Технологическая карта ухода</dd>
+      <dt>ПАМ</dt><dd>Памятка родственнику</dd>
+      <dt>РЕГ</dt><dd>Регламент межведомственного взаимодействия</dd>
+      <dt>ФОР</dt><dd>Форма для заполнения</dd>
+      <dt>АЛГ</dt><dd>Алгоритм действий</dd>
+      <dt>ЧК</dt><dd>Чек-лист</dd>
+    </dl>
+    <div class="note">Навигатор не заменяет СОП, технологическую карту или памятку. Он только показывает, куда идти и что применять.</div>
+  </div>
+
+  <div class="card">
+    <h2>Чем СОП отличается от технологической карты</h2>
+    <p style="font-size:14.5px;color:var(--ink-soft)"><b>Медицинский СОП</b> — для действий медицинской деятельности, выполняемых сотрудником с допуском. Содержит показания, противопоказания, оснащение, пошаговый алгоритм, контроль результата, STOP-критерии и порядок записи в медицинской документации.</p>
+    <p style="font-size:14.5px;color:var(--ink-soft)"><b>Технологическая карта</b> — для помощников по уходу и исполнителей СДУ. Описывает не лечение, а безопасную помощь: алгоритм, границы компетенции, признаки неблагополучия, порядок сообщения ответственному и фиксацию в дневнике ухода.</p>
+    <p style="font-size:14.5px;color:var(--ink-soft)"><b>Памятка</b> — обучающий документ простым языком. Её задача не заменить персонал, а дать родственнику понятный и безопасный алгоритм на дому.</p>
+  </div>
+
+  <div class="card">
+    <h2>Два показателя качества</h2>
+    <dl class="defs" style="grid-template-columns:64px 1fr">
+      <dt>KPI-Р</dt><dd>Результат ухода: что изменилось у человека — уменьшилась боль, нет новых пролежней, состояние стабильно</dd>
+      <dt>KPI-П</dt><dd>Качество процесса: алгоритм соблюдён, записи внесены, STOP-критерии соблюдены, информация передана</dd>
+    </dl>
+    <div class="note">Хороший результат при нарушенном процессе считается управленческим дефектом. Правильный процесс без результата — повод пересмотреть сам алгоритм, частоту, допуск или маршрут.</div>
+  </div>
+
+  <div class="card">
+    <h2>Версии и актуальность</h2>
+    <ul class="list">
+      <li>Формат номера: код документа + версия + дата</li>
+      <li>Электронная версия — эталонная, бумажная заменяется после обновления</li>
+      <li>Медицинские СОП и технологические карты пересматриваются не реже раза в год</li>
+      <li>Навигатор пересматривается при изменении любого документа, на который он ссылается</li>
+      <li>Внеплановый пересмотр: STOP-2 событие, жалоба, результат аудита, изменение нормативной базы, расхождение документа и практики</li>
+    </ul>
+  </div>
+
+  <div class="note">Сроки разработки документов и их текущий статус ведутся отдельно — в Мастер-реестре СДУТ v1.2.</div>
+
+</section>
+
+<footer class="foot">
+  <p>АНО «Система долговременного ухода Тольятти». Материал подготовлен по документу «Система документов по уходу», редакция v1.2.</p>
+  <p>Страница носит справочный характер и не заменяет консультацию врача. При угрозе жизни звоните 103.</p>
+  <p id="foot-version"></p>
+</footer>
+
+</main>
+
+<div class="dock">
+  <div class="dock__inner" id="dock"></div>
+</div>
+
+<script>
+(function () {
+  "use strict";
+
+  /* =====================================================================
+     НАСТРОЙКА. Отредактируйте только этот блок.
+     Пока phone пустой, страница честно показывает, что номер не заполнен,
+     и не подставляет выдуманный. Кнопка «103» работает всегда.
+     ===================================================================== */
+  var CONFIG = {
+    org:      "АНО «СДУТ»",
+    phone:    "",                      // например: "+78482000000"
+    phoneText:"",                      // как показать: "+7 (8482) 00-00-00"
+    hours:    "",                      // например: "Пн–Пт, 08:00–20:00"
+    botUrl:   "",                      // ссылка на чат-бот с опросником
+    email:    "",                      // например: "info@example.ru"
+    address:  "",                      // адрес личного приёма
+    version:  "v1.2"
+  };
+
+  var $  = function (s, r) { return (r || document).querySelector(s); };
+  var $$ = function (s, r) { return Array.prototype.slice.call((r || document).querySelectorAll(s)); };
+
+  function el(tag, cls, text) {
+    var n = document.createElement(tag);
+    if (cls) n.className = cls;
+    if (text != null) n.textContent = text;
+    return n;
+  }
+
+  /* ---------- Мост в мини-приложение MAX ----------------------------------
+     Хост-мост определяется по факту наличия и вызывается только через
+     try/catch. Если моста нет — страница остаётся обычным веб-документом
+     и работает в любом браузере без изменений.
+     ---------------------------------------------------------------------- */
+  var host = (function () {
+    var api = window.WebApp || window.MaxWebApp || window.max || (window.Max && window.Max.WebApp) || null;
+    function call(name) {
+      var args = Array.prototype.slice.call(arguments, 1);
+      if (!api || typeof api[name] !== "function") return false;
+      try { api[name].apply(api, args); return true; } catch (e) { return false; }
+    }
+    return {
+      present: !!api,
+      ready:   function () { call("ready"); call("expand"); },
+      tap:     function () { if (api && api.HapticFeedback) { try { api.HapticFeedback.impactOccurred("light"); } catch (e) {} } },
+      scheme:  function () { try { return api && (api.colorScheme || (api.themeParams && api.themeParams.scheme)) || null; } catch (e) { return null; } },
+      open:    function (url) { return call("openLink", url) || call("openTelegramLink", url); }
+    };
+  })();
+
+  /* ---------- Тема ---------- */
+  var STORE_KEY = "sdut-theme";
+  function readStore() { try { return localStorage.getItem(STORE_KEY); } catch (e) { return null; } }
+  function writeStore(v) { try { localStorage.setItem(STORE_KEY, v); } catch (e) {} }
+
+  function currentIsDark() {
+    var t = document.documentElement.getAttribute("data-theme");
+    if (t) return t === "dark";
+    return window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches;
+  }
+  (function initTheme() {
+    var saved = readStore();
+    if (saved === "dark" || saved === "light") {
+      document.documentElement.setAttribute("data-theme", saved);
+      return;
+    }
+    var s = host.scheme();
+    if (s === "dark" || s === "light") document.documentElement.setAttribute("data-theme", s);
+  })();
+  $("#theme-toggle").addEventListener("click", function () {
+    var next = currentIsDark() ? "light" : "dark";
+    document.documentElement.setAttribute("data-theme", next);
+    writeStore(next);
+    host.tap();
+  });
+
+  /* ---------- Вкладки ---------- */
+  var tabs = $$(".tab");
+  function selectTab(tab, focusPanel) {
+    tabs.forEach(function (t) {
+      var on = t === tab;
+      t.setAttribute("aria-selected", on ? "true" : "false");
+      var panel = document.getElementById(t.getAttribute("aria-controls"));
+      if (panel) panel.hidden = !on;
+    });
+    if (focusPanel) {
+      var p = document.getElementById(tab.getAttribute("aria-controls"));
+      if (p) p.focus({ preventScroll: true });
+    }
+    window.scrollTo(0, 0);
+    try { history.replaceState(null, "", "#" + tab.id.replace(/^tab-/, "")); } catch (e) {}
+  }
+  tabs.forEach(function (tab, i) {
+    tab.addEventListener("click", function () { selectTab(tab); host.tap(); });
+    tab.addEventListener("keydown", function (e) {
+      var d = e.key === "ArrowRight" ? 1 : e.key === "ArrowLeft" ? -1 : 0;
+      if (!d) return;
+      e.preventDefault();
+      var next = tabs[(i + d + tabs.length) % tabs.length];
+      next.focus();
+      selectTab(next);
+    });
+  });
+  (function openFromHash() {
+    var h = (location.hash || "").replace("#", "");
+    if (!h) return;
+    var tab = document.getElementById("tab-" + h);
+    if (tab) selectTab(tab);
+  })();
+
+  /* ---------- Иконки ---------- */
+  var SVG = {
+    phone: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1 1 .4 1.9.7 2.8a2 2 0 0 1-.4 2.1L8.1 9.9a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.5c.9.4 1.8.6 2.8.8a2 2 0 0 1 1.7 2z"/></svg>',
+    chat:  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 11.5a8.4 8.4 0 0 1-9 8.4 8.9 8.9 0 0 1-3.9-.9L3 20.5l1.6-4.8A8.4 8.4 0 0 1 12 3.1a8.4 8.4 0 0 1 9 8.4z"/></svg>'
+  };
+
+  function callButton(cls, label) {
+    if (CONFIG.phone) {
+      var a = el("a", "btn " + cls);
+      a.href = "tel:" + CONFIG.phone.replace(/[^\d+]/g, "");
+      a.innerHTML = SVG.phone + "<span></span>";
+      a.querySelector("span").textContent = label;
+      a.addEventListener("click", host.tap);
+      return a;
+    }
+    return el("button", "btn btn--unset", "Номер горячей линии не заполнен");
+  }
+
+  function botButton(label) {
+    if (CONFIG.botUrl) {
+      var a = el("a", "btn btn--primary");
+      a.href = CONFIG.botUrl;
+      a.rel = "noopener";
+      a.innerHTML = SVG.chat + "<span></span>";
+      a.querySelector("span").textContent = label;
+      a.addEventListener("click", function (e) {
+        host.tap();
+        if (host.open(CONFIG.botUrl)) e.preventDefault();
+      });
+      return a;
+    }
+    return el("button", "btn btn--unset", "Ссылка на бот не заполнена");
+  }
+
+  /* ---------- Карточка контактов ---------- */
+  (function renderContacts() {
+    var card = $("#contact-card");
+    card.appendChild(el("h2", null, "Как связаться"));
+
+    if (CONFIG.phone) {
+      var big = el("p");
+      big.style.cssText = "font:700 26px/1.15 var(--f-text);letter-spacing:-.02em;color:var(--accent)";
+      big.textContent = CONFIG.phoneText || CONFIG.phone;
+      card.appendChild(big);
+      if (CONFIG.hours) {
+        var h = el("p", null, CONFIG.hours);
+        h.style.cssText = "font-size:14px;color:var(--muted)";
+        card.appendChild(h);
+      }
+    }
+
+    var extras = [];
+    if (CONFIG.email)   extras.push(["Почта", CONFIG.email]);
+    if (CONFIG.address) extras.push(["Личный приём", CONFIG.address]);
+    if (extras.length) {
+      var dl = el("dl", "defs");
+      dl.style.gridTemplateColumns = "104px 1fr";
+      extras.forEach(function (pair) {
+        var dt = el("dt", null, pair[0]);
+        dt.style.cssText = "font-family:var(--f-text);font-size:13px;background:none;color:var(--muted);text-align:left;padding:0";
+        dl.appendChild(dt);
+        dl.appendChild(el("dd", null, pair[1]));
+      });
+      card.appendChild(dl);
+    }
+
+    card.appendChild(callButton("btn--primary", "Позвонить на горячую линию"));
+
+    if (!CONFIG.phone || !CONFIG.botUrl) {
+      var s = el("div", "setup");
+      s.innerHTML = "Страница ещё не настроена: заполните <code>CONFIG</code> в начале скрипта — телефон, часы работы и ссылку на чат-бот. Кнопка вызова скорой 103 работает независимо от настроек.";
+      card.appendChild(s);
+    }
+
+    $("#cta-line-1").appendChild(callButton("btn--ghost", "Позвонить на горячую линию"));
+    $("#cta-form").appendChild(botButton("Пройти опрос в чат-боте"));
+
+    var dock = $("#dock");
+    dock.appendChild(callButton("btn--ghost", "Позвонить"));
+    dock.appendChild(botButton("Опрос"));
+
+    $("#foot-version").textContent = CONFIG.org + " · редакция " + CONFIG.version +
+      " · обновлено " + new Date().toLocaleDateString("ru-RU");
+  })();
+
+  host.ready();
+})();
+</script>
+</body>
+</html>
