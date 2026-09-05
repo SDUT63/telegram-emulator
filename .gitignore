@@ -69,3 +69,12 @@ configs/production.yaml
 # examples
 examples/__pycache__/
 bot_offset_*.txt
+# Чат-бот СДУТ: ключ доступа и персональные данные обратившихся.
+# Эти файлы не должны попадать в репозиторий ни при каких условиях.
+token.txt
+survey_responses.json
+survey_responses.json.tmp
+survey_responses.json.broken
+survey_responses.csv
+demo_responses.json
+demo_responses.csv
