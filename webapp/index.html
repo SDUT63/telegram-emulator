@@ -418,6 +418,28 @@ details.q[open] > summary::after { transform: rotate(-135deg); margin-top: -2px;
 .media.is-broken img, .media.is-broken .media__badge { display: none; }
 .media.is-broken::before { content: "Материал недоступен по указанной ссылке"; display: block; padding: 24px 14px; text-align: center; font-size: 13.5px; color: var(--muted); }
 
+/* ---------- Постер во весь экран ---------- */
+.lightbox {
+  position: fixed; inset: 0; z-index: 100; display: none;
+  align-items: center; justify-content: center;
+  background: rgba(8,18,18,.94);
+  padding: 14px calc(14px + env(safe-area-inset-right)) calc(14px + env(safe-area-inset-bottom)) calc(14px + env(safe-area-inset-left));
+  padding-top: calc(58px + env(safe-area-inset-top));
+}
+.lightbox.is-open { display: flex; }
+.lightbox img { max-width: 100%; max-height: 100%; object-fit: contain; border-radius: 8px; }
+.lightbox__close {
+  position: absolute; top: calc(12px + env(safe-area-inset-top)); right: 14px;
+  width: 42px; height: 42px; border-radius: 50%; cursor: pointer;
+  background: rgba(255,255,255,.18); border: 0; color: #fff;
+  display: grid; place-items: center;
+}
+.lightbox__close svg { width: 20px; height: 20px; stroke: currentColor; stroke-width: 2; fill: none; stroke-linecap: round; }
+.lightbox__hint {
+  position: absolute; left: 0; right: 0; bottom: calc(14px + env(safe-area-inset-bottom));
+  text-align: center; color: rgba(255,255,255,.62); font-size: 12.5px; pointer-events: none;
+}
+
 /* ---------- Кнопки ---------- */
 .btn {
   appearance: none; border: 0; cursor: pointer; text-decoration: none;
@@ -1796,7 +1818,52 @@ details.q[open] > summary::after { transform: rotate(-135deg); margin-top: -2px;
       if (box) box.classList.add("is-broken");
     });
   });
-  $$("a.poster, .media--play").forEach(function (link) {
+  /* Постер открывается во весь экран прямо на странице: так он работает и в
+     мини-приложении, и когда страница лежит одним файлом на компьютере. */
+  var box = document.createElement("div");
+  box.className = "lightbox";
+  box.innerHTML =
+    '<button class="lightbox__close" type="button" aria-label="Закрыть">' +
+    '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>' +
+    '<img alt="">' +
+    '<div class="lightbox__hint">Нажмите в любом месте, чтобы закрыть</div>';
+  document.body.appendChild(box);
+  var boxImg = box.querySelector("img");
+
+  function closeBox() {
+    box.classList.remove("is-open");
+    boxImg.removeAttribute("src");
+    document.body.style.overflow = "";
+  }
+  box.addEventListener("click", closeBox);
+  document.addEventListener("keydown", function (e) {
+    if (e.key === "Escape" && box.classList.contains("is-open")) closeBox();
+  });
+
+  function openPoster(link) {
+    var img = link.querySelector("img");
+    if (!img) return;
+    host.tap();
+    boxImg.src = img.currentSrc || img.src;
+    boxImg.alt = img.alt || "";
+    box.classList.add("is-open");
+    document.body.style.overflow = "hidden";
+  }
+
+  $$(".poster").forEach(function (link) {
+    link.addEventListener("click", function (e) {
+      e.preventDefault();
+      openPoster(link);
+    });
+    link.addEventListener("keydown", function (e) {
+      if (e.key === "Enter" || e.key === " ") {
+        e.preventDefault();
+        openPoster(link);
+      }
+    });
+  });
+
+  $$(".media--play").forEach(function (link) {
     link.addEventListener("click", function (e) {
       host.tap();
       if (host.open(link.href)) e.preventDefault();
