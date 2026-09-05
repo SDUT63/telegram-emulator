@@ -101,31 +101,45 @@ def check_tls(host: str) -> tuple[bool, str]:
         return False, str(error)
 
 
-def windows_roots() -> list[str]:
-    """Список названий корневых удостоверяющих центров из хранилища Windows."""
-    if sys.platform != "win32":
-        return []
+def trusted_roots() -> list[str]:
+    """Названия центров, которым Python реально доверяет прямо сейчас."""
     names: list[str] = []
     try:
-        for der, _enc, trust in ssl.enum_certificates("ROOT"):  # type: ignore[attr-defined]
-            if trust is True or (isinstance(trust, set) and trust):
-                try:
-                    import tempfile, os
-                    pem = ssl.DER_cert_to_PEM_cert(der)
-                    fd, path = tempfile.mkstemp(suffix=".pem")
-                    with os.fdopen(fd, "w") as fh:
-                        fh.write(pem)
-                    info = ssl._ssl._test_decode_cert(path)  # type: ignore[attr-defined]
-                    os.unlink(path)
-                    for rdn in info.get("subject", ()):
-                        for key, value in rdn:
-                            if key == "commonName":
-                                names.append(value)
-                except Exception:  # noqa: BLE001
-                    continue
+        for cert in ssl.create_default_context().get_ca_certs():
+            for rdn in cert.get("subject", ()):
+                for key, value in rdn:
+                    if key == "commonName":
+                        names.append(value)
     except Exception:  # noqa: BLE001
         pass
     return names
+
+
+def report_trust_list() -> None:
+    """Главная проверка: есть ли у Python российский корневой сертификат."""
+    roots = trusted_roots()
+    if not roots:
+        say("  [?]       не удалось прочитать список доверия Python")
+        return
+
+    russian = [
+        name
+        for name in roots
+        if any(word.lower() in name.lower() for word in ("russian", "минцифры", "russia"))
+    ]
+    say()
+    say(f"  Всего центров, которым доверяет Python: {len(roots)}")
+    if russian:
+        say("  Российские корневые сертификаты найдены:")
+        for name in sorted(set(russian)):
+            say(f"    - {name}")
+        say()
+        say("  Они есть — значит дело не в них. Скорее всего мешает VPN")
+        say("  или антивирус: они подменяют сертификат собой.")
+    else:
+        say("  Российских корневых сертификатов в списке НЕТ.")
+        say()
+        say("  Это и есть причина. Установите их — как именно, написано ниже.")
 
 
 def main() -> int:
@@ -161,18 +175,10 @@ def main() -> int:
 
         verdicts.append("tls")
 
-        if info:
-            who = issuer_name(info)
-            roots = windows_roots()
-            if roots:
-                short = who.split(" / ")[0]
-                found = any(short.lower() in r.lower() or r.lower() in who.lower() for r in roots)
-                if found:
-                    say("  [инфо]    этот центр в хранилище Windows есть,")
-                    say("            но Python его почему-то не видит")
-                else:
-                    say("  [инфо]    этого центра в хранилище Windows НЕТ —")
-                    say("            вот поэтому сертификат и не принимается")
+    if "tls" in verdicts:
+        say()
+        say("--- список доверия Python ---")
+        report_trust_list()
 
     say()
     say(LINE)
