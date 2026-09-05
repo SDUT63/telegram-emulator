@@ -552,7 +552,19 @@ details.q[open] > summary::after { transform: rotate(-135deg); margin-top: -2px;
 .src a { font-size: 14px; color: var(--accent); text-decoration: none; border-bottom: 1px solid var(--accent-soft); align-self: flex-start; }
 .foot { border-top: 1px solid var(--line); margin-top: 28px; padding: 18px 0 6px; display: flex; flex-direction: column; gap: 8px; }
 .foot p { font-size: 12.5px; color: var(--muted); }
-.foot__tags { font-size: 13px; color: var(--accent); font-weight: 600; }
+
+/* ---------- Реквизиты ---------- */
+.req { display: grid; grid-template-columns: minmax(88px, auto) 1fr; gap: 10px 14px; align-items: baseline; margin: 0; }
+.req dt { font-size: 12.5px; color: var(--muted); }
+.req dd { margin: 0; font-size: 14.5px; color: var(--ink); overflow-wrap: anywhere; }
+.req dd.num { font-variant-numeric: tabular-nums; }
+.req__name { font-size: 15.5px; font-weight: 600; color: var(--ink); }
+.copyrow { display: flex; align-items: center; gap: 9px; flex-wrap: wrap; }
+.copybtn {
+  border: 1px solid var(--topic); background: var(--surface); color: var(--topic);
+  border-radius: 7px; padding: 4px 10px; font: 500 12px/1.4 var(--f); cursor: pointer; flex: none;
+}
+.copybtn.is-ok { background: var(--topic); color: var(--on-topic); }
 
 @media (min-width: 560px) {
   :root { --pad: 24px; }
@@ -1676,11 +1688,16 @@ details.q[open] > summary::after { transform: rotate(-135deg); margin-top: -2px;
   </div>
 </section>
 
+<section class="block" id="b-org" aria-labelledby="h-org">
+  <div class="block__head">
+    <h2 id="h-org">Реквизиты организации</h2>
+    <div class="rule"></div>
+  </div>
+  <div class="stack" id="org-card"></div>
+</section>
+
 <footer class="foot">
-  <p class="foot__tags">#СДУТ · #Тольятти · #ДолговременныйУход</p>
-  <p>АНО «Система долговременного ухода Тольятти». Забота. Поддержка. Качество жизни.</p>
   <p>Страница носит справочный характер и не заменяет консультацию врача. При угрозе жизни звоните 103.</p>
-  <p id="foot-version"></p>
 </footer>
 
 </main>
@@ -1699,7 +1716,22 @@ details.q[open] > summary::after { transform: rotate(-135deg); margin-top: -2px;
      и не подставляет выдуманный. Кнопка «103» работает всегда.
      ===================================================================== */
   var CONFIG = {
-    org:       "АНО «СДУТ»",
+    // Реквизиты. Пустые поля на странице просто не показываются —
+    // выдуманных данных здесь быть не должно, особенно номера счёта.
+    org: {
+      full:     "",   // Полное наименование по уставу
+      short:    "АНО «СДУТ»",
+      ogrn:     "",   // ОГРН из выписки ЕГРЮЛ
+      inn:      "",   // ИНН
+      kpp:      "",   // КПП
+      address:  "",   // Юридический адрес
+      director: "",   // Кто действует от лица организации
+      bank:     "",   // Наименование банка
+      account:  "",   // Расчётный счёт
+      corr:     "",   // Корреспондентский счёт
+      bik:      "",   // БИК
+      purpose:  "Благотворительное пожертвование на уставную деятельность. НДС не облагается.",
+    },
     phone:     "",                     // например: "+78482000000"
     phoneText: "",                     // как показать: "+7 (8482) 00-00-00"
     hours:     "",                     // например: "Пн–Пт, 08:00–20:00"
@@ -1887,8 +1919,107 @@ details.q[open] > summary::after { transform: rotate(-135deg); margin-top: -2px;
     dock.appendChild(callBtn("btn--ghost", "Позвонить"));
     dock.appendChild(botBtn("btn--primary", "Анкета"));
 
-    $("#foot-version").textContent = CONFIG.org + " · редакция " + CONFIG.version +
-      " · обновлено " + new Date().toLocaleDateString("ru-RU");
+  })();
+
+  /* ---------- Реквизиты ------------------------------------------------
+     Показываем только заполненные поля. Пустое поле не превращается в
+     прочерк и вообще не появляется: выдуманных или частичных реквизитов
+     на странице быть не должно.
+     -------------------------------------------------------------------- */
+  (function () {
+    var org = CONFIG.org || {};
+    var host = $("#org-card");
+    if (!host) return;
+
+    function rows(pairs) {
+      var filled = pairs.filter(function (p) { return org[p[0]]; });
+      if (!filled.length) return null;
+      var dl = el("dl", "req");
+      filled.forEach(function (pair) {
+        dl.appendChild(el("dt", null, pair[1]));
+        var dd = el("dd", pair[2] ? "num" : null, org[pair[0]]);
+        if (pair[3]) {
+          // Счёт удобно копировать одним нажатием, а не переписывать
+          var wrap = el("div", "copyrow");
+          wrap.appendChild(el("span", pair[2] ? "num" : null, org[pair[0]]));
+          var btn = el("button", "copybtn", "Копировать");
+          btn.type = "button";
+          btn.addEventListener("click", function () {
+            var value = org[pair[0]].replace(/\s/g, "");
+            function done() {
+              btn.textContent = "Скопировано";
+              btn.classList.add("is-ok");
+              setTimeout(function () {
+                btn.textContent = "Копировать";
+                btn.classList.remove("is-ok");
+              }, 1600);
+            }
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+              navigator.clipboard.writeText(value).then(done, fallback);
+            } else { fallback(); }
+            function fallback() {
+              var ta = document.createElement("textarea");
+              ta.value = value;
+              ta.style.cssText = "position:absolute;left:-9999px";
+              document.body.appendChild(ta);
+              ta.select();
+              try { document.execCommand("copy"); done(); } catch (e) {}
+              document.body.removeChild(ta);
+            }
+          });
+          wrap.appendChild(btn);
+          var holder = el("dd");
+          holder.appendChild(wrap);
+          dl.appendChild(holder);
+          return;
+        }
+        dl.appendChild(dd);
+        return;
+      });
+      return dl;
+    }
+
+    var legal = rows([
+      ["ogrn", "ОГРН", true, false],
+      ["inn", "ИНН", true, false],
+      ["kpp", "КПП", true, false],
+      ["address", "Адрес", false, false],
+      ["director", "Руководитель", false, false],
+    ]);
+
+    var bank = rows([
+      ["bank", "Банк", false, false],
+      ["account", "Расчётный счёт", true, true],
+      ["corr", "Корр. счёт", true, false],
+      ["bik", "БИК", true, false],
+    ]);
+
+    if (!org.full && !legal && !bank) {
+      var hint = el("div", "card");
+      var note = el("div", "setup");
+      note.innerHTML = "Реквизиты не заполнены. Впишите их в <code>CONFIG.org</code> " +
+        "в начале скрипта: ОГРН, ИНН, адрес и банковские данные. " +
+        "Незаполненные поля на странице не показываются.";
+      hint.appendChild(note);
+      host.appendChild(hint);
+      return;
+    }
+
+    var card = el("div", "card");
+    if (org.full) card.appendChild(el("p", "req__name", org.full));
+    if (legal) card.appendChild(legal);
+    host.appendChild(card);
+
+    if (bank) {
+      var bankCard = el("div", "card");
+      bankCard.appendChild(el("h2", null, "Банковские реквизиты"));
+      bankCard.appendChild(bank);
+      if (org.purpose) {
+        var purpose = el("div", "note", org.purpose);
+        bankCard.appendChild(purpose);
+      }
+      host.appendChild(bankCard);
+    }
   })();
 
   /* ---------- Картинки: битые ссылки и открытие во весь экран ---------- */
