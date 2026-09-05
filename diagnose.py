@@ -137,9 +137,43 @@ def report_trust_list() -> None:
         say("  Они есть — значит дело не в них. Скорее всего мешает VPN")
         say("  или антивирус: они подменяют сертификат собой.")
     else:
-        say("  Российских корневых сертификатов в списке НЕТ.")
-        say()
-        say("  Это и есть причина. Установите их — как именно, написано ниже.")
+        say("  Российских корневых сертификатов в списке нет.")
+        say("  Что с этим делать — смотрите вывод ниже.")
+
+
+def check_library() -> str | None:
+    """Какую версию maxapi и какой адрес API использует бот."""
+    try:
+        import importlib.metadata as meta
+
+        version = meta.version("maxapi")
+    except Exception:  # noqa: BLE001
+        say("  [!]       библиотека maxapi не установлена")
+        say("            выполните: python -m pip install maxapi")
+        return None
+
+    say(f"  maxapi: {version}")
+
+    try:
+        from maxapi import Bot
+
+        url = getattr(Bot, "API_URL", None)
+        if url:
+            say(f"  адрес API у библиотеки: {url}")
+    except Exception:  # noqa: BLE001
+        url = None
+
+    try:
+        from maxapi.client.ssl import RUSSIAN_TRUSTED_CA_BUNDLE as bundle
+
+        if bundle.exists():
+            say("  российские сертификаты: библиотека везёт свои")
+        else:
+            say("  российские сертификаты: файла в библиотеке нет")
+    except Exception:  # noqa: BLE001
+        say("  российские сертификаты: библиотека своих не везёт (старая версия)")
+
+    return url
 
 
 def main() -> int:
@@ -149,8 +183,13 @@ def main() -> int:
     say(LINE)
     say()
     say(f"Python: {sys.version.split()[0]}   Система: {sys.platform}")
+    say()
+    say("--- библиотека ---")
+    library_url = check_library()
 
     verdicts: list[str] = []
+    working: list[str] = []
+    failing: list[str] = []
 
     for host in HOSTS:
         say()
@@ -171,9 +210,11 @@ def main() -> int:
         ok, _ = check_tls(host)
         if ok:
             verdicts.append("ok")
+            working.append(host)
             continue
 
         verdicts.append("tls")
+        failing.append(host)
 
     if "tls" in verdicts:
         say()
@@ -186,7 +227,30 @@ def main() -> int:
     say(LINE)
     say()
 
-    if "ok" in verdicts:
+    # Самый частый случай: один адрес работает, другой нет, а библиотека
+    # стучится именно в нерабочий. Лечится обновлением библиотеки.
+    if working and failing:
+        say("  Один адрес MAX работает, другой — нет:")
+        for host in working:
+            say(f"    работает:    {host}")
+        for host in failing:
+            say(f"    не работает: {host}")
+        say()
+        broken_is_used = library_url and any(h in library_url for h in failing)
+        if broken_is_used or library_url is None:
+            say("  Библиотека обращается как раз к нерабочему адресу.")
+        say()
+        say("  Решение — обновить библиотеку:")
+        say()
+        say("      python -m pip install --upgrade maxapi")
+        say()
+        say("  В свежих версиях адрес другой, и они везут российские")
+        say("  сертификаты с собой. После обновления запускайте бота как")
+        say("  обычно: python max_bot.py")
+        say()
+        return 1
+
+    if working:
         say("  Связь с MAX в порядке. Если бот всё равно не запускается,")
         say("  дело не в сети, а в токене — проверьте token.txt.")
         say()
