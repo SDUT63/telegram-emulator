@@ -23,6 +23,18 @@ import sys
 from chatbot_survey import Survey
 
 TOKEN_FILE = "token.txt"
+CERTS_FILE = "certs.pem"
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+
+# Если рядом лежит certs.pem, добавляем его к списку доверенных центров.
+# Нужно, когда соединение проверяет антивирус или корпоративный шлюз: они
+# подменяют сертификат собой, и Python об этом центре ничего не знает.
+# Переменную надо выставить ДО импорта aiohttp — он создаёт список доверия
+# один раз при загрузке.
+_certs = os.path.join(HERE, CERTS_FILE)
+if os.path.exists(_certs):
+    os.environ.setdefault("SSL_CERT_FILE", _certs)
 
 logging.basicConfig(
     level=logging.INFO,
@@ -105,24 +117,64 @@ async def main() -> None:
     bot = Bot(token)
     dp = build_dispatcher(survey)
 
-    # Проверяем токен до старта, чтобы не ловить непонятную ошибку в цикле
+    # Проверяем связь и токен до старта, чтобы не ловить непонятную ошибку
+    # в цикле. На время проверки глушим повторные попытки библиотеки: без
+    # этого человек получает двадцать строк «Backing off» вместо ответа.
+    noisy = [logging.getLogger(name) for name in ("backoff", "maxapi")]
+    previous = [logger.level for logger in noisy]
+    for logger in noisy:
+        logger.setLevel(logging.CRITICAL)
     try:
         me = await bot.get_me()
     except Exception as error:  # noqa: BLE001 — показываем человеку, а не трассировку
+        text = str(error)
         print()
         print("=" * 62)
-        print("  Не удалось подключиться к MAX.")
+
+        if "CERTIFICATE_VERIFY_FAILED" in text or "SSLCertVerification" in text:
+            # Самая частая причина на Windows: MAX подписан российским
+            # корневым сертификатом, которого нет в хранилище системы.
+            print("  Python не доверяет сертификату MAX.")
+            print()
+            print("  Токен тут ни при чём — до проверки токена дело даже")
+            print("  не дошло. В браузере MAX открывается, потому что у")
+            print("  браузеров свои списки доверия.")
+            print()
+            print("  Что делать по порядку:")
+            print()
+            print("  1. Отключите VPN и запустите снова.")
+            print("     MAX — российский сервис, ему VPN не нужен.")
+            print()
+            print("  2. Установите сертификаты НУЦ Минцифры:")
+            print("     gosuslugi.ru/crt — оба файла, в хранилище")
+            print("     «Доверенные корневые центры сертификации».")
+            print()
+            print("  3. Запустите подробную проверку — она скажет точнее:")
+            print("     python diagnose.py")
+            print()
+            print("  Отключать проверку сертификатов нельзя: через это")
+            print("  соединение идут токен и данные обратившихся людей.")
+        else:
+            print("  Не удалось подключиться к MAX.")
+            print()
+            print("  Проверьте две вещи:")
+            print("  1. В token.txt лежит именно токен — одной строкой,")
+            print("     без кавычек и лишних пробелов.")
+            print("  2. Компьютер подключён к интернету.")
+            print()
+            print("  Подробная проверка связи: python diagnose.py")
+
         print()
-        print("  Проверьте две вещи:")
-        print("  1. В token.txt лежит именно токен — одной строкой,")
-        print("     без кавычек и лишних пробелов.")
-        print("  2. Компьютер подключён к интернету.")
-        print()
-        print(f"  Ответ сервера: {error}")
+        print(f"  Техническая часть: {text}")
         print("=" * 62)
         print()
         await bot.close_session()
         return
+
+    # Связь есть — возвращаем обычный уровень сообщений, чтобы во время
+    # работы были видны настоящие сбои
+    for logger, level in zip(noisy, previous):
+        logger.setLevel(level)
 
     name = getattr(me, "name", None) or getattr(me, "first_name", "") or "бот"
     username = getattr(me, "username", None)

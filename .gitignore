@@ -78,3 +78,6 @@ survey_responses.json.broken
 survey_responses.csv
 demo_responses.json
 demo_responses.csv
+
+# Свой список доверенных сертификатов — у каждого компьютера он свой
+certs.pem
