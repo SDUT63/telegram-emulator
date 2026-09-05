@@ -99,8 +99,21 @@ def build_dispatcher(survey: Survey):
         incoming = (event.message.body.text or "").strip()
         log.info("%s: %s", user_id, incoming[:70] or "(без текста)")
 
+        person = survey.state.get(str(user_id), {})
+        was_done = bool(person.get("finished"))
+
         reply = survey.handle(str(user_id), incoming)
         await event.message.answer(reply)
+
+        # Как только анкета закрыта — показываем оператору сводку одной
+        # строкой, чтобы не лезть в таблицу за каждым обращением
+        person = survey.state.get(str(user_id), {})
+        if person.get("finished") and not was_done:
+            print()
+            print("  ── НОВОЕ ОБРАЩЕНИЕ " + "─" * 39)
+            print("  " + survey.brief(str(user_id)))
+            print("  " + "─" * 58)
+            print()
 
         started, finished = survey.stats()
         log.info("Всего обращений: %s, заполнено до конца: %s", started, finished)

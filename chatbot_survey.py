@@ -2,11 +2,14 @@
 """
 Опросник АНО «СДУТ» — логика анкеты.
 
-Модуль ничего не знает о мессенджере: он принимает текст от человека и
+Модуль ничего не знает о мессенджере: принимает текст от человека и
 возвращает текст ответа. Транспорт живёт отдельно (max_bot.py), поэтому
-анкету можно проверить в командной строке без токена и без интернета:
+анкету можно прогнать в командной строке без токена и без интернета:
 
     python chatbot_survey.py
+
+Сами вопросы вынесены в survey_questions.py — их можно править, не трогая
+эту логику.
 """
 
 from __future__ import annotations
@@ -18,92 +21,60 @@ import re
 from datetime import datetime
 from typing import Any
 
+from survey_questions import CHECKPOINT_ID, QUESTIONS, STOP_OPTION
+
 STORAGE = "survey_responses.json"
 CSV_EXPORT = "survey_responses.csv"
 
-QUESTIONS: list[dict[str, Any]] = [
-    {
-        "id": "name",
-        "text": "Как вас зовут?",
-        "kind": "text",
-        "required": True,
-    },
-    {
-        "id": "phone",
-        "text": "Ваш номер телефона — по нему с вами свяжутся.",
-        "kind": "phone",
-        "required": True,
-    },
-    {
-        "id": "email",
-        "text": "Электронная почта. Если её нет, напишите «нет».",
-        "kind": "email",
-        "required": False,
-    },
-    {
-        "id": "organization",
-        "text": "Организация или место работы. Если пишете как родственник — напишите «нет».",
-        "kind": "text",
-        "required": False,
-    },
-    {
-        "id": "topic",
-        "text": "С чем связано обращение?",
-        "kind": "choice",
-        "options": ["Консультация", "Обучение", "Партнёрство", "Другое"],
-        "required": True,
-    },
-    {
-        "id": "message",
-        "text": (
-            "Опишите ситуацию своими словами.\n\n"
-            "Чем конкретнее, тем быстрее подберут помощь. Например: "
-            "«мама не встаёт две недели, кожа на крестце покраснела, "
-            "переворачиваем сами два раза в день, функциональной кровати нет»."
-        ),
-        "kind": "text",
-        "required": True,
-    },
-]
-
 GREETING = (
     "Здравствуйте! Это служба долговременного ухода Тольятти.\n\n"
-    "Задам шесть коротких вопросов — это займёт около двух минут. "
-    "После этого с вами свяжется координатор.\n\n"
+    "Задам несколько вопросов, чтобы координатор пришёл к вам "
+    "подготовленным. Почти везде нужно выбрать номер ответа.\n\n"
     "Если человеку плохо прямо сейчас — закройте анкету и звоните 103."
 )
 
 HELP = (
-    "Команды:\n"
-    "start — начать анкету заново\n"
-    "ответы — показать, что вы уже написали\n"
-    "отмена — прервать анкету"
+    "Что можно написать в любой момент:\n\n"
+    "далее — пропустить вопрос, если он не обязательный\n"
+    "назад — вернуться к предыдущему вопросу\n"
+    "ответы — показать, что уже заполнено\n"
+    "заново — начать анкету сначала\n"
+    "отмена — прервать\n\n"
+    "Анкета сохраняется. Можно закрыть и вернуться позже — "
+    "продолжим с того же места."
 )
 
-DONE = (
-    "Спасибо, анкета заполнена. Мы получили ваше обращение и свяжемся с вами.\n\n"
-    "Если станет хуже до того, как мы позвоним, — звоните 103."
+DONE_FULL = (
+    "Спасибо, анкета заполнена. Координатор свяжется с вами.\n\n"
+    "Если состояние ухудшится до того, как мы позвоним, — звоните 103."
 )
 
-# Слова, по которым человек может прервать или перезапустить анкету
-RESTART_WORDS = {"start", "старт", "начать", "заново", "/start"}
+DONE_SHORT = (
+    "Спасибо, записали. Координатор свяжется с вами по указанному телефону.\n\n"
+    "Если захотите дополнить — напишите «заново», анкета откроется снова.\n"
+    "Если станет хуже — звоните 103."
+)
+
+RESTART_WORDS = {"заново", "start", "старт", "начать", "/start", "продолжить"}
 CANCEL_WORDS = {"отмена", "стоп", "cancel", "/cancel"}
 SUMMARY_WORDS = {"ответы", "результаты", "мои ответы", "/answers"}
-HELP_WORDS = {"помощь", "help", "/help"}
+HELP_WORDS = {"помощь", "help", "/help", "?"}
+SKIP_WORDS = {"далее", "пропустить", "skip", "-"}
+BACK_WORDS = {"назад", "back"}
 
 EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]{2,}$")
-NO_WORDS = {"нет", "-", "—", "no", "нету", "отсутствует"}
+NO_WORDS = {"нет", "-", "—", "no", "нету", "отсутствует", "не знаю"}
 
 
 class Survey:
-    """Хранит состояние анкеты по каждому человеку и ведёт диалог."""
+    """Ведёт анкету по каждому человеку и хранит состояние между запусками."""
 
     def __init__(self, storage_path: str = STORAGE) -> None:
         self.storage_path = storage_path
         self.state: dict[str, dict[str, Any]] = {}
         self.load()
 
-    # ---------- хранение ----------
+    # ------------------------------------------------------------ хранение
 
     def load(self) -> None:
         if not os.path.exists(self.storage_path):
@@ -113,17 +84,14 @@ class Survey:
             with open(self.storage_path, encoding="utf-8") as fh:
                 self.state = json.load(fh)
         except (json.JSONDecodeError, OSError):
-            # Повреждённый файл не должен ронять бота: отодвигаем его в сторону
-            # и начинаем с чистого состояния, чтобы данные не потерялись молча.
-            broken = self.storage_path + ".broken"
+            # Повреждённый файл отодвигаем, чтобы данные не потерялись молча
             try:
-                os.replace(self.storage_path, broken)
+                os.replace(self.storage_path, self.storage_path + ".broken")
             except OSError:
                 pass
             self.state = {}
 
     def save(self) -> None:
-        # Пишем через временный файл: если запись оборвётся, старые ответы целы.
         tmp = self.storage_path + ".tmp"
         with open(tmp, "w", encoding="utf-8") as fh:
             json.dump(self.state, fh, ensure_ascii=False, indent=2)
@@ -132,31 +100,71 @@ class Survey:
     def _person(self, user_id: str) -> dict[str, Any]:
         person = self.state.get(user_id)
         if person is None:
-            person = {"step": 0, "answers": {}, "started": None, "finished": None}
+            person = self._blank()
             self.state[user_id] = person
-        person.setdefault("step", 0)
-        person.setdefault("answers", {})
+        for key, value in self._blank().items():
+            person.setdefault(key, value)
         return person
 
-    # ---------- диалог ----------
-
-    def start(self, user_id: str) -> str:
-        """Начать анкету заново. Возвращает приветствие и первый вопрос."""
-        self.state[user_id] = {
+    @staticmethod
+    def _blank() -> dict[str, Any]:
+        return {
             "step": 0,
             "answers": {},
-            "started": datetime.now().isoformat(timespec="seconds"),
+            "alerts": [],
+            "history": [],
+            "started": None,
             "finished": None,
+            "shown_sections": [],
+            "total_seen": 0,
         }
+
+    # ------------------------------------------------------- ход по вопросам
+
+    @staticmethod
+    def _asked(index: int, answers: dict[str, str]) -> bool:
+        """Задаём ли этот вопрос при текущих ответах."""
+        when = QUESTIONS[index].get("when")
+        return True if when is None else bool(when(answers))
+
+    def _next(self, index: int, answers: dict[str, str]) -> int:
+        while index < len(QUESTIONS) and not self._asked(index, answers):
+            index += 1
+        return index
+
+    def _progress(self, person: dict[str, Any], index: int) -> str:
+        """Номер вопроса и сколько всего при нынешних ответах.
+
+        Ветвление может как добавлять вопросы, так и убирать, поэтому
+        итог держим неубывающим: счётчик, который скачет назад, выглядит
+        как ошибка.
+        """
+        answers = person["answers"]
+        total = sum(
+            1 for q in QUESTIONS if q.get("when") is None or q["when"](answers)
+        )
+        total = max(total, person.get("total_seen", 0))
+        person["total_seen"] = total
+        seen = sum(
+            1
+            for i, q in enumerate(QUESTIONS)
+            if i <= index and (q.get("when") is None or q["when"](answers))
+        )
+        return f"Вопрос {seen} из {total}"
+
+    # -------------------------------------------------------------- диалог
+
+    def start(self, user_id: str) -> str:
+        self.state[user_id] = self._blank()
+        self.state[user_id]["started"] = datetime.now().isoformat(timespec="seconds")
         self.save()
-        return GREETING + "\n\n" + self._ask(0)
+        return GREETING + "\n\n" + self._ask(user_id, 0)
 
     def handle(self, user_id: str, text: str) -> str:
-        """Обработать сообщение человека и вернуть текст ответа."""
         text = (text or "").strip()
         low = text.lower()
 
-        if low in RESTART_WORDS:
+        if low in RESTART_WORDS and low != "продолжить":
             return self.start(user_id)
         if low in HELP_WORDS:
             return HELP
@@ -165,54 +173,120 @@ class Survey:
         if low in CANCEL_WORDS:
             self.state.pop(user_id, None)
             self.save()
-            return "Анкета отменена. Напишите «start», когда будете готовы."
+            return "Анкета отменена. Напишите «заново», когда будете готовы."
 
         person = self._person(user_id)
-        step = person["step"]
+        answers = person["answers"]
+        step = self._next(person["step"], answers)
 
-        if step >= len(QUESTIONS):
+        if step >= len(QUESTIONS) or person["finished"]:
             return (
                 "Анкета уже заполнена — координатор с вами свяжется.\n\n"
-                "Напишите «ответы», чтобы посмотреть, что вы указали, "
-                "или «start», чтобы заполнить заново."
+                "«ответы» — посмотреть заполненное, «заново» — пройти снова."
             )
 
-        if not text:
-            return "Напишите, пожалуйста, ответ текстом.\n\n" + self._ask(step)
+        # «продолжить» после предупреждения просто повторяет вопрос
+        if low == "продолжить":
+            return self._ask(user_id, step)
+
+        if low in BACK_WORDS:
+            return self._go_back(user_id)
 
         question = QUESTIONS[step]
+
+        if low in SKIP_WORDS:
+            if question.get("required", True):
+                return "Этот вопрос пропустить нельзя.\n\n" + self._ask(user_id, step)
+            return self._accept(user_id, step, "не указано")
+
+        if not text:
+            return "Напишите ответ текстом.\n\n" + self._ask(user_id, step)
+
         ok, cleaned, problem = self._check(question, text)
         if not ok:
-            return problem + "\n\n" + self._ask(step)
+            return problem + "\n\n" + self._ask(user_id, step)
 
-        person["answers"][question["id"]] = cleaned
-        person["step"] = step + 1
+        return self._accept(user_id, step, cleaned)
+
+    def _accept(self, user_id: str, step: int, value: str) -> str:
+        person = self._person(user_id)
+        question = QUESTIONS[step]
+        person["answers"][question["id"]] = value
+        person["history"].append(step)
         if person["started"] is None:
             person["started"] = datetime.now().isoformat(timespec="seconds")
 
+        prefix = ""
+        alert = question.get("alert")
+        if alert and any(opt.lower() in value.lower() for opt in alert["options"]):
+            prefix = alert["text"] + "\n\n" + "—" * 20 + "\n\n"
+            # В сводку для координатора идёт человеческая подпись, а не
+            # внутреннее имя поля
+            note = f"{alert.get('label', question['text'])}: {value}"
+            if note not in person["alerts"]:
+                person["alerts"].append(note)
+
+        # Человек решил не проходить подробную часть
+        if question["id"] == CHECKPOINT_ID and value == STOP_OPTION:
+            person["step"] = len(QUESTIONS)
+            person["finished"] = datetime.now().isoformat(timespec="seconds")
+            self.save()
+            self.export_csv()
+            return prefix + DONE_SHORT
+
+        person["step"] = self._next(step + 1, person["answers"])
         if person["step"] >= len(QUESTIONS):
             person["finished"] = datetime.now().isoformat(timespec="seconds")
             self.save()
             self.export_csv()
-            return DONE + "\n\n" + self.summary(user_id)
+            return prefix + DONE_FULL + "\n\n" + self.summary(user_id)
 
         self.save()
-        return self._ask(person["step"])
+        return prefix + self._ask(user_id, person["step"])
 
-    def _ask(self, step: int) -> str:
+    def _go_back(self, user_id: str) -> str:
+        person = self._person(user_id)
+        if not person["history"]:
+            return "Это первый вопрос, возвращаться некуда.\n\n" + self._ask(user_id, 0)
+        previous = person["history"].pop()
+        person["answers"].pop(QUESTIONS[previous]["id"], None)
+        person["step"] = previous
+        self.save()
+        return "Вернулись назад.\n\n" + self._ask(user_id, previous)
+
+    def _ask(self, user_id: str, step: int) -> str:
+        person = self._person(user_id)
         question = QUESTIONS[step]
-        head = f"Вопрос {step + 1} из {len(QUESTIONS)}\n\n{question['text']}"
-        if question["kind"] == "choice":
-            options = "\n".join(
-                f"{i}. {name}" for i, name in enumerate(question["options"], 1)
-            )
-            head += "\n\n" + options + "\n\nНапишите номер или название."
-        return head
+        parts: list[str] = []
 
-    # ---------- проверка ответов ----------
+        section = question.get("section")
+        if section and section not in person["shown_sections"]:
+            person["shown_sections"].append(section)
+            parts.append(f"— {section} —")
+            self.save()
+
+        parts.append(self._progress(person, step))
+        parts.append("")
+        parts.append(question["text"])
+
+        if question["kind"] == "choice":
+            parts.append("")
+            for number, name in enumerate(question["options"], 1):
+                parts.append(f"{number}. {name}")
+            parts.append("")
+            if question.get("multi"):
+                parts.append("Напишите номера через запятую, например: 1, 3")
+            else:
+                parts.append("Напишите номер ответа.")
+
+        if not question.get("required", True):
+            parts.append("Можно пропустить: напишите «далее».")
+
+        return "\n".join(parts)
+
+    # ------------------------------------------------------------ проверка
 
     def _check(self, question: dict[str, Any], text: str) -> tuple[bool, str, str]:
-        """Возвращает (годится, что записать, что сказать при ошибке)."""
         kind = question["kind"]
 
         if kind == "phone":
@@ -229,48 +303,95 @@ class Survey:
                 return True, "не указана", ""
             if not EMAIL_RE.match(text):
                 return False, "", (
-                    "Не похоже на адрес почты. Он выглядит так: имя@почта.ру\n"
-                    "Если почты нет — напишите «нет»."
+                    "Не похоже на адрес почты. Он выглядит так: имя@почта.ру"
                 )
             return True, text, ""
 
         if kind == "choice":
             options: list[str] = question["options"]
-            if text.isdigit():
-                number = int(text)
-                if 1 <= number <= len(options):
-                    return True, options[number - 1], ""
-                return False, "", f"Нужен номер от 1 до {len(options)}."
-            for name in options:
-                if text.lower() == name.lower():
-                    return True, name, ""
-            return False, "", "Выберите один из вариантов — напишите его номер."
+            if question.get("multi"):
+                return self._check_multi(options, text)
+            return self._check_one(options, text)
 
-        if not question["required"] and text.lower() in NO_WORDS:
+        if not question.get("required", True) and text.lower() in NO_WORDS:
             return True, "не указано", ""
-
         if len(text) < 2:
             return False, "", "Слишком короткий ответ — напишите чуть подробнее."
-
         return True, text, ""
 
-    # ---------- вывод ----------
+    @staticmethod
+    def _check_one(options: list[str], text: str) -> tuple[bool, str, str]:
+        if text.isdigit():
+            number = int(text)
+            if 1 <= number <= len(options):
+                return True, options[number - 1], ""
+            return False, "", f"Нужен номер от 1 до {len(options)}."
+        for name in options:
+            if text.lower() == name.lower():
+                return True, name, ""
+        return False, "", f"Напишите номер ответа — от 1 до {len(options)}."
+
+    @staticmethod
+    def _check_multi(options: list[str], text: str) -> tuple[bool, str, str]:
+        raw = [p.strip() for p in re.split(r"[,\s;]+", text) if p.strip()]
+        chosen: list[str] = []
+        for part in raw:
+            if part.isdigit():
+                number = int(part)
+                if not 1 <= number <= len(options):
+                    return False, "", f"Номер {number} не подходит — есть только 1–{len(options)}."
+                name = options[number - 1]
+            else:
+                match = [o for o in options if o.lower() == part.lower()]
+                if not match:
+                    return False, "", (
+                        f"Не понял «{part}». Напишите номера через запятую, "
+                        "например: 1, 3"
+                    )
+                name = match[0]
+            if name not in chosen:
+                chosen.append(name)
+        if not chosen:
+            return False, "", "Напишите хотя бы один номер."
+        return True, "; ".join(chosen), ""
+
+    # -------------------------------------------------------------- вывод
 
     def summary(self, user_id: str) -> str:
         person = self.state.get(user_id)
         if not person or not person.get("answers"):
-            return "Вы пока ничего не заполнили. Напишите «start», чтобы начать."
-        lines = ["Ваши ответы:", ""]
+            return "Вы пока ничего не заполнили. Напишите «заново», чтобы начать."
+        lines = ["Что записано:", ""]
         for question in QUESTIONS:
             value = person["answers"].get(question["id"])
             if value:
                 lines.append(f"• {question['text'].splitlines()[0]}")
                 lines.append(f"  {value}")
+        if person.get("alerts"):
+            lines.append("")
+            lines.append("Отмечено как требующее внимания:")
+            for note in person["alerts"]:
+                lines.append(f"  — {note}")
         return "\n".join(lines)
 
+    def brief(self, user_id: str) -> str:
+        """Короткая сводка для координатора — без лишних слов."""
+        person = self.state.get(user_id)
+        if not person:
+            return ""
+        a = person["answers"]
+        bits = [
+            a.get("name", "без имени"),
+            a.get("phone", "телефон не указан"),
+            a.get("mobility") or a.get("need", ""),
+        ]
+        line = " · ".join(b for b in bits if b)
+        if person.get("alerts"):
+            line += "  ⚠ " + "; ".join(n.split(": ", 1)[-1] for n in person["alerts"])
+        return line
+
     def export_csv(self, path: str = CSV_EXPORT) -> str:
-        """Выгрузить все ответы в таблицу для Excel."""
-        header = ["Кто ответил", "Начато", "Завершено"] + [
+        header = ["Кто ответил", "Начато", "Завершено", "Требует внимания"] + [
             q["text"].splitlines()[0] for q in QUESTIONS
         ]
         # utf-8-sig — чтобы Excel открыл кириллицу без «кракозябр»
@@ -280,38 +401,65 @@ class Survey:
             for user_id, person in self.state.items():
                 answers = person.get("answers", {})
                 writer.writerow(
-                    [user_id, person.get("started", ""), person.get("finished", "")]
+                    [
+                        user_id,
+                        person.get("started", ""),
+                        person.get("finished", ""),
+                        "; ".join(person.get("alerts", [])),
+                    ]
                     + [answers.get(q["id"], "") for q in QUESTIONS]
                 )
         return path
 
     def stats(self) -> tuple[int, int]:
-        """Сколько человек начали и сколько дошли до конца."""
         started = len(self.state)
         finished = sum(1 for p in self.state.values() if p.get("finished"))
         return started, finished
 
 
 def _demo() -> None:
-    """Проверка анкеты без мессенджера: прогоняем ответы по очереди."""
+    """Прогон анкеты без мессенджера. Реальные ответы не затрагиваются."""
     survey = Survey(storage_path="demo_responses.json")
     user = "проверка"
 
     print(survey.start(user))
-    print("-" * 60)
+    print("=" * 60)
 
-    for reply in [
-        "Иван Петров",
+    # Тяжёлый лежачий пациент — проходим подробную часть целиком
+    replies = [
+        "2",              # о близком
+        "Анна",
         "89171234567",
-        "ivan@example.ru",
-        "нет",
-        "1",
-        "Мама не встаёт две недели, кожа на крестце покраснела.",
-    ]:
-        print(f"> {reply}\n")
-        print(survey.handle(user, reply))
-        print("-" * 60)
+        "4",              # 85 и старше
+        "2, 8",           # боль + рана на коже
+        "6",              # регулярная помощь на дому
+        "1",              # продолжить
+        "5",              # не встаёт с постели
+        "3",              # не переворачивается сам
+        "2",              # покраснение -> предупреждение
+        "3",              # кормить с ложки
+        "4",              # поперхивается -> предупреждение
+        "3", "4", "3",    # гигиена, туалет, одевание
+        "2", "2", "3",    # речь, ориентация, одна нельзя
+        "3",              # боль постоянная
+        "1, 3",           # боль мешает движению и сну
+        "2",              # мочевой катетер
+        "3",              # лекарства даём мы
+        "1",              # родственник живёт вместе
+        "4",              # круглосуточно
+        "4",              # уже не справляемся -> предупреждение
+        "1",              # ничего из оборудования
+        "2",              # инвалидность
+        "Живём на пятом этаже без лифта.",
+    ]
 
+    for reply in replies:
+        print(f"\n>>> {reply}\n")
+        print(survey.handle(user, reply))
+        print("=" * 60)
+
+    print("\nСВОДКА ДЛЯ КООРДИНАТОРА:")
+    print(" ", survey.brief(user))
     started, finished = survey.stats()
     print(f"\nНачали: {started}, дошли до конца: {finished}")
     print(f"Таблица: {survey.export_csv('demo_responses.csv')}")
