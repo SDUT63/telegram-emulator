@@ -2,12 +2,15 @@
 <html lang="ru">
 <head>
 <meta charset="utf-8">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 100 100%27%3E%3Ctext y=%27.9em%27 font-size=%2790%27%3E%F0%9F%97%82%3C/text%3E%3C/svg%3E">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>CRM оператора — СДУТ</title>
 <meta name="color-scheme" content="light dark">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Golos+Text:wght@400;500;600;700;800&display=swap">
+<!-- Фирменный шрифт подгружается, только если интернет есть, и не задерживает
+     страницу, если его нет: CRM работает на ноутбуке и должна открываться
+     мгновенно даже без сети. Без шрифта подставится системный. -->
+<link rel="stylesheet" media="print" onload="this.media='all'"
+      href="https://fonts.googleapis.com/css2?family=Golos+Text:wght@400;500;600;700;800&display=swap">
 <style>
 :root {
   --ground:#F6F1E8; --surface:#FFFCF7; --sunk:#EFE6D8;
@@ -165,6 +168,28 @@ textarea {
 .warn { background:var(--warn-soft); border-left:3px solid var(--warn);
   border-radius:0 9px 9px 0; padding:11px 13px; font-size:13.5px; color:var(--ink-soft);
   margin-top:11px; }
+.calls { display:flex; flex-direction:column; gap:9px; }
+.call {
+  display:flex; align-items:center; gap:11px; flex-wrap:wrap;
+  padding:10px 12px; border-radius:10px; border:1px solid var(--line);
+  background:var(--ground);
+}
+.call--overdue { background:var(--danger-soft); border-color:var(--danger); }
+.call--soon    { background:var(--warn-soft);   border-color:var(--warn); }
+.call--done    { background:var(--ok-soft);     border-color:var(--ok); }
+.call__when { font-weight:600; font-size:14.5px; min-width:96px; }
+.call__state { font-size:13.5px; flex:1; }
+.call--overdue .call__state { color:var(--danger); font-weight:600; }
+.call--soon .call__state    { color:var(--warn); font-weight:600; }
+.call--done .call__state    { color:var(--ok); }
+
+.notify { display:flex; align-items:center; gap:8px; font-size:13px; color:var(--muted);
+  margin-top:10px; cursor:pointer; user-select:none; }
+.notify input { width:17px; height:17px; accent-color:var(--accent); cursor:pointer; }
+
+.counter { font-size:12px; color:var(--muted); text-align:right; margin-top:4px; }
+.counter.over { color:var(--danger); font-weight:600; }
+
 .toast {
   position:fixed; left:50%; bottom:22px; transform:translateX(-50%);
   background:var(--accent-deep); color:var(--on-accent); padding:11px 18px;
@@ -180,6 +205,7 @@ textarea {
   <div class="mark">СДУТ</div>
   <h1>CRM оператора</h1>
   <span class="top__who" id="who"></span>
+  <button class="tbtn" id="export" type="button">Выгрузить в Excel</button>
   <button class="tbtn" id="refresh" type="button">Обновить</button>
   <button class="tbtn" id="logout" type="button">Выйти</button>
 </header>
@@ -187,6 +213,7 @@ textarea {
 <div class="bar">
   <button class="chip on" data-status="" type="button">Все</button>
   <button class="chip" data-status="flag" type="button">С флагами</button>
+  <button class="chip" data-status="call" type="button">Пора звонить</button>
   <button class="chip" data-status="Новое" type="button">Новое</button>
   <button class="chip" data-status="В работе" type="button">В работе</button>
   <button class="chip" data-status="Закрыто" type="button">Закрыто</button>
@@ -204,14 +231,54 @@ textarea {
 (function () {
   "use strict";
 
-  var state = { cases: [], questions: [], statuses: [], selected: null, filter: "", query: "" };
+  var state = {
+    cases: [], questions: [], statuses: [],
+    selected: null, filter: "", query: "",
+    drafts: {},          // что оператор печатает, но ещё не отправил
+  };
   var $ = function (s) { return document.querySelector(s); };
+  var DRAFTS_KEY = "sdut-crm-drafts";
+  var OPEN_KEY = "sdut-crm-open";
+
+  /* ---------- черновики -------------------------------------------------
+     Список обновляется сам раз в полминуты. Раньше это перерисовывало
+     правую панель вместе с полями ввода, и набранный текст пропадал.
+     Теперь черновики хранятся отдельно, переживают перерисовку и
+     перезагрузку страницы, а во время набора панель вообще не трогаем.
+     --------------------------------------------------------------------- */
+  try {
+    state.drafts = JSON.parse(localStorage.getItem(DRAFTS_KEY) || "{}");
+    // Какое обращение было открыто. Без этого недописанный ответ после
+    // перезагрузки страницы негде было бы показать.
+    state.selected = localStorage.getItem(OPEN_KEY) || null;
+  } catch (e) { state.drafts = {}; }
+
+  function remember(userId) {
+    state.selected = userId;
+    try { localStorage.setItem(OPEN_KEY, userId); } catch (e) {}
+  }
+
+  function saveDrafts() {
+    try { localStorage.setItem(DRAFTS_KEY, JSON.stringify(state.drafts)); }
+    catch (e) {}
+  }
+  function draftKey(field) { return state.selected + ":" + field; }
+  function getDraft(field) { return state.drafts[draftKey(field)] || ""; }
+  function setDraft(field, value) {
+    if (value) state.drafts[draftKey(field)] = value;
+    else delete state.drafts[draftKey(field)];
+    saveDrafts();
+  }
+  function typing() {
+    var el = document.activeElement;
+    return el && (el.tagName === "TEXTAREA" || el.tagName === "INPUT");
+  }
 
   function toast(text) {
     var el = $("#toast");
     el.textContent = text;
     el.classList.add("show");
-    setTimeout(function () { el.classList.remove("show"); }, 2200);
+    setTimeout(function () { el.classList.remove("show"); }, 2400);
   }
 
   function api(path, body) {
@@ -230,20 +297,34 @@ textarea {
     if (!iso) return "";
     var d = new Date(iso);
     if (isNaN(d)) return iso;
-    var today = new Date();
-    var sameDay = d.toDateString() === today.toDateString();
+    var sameDay = d.toDateString() === new Date().toDateString();
     var time = d.toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" });
     return sameDay ? "сегодня " + time : d.toLocaleDateString("ru-RU") + " " + time;
   }
 
+  function escape(s) {
+    return String(s).replace(/[&<>"]/g, function (ch) {
+      return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[ch];
+    });
+  }
+
   function pillClass(status) { return "pill pill--" + status.replace(/\s/g, ""); }
+
+  function callDue(c) {
+    // Есть ли звонок, который пора сделать
+    return (c.calls || []).some(function (x) {
+      return x.state === "overdue" || x.state === "soon";
+    });
+  }
 
   /* ---------------------------------------------------------- список */
 
   function visible() {
     return state.cases.filter(function (c) {
       if (state.filter === "flag" && !c.alerts.length) return false;
-      if (state.filter && state.filter !== "flag" && c.status !== state.filter) return false;
+      if (state.filter === "call" && !callDue(c)) return false;
+      if (state.filter && state.filter !== "flag" && state.filter !== "call"
+          && c.status !== state.filter) return false;
       if (state.query) {
         var hay = (c.name + " " + c.phone).toLowerCase();
         if (hay.indexOf(state.query.toLowerCase()) === -1) return false;
@@ -261,17 +342,17 @@ textarea {
       return;
     }
     items.forEach(function (c) {
+      var due = callDue(c);
       var el = document.createElement("div");
       el.className = "case" + (c.alerts.length ? " flag" : "") +
         (state.selected === c.user_id ? " on" : "");
       el.innerHTML =
-        '<div class="case__top">' +
-          '<span class="case__name"></span>' +
-          '<span class="' + pillClass(c.status) + '"></span>' +
-        '</div>' +
+        '<div class="case__top"><span class="case__name"></span>' +
+        '<span class="' + pillClass(c.status) + '"></span></div>' +
         '<div class="case__meta"><span class="ph"></span><span class="tm"></span></div>' +
         (c.need ? '<div class="case__need"></div>' : "") +
         (c.alerts.length ? '<div class="case__flags"></div>' : "") +
+        (due ? '<div class="case__flags cd"></div>' : "") +
         (!c.complete ? '<div><span class="pill pill--part">не дозаполнено</span></div>' : "");
       el.querySelector(".case__name").textContent = c.name || "без имени";
       el.querySelector(".pill").textContent = c.status;
@@ -282,8 +363,9 @@ textarea {
         el.querySelector(".case__flags").textContent = "⚠ " + c.alerts.length +
           (c.alerts.length === 1 ? " признак" : " признака");
       }
+      if (due) el.querySelector(".cd").textContent = "☎ пора звонить";
       el.addEventListener("click", function () {
-        state.selected = c.user_id;
+        remember(c.user_id);
         renderList();
         renderDetail();
         if (window.innerWidth < 900) $("#detail").scrollIntoView({ behavior: "smooth" });
@@ -299,8 +381,7 @@ textarea {
   }
 
   function answersHtml(c) {
-    var html = "";
-    var section = null;
+    var html = "", section = null;
     state.questions.forEach(function (q) {
       var value = c.answers[q.id];
       if (!value) return;
@@ -314,10 +395,22 @@ textarea {
     return html || '<p style="color:var(--muted)">Ответов пока нет</p>';
   }
 
-  function escape(s) {
-    return String(s).replace(/[&<>"]/g, function (ch) {
-      return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[ch];
-    });
+  function callsHtml(c) {
+    if (!(c.calls || []).length) return "";
+    var rows = c.calls.map(function (x) {
+      var label = x.state === "done" ? "Сделан" + (x.done_by ? " · " + escape(x.done_by) : "")
+        : x.state === "overdue" ? "Просрочен на " + (-x.left) + " дн."
+        : x.left === 0 ? "Сегодня"
+        : "Через " + x.left + " дн.";
+      return '<div class="call call--' + x.state + '">' +
+        '<span class="call__when">' + escape(x.due) + "</span>" +
+        '<span class="call__state">Звонок через ' + x.days + " дней · " + label + "</span>" +
+        '<button class="btn btn--ghost" data-call="' + x.which +
+        '" data-done="' + (x.state === "done" ? "0" : "1") + '">' +
+        (x.state === "done" ? "Отменить" : "Отметить сделанным") + "</button></div>";
+    }).join("");
+    return '<div class="card"><h2>Контрольные звонки</h2><div class="calls">' +
+      rows + "</div></div>";
   }
 
   function renderDetail() {
@@ -327,8 +420,7 @@ textarea {
 
     var alerts = c.alerts.length
       ? '<div class="alerts"><b>Требует внимания</b><ul>' +
-        c.alerts.map(function (a) { return "<li>" + escape(a) + "</li>"; }).join("") +
-        "</ul></div>"
+        c.alerts.map(function (a) { return "<li>" + escape(a) + "</li>"; }).join("") + "</ul></div>"
       : "";
 
     var notes = (c.notes || []).slice().reverse().map(function (n) {
@@ -356,12 +448,16 @@ textarea {
         (c.phone ? '<a class="phone" href="tel:' + escape(c.phone.replace(/[^\d+]/g, "")) +
           '">' + escape(c.phone) + "</a>" : "") +
         '<div class="actions" id="acts"></div>' +
+        '<label class="notify"><input type="checkbox" id="notify" checked>' +
+        "Сообщать человеку в чат о смене статуса</label>" +
       "</div>" +
       alerts +
+      callsHtml(c) +
       '<div class="card"><h2>Ответы анкеты</h2><div class="ans">' + answersHtml(c) + "</div></div>" +
       '<div class="card"><h2>Написать в чат</h2>' +
         '<div class="tpl" id="tpl"></div>' +
-        '<textarea id="reply" placeholder="Короткое сообщение человеку в чат бота"></textarea>' +
+        '<textarea id="reply" maxlength="2000" placeholder="Сообщение человеку в чат бота"></textarea>' +
+        '<div class="counter" id="cnt"></div>' +
         '<div class="actions"><button class="btn" id="send" type="button">Отправить в чат</button></div>' +
         '<div class="warn">Сообщение придёт человеку от имени бота и будет подписано вашим именем. ' +
         'Это способ быстро связаться, а не давать медицинские рекомендации: если состояние острое — звоните.</div>' +
@@ -373,15 +469,31 @@ textarea {
         '<div class="notes" style="margin-top:14px">' + notes + "</div>" +
       "</div>";
 
-    // статусы и «взять в работу»
+    // возвращаем недописанное
+    $("#reply").value = getDraft("reply");
+    $("#note").value = getDraft("note");
+    updateCounter();
+
+    $("#reply").addEventListener("input", function () {
+      setDraft("reply", this.value);
+      updateCounter();
+    });
+    $("#note").addEventListener("input", function () { setDraft("note", this.value); });
+
+    // статусы
     var acts = $("#acts");
-    state.statuses.forEach(function (s) {
+    state.statuses.forEach(function (st) {
       var b = document.createElement("button");
-      b.className = "btn btn--ghost" + (c.status === s ? " on" : "");
-      b.textContent = s;
+      b.className = "btn btn--ghost" + (c.status === st ? " on" : "");
+      b.textContent = st;
       b.addEventListener("click", function () {
-        api("/api/case/" + c.user_id + "/status", { status: s })
-          .then(load).then(function () { toast("Статус: " + s); });
+        api("/api/case/" + c.user_id + "/status",
+            { status: st, notify: $("#notify").checked })
+          .then(function (d) {
+            return load().then(function () {
+              toast(d.notified ? "Статус: " + st + ", человеку сообщили" : "Статус: " + st);
+            });
+          });
       });
       acts.appendChild(b);
     });
@@ -394,11 +506,21 @@ textarea {
     });
     acts.appendChild(take);
 
-    // готовые ответы
+    // отметки о звонках
+    Array.prototype.slice.call(box.querySelectorAll("[data-call]")).forEach(function (b) {
+      b.addEventListener("click", function () {
+        api("/api/case/" + c.user_id + "/call", {
+          which: b.getAttribute("data-call"),
+          done: b.getAttribute("data-done") === "1",
+        }).then(load).then(function () { toast("Отметили"); });
+      });
+    });
+
+    // готовые формулировки
     var templates = [
       "Здравствуйте! Получили ваше обращение, координатор свяжется с вами сегодня.",
       "Здравствуйте! Уточните, пожалуйста, удобное время для звонка.",
-      "Здравствуйте! Мы передали ваше обращение специалисту, он позвонит в ближайшее время.",
+      "Здравствуйте! Передали ваше обращение специалисту, он позвонит в ближайшее время.",
       "Если состояние ухудшилось — не ждите нашего звонка, вызывайте скорую по номеру 103.",
     ];
     var tpl = $("#tpl");
@@ -407,7 +529,11 @@ textarea {
       b.type = "button";
       b.textContent = t.length > 34 ? t.slice(0, 32) + "…" : t;
       b.title = t;
-      b.addEventListener("click", function () { $("#reply").value = t; });
+      b.addEventListener("click", function () {
+        $("#reply").value = t;
+        setDraft("reply", t);
+        updateCounter();
+      });
       tpl.appendChild(b);
     });
 
@@ -416,7 +542,11 @@ textarea {
       if (!text) { toast("Сообщение пустое"); return; }
       this.disabled = true;
       api("/api/case/" + c.user_id + "/reply", { text: text })
-        .then(function () { $("#reply").value = ""; return load(); })
+        .then(function () {
+          $("#reply").value = "";
+          setDraft("reply", "");
+          return load();
+        })
         .then(function () { toast("В очереди на отправку"); })
         .catch(function (e) { toast(e.message); })
         .finally(function () { var b = $("#send"); if (b) b.disabled = false; });
@@ -426,22 +556,36 @@ textarea {
       var text = $("#note").value.trim();
       if (!text) { toast("Заметка пустая"); return; }
       api("/api/case/" + c.user_id + "/note", { text: text })
-        .then(function () { $("#note").value = ""; return load(); })
+        .then(function () {
+          $("#note").value = "";
+          setDraft("note", "");
+          return load();
+        })
         .then(function () { toast("Заметка добавлена"); })
         .catch(function (e) { toast(e.message); });
     });
   }
 
+  function updateCounter() {
+    var area = $("#reply"), cnt = $("#cnt");
+    if (!area || !cnt) return;
+    var left = 2000 - area.value.length;
+    cnt.textContent = left > 200 ? "" : "осталось символов: " + left;
+    cnt.className = "counter" + (left < 50 ? " over" : "");
+  }
+
   /* ------------------------------------------------------------ загрузка */
 
-  function load() {
+  function load(quiet) {
     return api("/api/cases").then(function (d) {
       state.cases = d.cases;
       state.questions = d.questions;
       state.statuses = d.statuses;
       $("#who").textContent = d.operator || "";
       renderList();
-      renderDetail();
+      // Во время набора правую панель не трогаем: перерисовка сбила бы
+      // курсор и выделение
+      if (!(quiet && typing())) renderDetail();
     });
   }
 
@@ -463,13 +607,17 @@ textarea {
     load().then(function () { toast("Обновлено"); });
   });
 
+  $("#export").addEventListener("click", function () {
+    toast("Готовим файл…");
+    window.location = "/api/export";
+  });
+
   $("#logout").addEventListener("click", function () {
     api("/api/logout", {}).then(function () { window.location = "/login"; });
   });
 
   load().catch(function () {});
-  // Новые обращения приходят, пока оператор смотрит в экран
-  setInterval(function () { load().catch(function () {}); }, 30000);
+  setInterval(function () { load(true).catch(function () {}); }, 30000);
 })();
 </script>
 </body>

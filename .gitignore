@@ -90,3 +90,6 @@ operators.json
 crm_data.json
 .crm_secret
 outbox/
+
+# Выгрузки в Excel: там имена, телефоны и состояние людей
+*.xlsx

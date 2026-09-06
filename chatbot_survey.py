@@ -208,6 +208,34 @@ class Survey:
 
         return self._accept(user_id, step, cleaned)
 
+    @staticmethod
+    def _alert_rules(question: dict[str, Any]) -> list[dict[str, Any]]:
+        """Правила предупреждений: одно поле alert или список alerts."""
+        if question.get("alerts"):
+            return question["alerts"]
+        return [question["alert"]] if question.get("alert") else []
+
+    @staticmethod
+    def _alert_fires(rule: dict[str, Any], value: str) -> bool:
+        """Сработало ли правило на данном ответе."""
+        options = rule.get("options")
+        if options and any(opt.lower() in value.lower() for opt in options):
+            return True
+
+        # Правило по количеству: человек отметил слишком много признаков
+        # сразу. «Ничего из перечисленного» при подсчёте не считается.
+        least = rule.get("min_selected")
+        if least:
+            chosen = [
+                part.strip()
+                for part in value.split(";")
+                if part.strip() and "ничего" not in part.lower()
+            ]
+            if len(chosen) >= least:
+                return True
+
+        return False
+
     def _accept(self, user_id: str, step: int, value: str) -> str:
         person = self._person(user_id)
         question = QUESTIONS[step]
@@ -217,12 +245,13 @@ class Survey:
             person["started"] = datetime.now().isoformat(timespec="seconds")
 
         prefix = ""
-        alert = question.get("alert")
-        if alert and any(opt.lower() in value.lower() for opt in alert["options"]):
-            prefix = alert["text"] + "\n\n" + "—" * 20 + "\n\n"
+        for rule in self._alert_rules(question):
+            if not self._alert_fires(rule, value):
+                continue
+            prefix += rule["text"] + "\n\n" + "—" * 20 + "\n\n"
             # В сводку для координатора идёт человеческая подпись, а не
             # внутреннее имя поля
-            note = f"{alert.get('label', question['text'])}: {value}"
+            note = f"{rule.get('label', question['text'])}: {value}"
             if note not in person["alerts"]:
                 person["alerts"].append(note)
 

@@ -24,12 +24,15 @@ from __future__ import annotations
 import functools
 import os
 import secrets
+from datetime import datetime, timedelta
+from urllib.parse import quote
 
 from flask import (
     Flask,
     jsonify,
     redirect,
     request,
+    send_file,
     send_from_directory,
     session,
     url_for,
@@ -120,6 +123,63 @@ def _questions_map() -> list[dict[str, str]]:
     ]
 
 
+# Что человек получает в чат при смене статуса. «Новое» не шлём: это
+# внутреннее состояние, человеку о нём знать незачем.
+STATUS_NOTICE = {
+    "В работе": (
+        "Ваше обращение принято в работу. С вами свяжется координатор.\n\n"
+        "Если состояние ухудшится раньше — звоните 103."
+    ),
+    "Закрыто": (
+        "Ваше обращение закрыто.\n\n"
+        "Если понадобится помощь снова — просто напишите сюда, "
+        "анкета откроется заново."
+    ),
+}
+
+
+def _parse(value: str | None) -> datetime | None:
+    if not value:
+        return None
+    try:
+        return datetime.fromisoformat(value)
+    except ValueError:
+        return None
+
+
+def _calls_view(person: dict, operator: dict) -> list[dict]:
+    """Контрольные звонки через 7 и 30 дней: когда и в каком состоянии."""
+    base = _parse(person.get("finished")) or _parse(person.get("started"))
+    if not base:
+        return []
+    today = datetime.now()
+    done = operator.get("calls") or {}
+    out = []
+    for which, days in store.CALL_STAGES.items():
+        due = base + timedelta(days=days)
+        mark = done.get(which)
+        left = (due.date() - today.date()).days
+        if mark:
+            state = "done"
+        elif left < 0:
+            state = "overdue"
+        elif left <= 2:
+            state = "soon"
+        else:
+            state = "later"
+        out.append(
+            {
+                "which": which,
+                "days": days,
+                "due": due.strftime("%d.%m.%Y"),
+                "left": left,
+                "state": state,
+                "done_by": (mark or {}).get("who", ""),
+            }
+        )
+    return out
+
+
 def _case_view(user_id: str, person: dict, delivered: dict) -> dict:
     """Одно обращение в том виде, в каком его показывает CRM."""
     operator = store.case(user_id)
@@ -149,6 +209,7 @@ def _case_view(user_id: str, person: dict, delivered: dict) -> dict:
         "assigned": operator.get("assigned", ""),
         "notes": operator.get("notes", []),
         "sent": sent,
+        "calls": _calls_view(person, operator),
         "complete": bool(person.get("finished")),
     }
 
@@ -179,11 +240,57 @@ def api_cases():
 @login_required
 def api_status(user_id: str):
     data = request.get_json(silent=True) or {}
+    status = data.get("status", "")
     try:
-        store.set_status(user_id, data.get("status", ""), session["operator"])
+        store.set_status(user_id, status, session["operator"])
+    except ValueError as error:
+        return jsonify({"error": str(error)}), 400
+
+    # Человек должен понимать, что с его обращением происходит, а не
+    # гадать. Оператор может отключить уведомление для конкретного случая.
+    notified = False
+    if data.get("notify", True) and status in STATUS_NOTICE:
+        store.queue_message(user_id, STATUS_NOTICE[status], session["operator"])
+        notified = True
+    return jsonify({"ok": True, "notified": notified})
+
+
+@app.post("/api/case/<user_id>/call")
+@login_required
+def api_call(user_id: str):
+    data = request.get_json(silent=True) or {}
+    which = str(data.get("which", ""))
+    try:
+        if data.get("done", True):
+            store.mark_call(user_id, which, session["operator"])
+        else:
+            store.undo_call(user_id, which)
     except ValueError as error:
         return jsonify({"error": str(error)}), 400
     return jsonify({"ok": True})
+
+
+@app.get("/api/export")
+@login_required
+def api_export():
+    """Выгрузка в Excel вместе с напоминаниями о звонках."""
+    import tempfile
+
+    import export_excel
+
+    day = datetime.now().strftime("%Y-%m-%d")
+    path = os.path.join(tempfile.gettempdir(), f"sdut-{day}.xlsx")
+    export_excel.build(path)
+
+    response = send_file(path, as_attachment=True, download_name=f"sdut-{day}.xlsx")
+    # Имя файла по-русски. Заголовок с кириллицей браузер понимает только
+    # в кодированном виде, поэтому рядом оставлено латинское имя — им
+    # воспользуются старые программы.
+    name = quote(f"Обращения СДУТ {day}.xlsx")
+    response.headers["Content-Disposition"] = (
+        f'attachment; filename="sdut-{day}.xlsx"; filename*=UTF-8\'\'{name}'
+    )
+    return response
 
 
 @app.post("/api/case/<user_id>/assign")

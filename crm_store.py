@@ -36,6 +36,10 @@ SENT_DIR = os.path.join(OUTBOX_DIR, "sent")
 
 STATUSES = ["Новое", "В работе", "Закрыто"]
 
+# Контрольные звонки после закрытия случая — как описано в регламенте
+# службы: через 7 дней и через 30 дней.
+CALL_STAGES = {"7": 7, "30": 30}
+
 
 def now() -> str:
     return datetime.now().isoformat(timespec="seconds")
@@ -104,6 +108,10 @@ def verify(login: str, password: str) -> str | None:
 # -------------------------------------------------------------- дела в работе
 
 
+def _blank_case() -> dict[str, Any]:
+    return {"status": STATUSES[0], "assigned": "", "notes": [], "sent": [], "calls": {}}
+
+
 def _all() -> dict[str, Any]:
     return _read(CRM_DATA, {"cases": {}})
 
@@ -111,9 +119,7 @@ def _all() -> dict[str, Any]:
 def case(user_id: str) -> dict[str, Any]:
     """Данные оператора по одному обращению."""
     data = _all()
-    return data["cases"].get(
-        user_id, {"status": STATUSES[0], "assigned": "", "notes": [], "sent": []}
-    )
+    return data["cases"].get(user_id, _blank_case())
 
 
 def all_cases() -> dict[str, Any]:
@@ -122,9 +128,7 @@ def all_cases() -> dict[str, Any]:
 
 def _update(user_id: str, change) -> dict[str, Any]:
     data = _all()
-    entry = data["cases"].setdefault(
-        user_id, {"status": STATUSES[0], "assigned": "", "notes": [], "sent": []}
-    )
+    entry = data["cases"].setdefault(user_id, _blank_case())
     change(entry)
     _write(CRM_DATA, data)
     return entry
@@ -149,6 +153,32 @@ def assign(user_id: str, who: str) -> dict[str, Any]:
         entry.setdefault("notes", []).append(
             {"at": now(), "who": who, "text": "Взял в работу", "system": True}
         )
+
+    return _update(user_id, change)
+
+
+def mark_call(user_id: str, which: str, who: str) -> dict[str, Any]:
+    """Отметить контрольный звонок сделанным. which — «7» или «30»."""
+    if which not in CALL_STAGES:
+        raise ValueError(f"неизвестный звонок: {which}")
+
+    def change(entry: dict[str, Any]) -> None:
+        entry.setdefault("calls", {})[which] = {"at": now(), "who": who}
+        entry.setdefault("notes", []).append(
+            {
+                "at": now(),
+                "who": who,
+                "text": f"Контрольный звонок через {which} дней — сделан",
+                "system": True,
+            }
+        )
+
+    return _update(user_id, change)
+
+
+def undo_call(user_id: str, which: str) -> dict[str, Any]:
+    def change(entry: dict[str, Any]) -> None:
+        entry.setdefault("calls", {}).pop(which, None)
 
     return _update(user_id, change)
 
