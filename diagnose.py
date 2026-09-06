@@ -11,6 +11,8 @@
 
 from __future__ import annotations
 
+import glob
+import os
 import socket
 import ssl
 import sys
@@ -141,6 +143,42 @@ def report_trust_list() -> None:
         say("  Что с этим делать — смотрите вывод ниже.")
 
 
+def check_files() -> bool:
+    """Все ли файлы рядом — это действительно код, а не что-то ещё.
+
+    Частый случай: файл скачали без VPN, браузер получил страницу-заглушку
+    «App unavailable in region» и сохранил её под именем .py. Python потом
+    падает с невнятной ошибкой синтаксиса.
+    """
+    here = os.path.dirname(os.path.abspath(__file__))
+    broken: list[str] = []
+    checked = 0
+
+    for path in sorted(glob.glob(os.path.join(here, "*.py"))):
+        checked += 1
+        try:
+            with open(path, encoding="utf-8", errors="ignore") as fh:
+                head = fh.read(400).lstrip().lower()
+        except OSError:
+            continue
+        if head.startswith("<!doctype") or head.startswith("<html") or "<html" in head[:200]:
+            broken.append(os.path.basename(path))
+
+    if broken:
+        say(f"  [ОШИБКА]  это не код, а веб-страница: {', '.join(broken)}")
+        say()
+        say("            Файлы скачались без VPN — вместо кода браузер")
+        say("            сохранил страницу «App unavailable in region».")
+        say()
+        say("            Скачайте их заново с GitHub: там ветка")
+        say("            claude/chat-bot-survey-publik-nq2w1s,")
+        say("            кнопка Code → Download ZIP.")
+        return False
+
+    say(f"  [ок]      файлов проверено: {checked}, все являются кодом")
+    return True
+
+
 def check_library() -> str | None:
     """Какую версию maxapi и какой адрес API использует бот."""
     try:
@@ -183,6 +221,16 @@ def main() -> int:
     say(LINE)
     say()
     say(f"Python: {sys.version.split()[0]}   Система: {sys.platform}")
+    say()
+    say("--- файлы ---")
+    if not check_files():
+        say()
+        say(LINE)
+        say("  Дальше проверять нечего: сначала нужны целые файлы.")
+        say(LINE)
+        say()
+        return 1
+
     say()
     say("--- библиотека ---")
     library_url = check_library()
