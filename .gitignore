@@ -67,6 +67,8 @@ configs/local.yaml
 configs/production.yaml
 
 # examples
+__pycache__/
+*.pyc
 examples/__pycache__/
 bot_offset_*.txt
 # Чат-бот СДУТ: ключ доступа и персональные данные обратившихся.
@@ -81,3 +83,10 @@ demo_responses.csv
 
 # Свой список доверенных сертификатов — у каждого компьютера он свой
 certs.pem
+
+# CRM оператора: пароли, заметки о людях, очередь сообщений.
+# Всё это персональные данные и секреты — в репозиторий не попадает.
+operators.json
+crm_data.json
+.crm_secret
+outbox/

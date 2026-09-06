@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Вход — CRM СДУТ</title>
+<meta name="color-scheme" content="light dark">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Golos+Text:wght@400;500;600;700;800&display=swap">
+<style>
+:root {
+  --ground:#F6F1E8; --surface:#FFFCF7; --ink:#16384A; --ink-soft:#33525E;
+  --muted:#6E7C81; --line:#E4DACA;
+  --accent:#2E6E63; --accent-deep:#1F5257; --on-accent:#FFFFFF;
+  --sand:#C09A6B; --danger:#A93E32; --danger-soft:#F8E7E3;
+  --f:"Golos Text","Segoe UI",Roboto,system-ui,sans-serif;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --ground:#101E20; --surface:#18292B; --ink:#E8EFEC; --ink-soft:#C4D4D2;
+    --muted:#91A3A4; --line:#294042;
+    --accent:#6FBFAE; --accent-deep:#8FD3C2; --on-accent:#08211E;
+    --sand:#D9B583; --danger:#EE8074; --danger-soft:#311916;
+  }
+}
+*,*::before,*::after { box-sizing:border-box; }
+body {
+  margin:0; min-height:100vh; background:var(--ground); color:var(--ink);
+  font:400 16px/1.55 var(--f);
+  display:grid; place-items:center; padding:20px;
+}
+.box {
+  width:100%; max-width:380px; background:var(--surface);
+  border:1px solid var(--line); border-radius:16px; padding:28px;
+}
+.mark {
+  width:44px; height:44px; border-radius:12px; background:var(--accent-deep);
+  color:var(--on-accent); display:grid; place-items:center;
+  font-size:12px; font-weight:700; margin-bottom:18px;
+}
+h1 { margin:0 0 6px; font-size:22px; font-weight:800; letter-spacing:-.02em; }
+.sub { margin:0 0 4px; font-size:14px; color:var(--muted); }
+.rule { width:48px; height:3px; background:var(--sand); border-radius:2px; margin:16px 0 20px; }
+label { display:block; font-size:13px; color:var(--muted); margin-bottom:6px; }
+input {
+  width:100%; padding:12px 13px; border-radius:10px; border:1px solid var(--line);
+  background:var(--ground); color:var(--ink); font:400 15px var(--f);
+  margin-bottom:14px;
+}
+input:focus { outline:2px solid var(--accent); outline-offset:1px; }
+button {
+  width:100%; min-height:48px; border:0; border-radius:11px; cursor:pointer;
+  background:var(--accent-deep); color:var(--on-accent);
+  font:600 15px var(--f);
+}
+.err {
+  display:none; margin-bottom:14px; padding:11px 13px; border-radius:9px;
+  background:var(--danger-soft); color:var(--danger); font-size:14px;
+  border-left:3px solid var(--danger);
+}
+.err.show { display:block; }
+.foot { margin-top:18px; font-size:12.5px; color:var(--muted); }
+</style>
+</head>
+<body>
+  <form class="box" id="form">
+    <div class="mark">СДУТ</div>
+    <h1>CRM оператора</h1>
+    <p class="sub">Обращения из чат-бота</p>
+    <div class="rule"></div>
+
+    <div class="err" id="err"></div>
+
+    <label for="login">Логин</label>
+    <input id="login" name="login" autocomplete="username" autofocus required>
+
+    <label for="password">Пароль</label>
+    <input id="password" name="password" type="password" autocomplete="current-password" required>
+
+    <button type="submit">Войти</button>
+
+    <p class="foot">Здесь персональные данные обратившихся. Не оставляйте окно открытым на общем компьютере.</p>
+  </form>
+
+<script>
+(function () {
+  "use strict";
+  var form = document.getElementById("form");
+  var err = document.getElementById("err");
+
+  form.addEventListener("submit", function (e) {
+    e.preventDefault();
+    err.classList.remove("show");
+    fetch("/api/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        login: document.getElementById("login").value,
+        password: document.getElementById("password").value,
+      }),
+    })
+      .then(function (r) { return r.json().then(function (d) { return { ok: r.ok, d: d }; }); })
+      .then(function (res) {
+        if (res.ok) { window.location = "/"; return; }
+        err.textContent = res.d.error || "Не получилось войти";
+        err.classList.add("show");
+      })
+      .catch(function () {
+        err.textContent = "Сервер не отвечает. Он запущен?";
+        err.classList.add("show");
+      });
+  });
+})();
+</script>
+</body>
+</html>

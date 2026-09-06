@@ -1,0 +1,476 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CRM оператора — СДУТ</title>
+<meta name="color-scheme" content="light dark">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Golos+Text:wght@400;500;600;700;800&display=swap">
+<style>
+:root {
+  --ground:#F6F1E8; --surface:#FFFCF7; --sunk:#EFE6D8;
+  --ink:#16384A; --ink-soft:#33525E; --muted:#6E7C81;
+  --line:#E4DACA; --line-soft:#EFE7DA;
+  --accent:#2E6E63; --accent-deep:#1F5257; --accent-soft:#DFEAE6; --on-accent:#FFFFFF;
+  --sand:#C09A6B; --sand-soft:#EDE0CC;
+  --danger:#A93E32; --danger-soft:#F8E7E3;
+  --warn:#9A6B22; --warn-soft:#F6EBD8;
+  --ok:#2E6E63; --ok-soft:#DFEAE6;
+  --f:"Golos Text","Segoe UI",Roboto,system-ui,sans-serif;
+  --radius:13px;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --ground:#101E20; --surface:#18292B; --sunk:#22312F;
+    --ink:#E8EFEC; --ink-soft:#C4D4D2; --muted:#91A3A4;
+    --line:#294042; --line-soft:#223639;
+    --accent:#6FBFAE; --accent-deep:#8FD3C2; --accent-soft:#143732; --on-accent:#08211E;
+    --sand:#D9B583; --sand-soft:#33291C;
+    --danger:#EE8074; --danger-soft:#311916;
+    --warn:#DFAE55; --warn-soft:#2B2214;
+    --ok:#6FBFAE; --ok-soft:#143732;
+  }
+}
+*,*::before,*::after { box-sizing:border-box; }
+body { margin:0; background:var(--ground); color:var(--ink); font:400 15px/1.5 var(--f); }
+button, input, textarea, select { font-family:inherit; }
+:focus-visible { outline:2px solid var(--accent); outline-offset:1px; border-radius:5px; }
+
+/* ---------- шапка ---------- */
+.top {
+  position:sticky; top:0; z-index:20; background:var(--surface);
+  border-bottom:1px solid var(--line); padding:10px 16px;
+  display:flex; align-items:center; gap:12px; flex-wrap:wrap;
+}
+.mark {
+  width:32px; height:32px; border-radius:9px; background:var(--accent-deep);
+  color:var(--on-accent); display:grid; place-items:center;
+  font-size:9.5px; font-weight:700; flex:none;
+}
+.top h1 { margin:0; font-size:16px; font-weight:700; letter-spacing:-.01em; }
+.top__who { margin-left:auto; font-size:13px; color:var(--muted); }
+.tbtn {
+  border:1px solid var(--line); background:var(--ground); color:var(--ink-soft);
+  border-radius:8px; padding:6px 11px; font-size:13px; font-weight:500; cursor:pointer;
+}
+.tbtn:hover { border-color:var(--sand); }
+
+/* ---------- фильтры ---------- */
+.bar { padding:10px 16px; display:flex; gap:8px; align-items:center; flex-wrap:wrap;
+  border-bottom:1px solid var(--line); background:var(--surface); }
+.chip {
+  border:1px solid var(--line); background:var(--ground); color:var(--ink-soft);
+  border-radius:100px; padding:6px 13px; font-size:13px; cursor:pointer; white-space:nowrap;
+}
+.chip.on { background:var(--accent-deep); border-color:var(--accent-deep); color:var(--on-accent); font-weight:600; }
+.search {
+  flex:1; min-width:150px; padding:7px 12px; border-radius:8px;
+  border:1px solid var(--line); background:var(--ground); color:var(--ink); font-size:14px;
+}
+
+/* ---------- раскладка ---------- */
+.wrap { display:grid; grid-template-columns:1fr; }
+@media (min-width:900px) {
+  .wrap { grid-template-columns:360px 1fr; height:calc(100vh - 96px); }
+  .list { overflow-y:auto; border-right:1px solid var(--line); }
+  .detail { overflow-y:auto; }
+}
+.list { padding:10px; display:flex; flex-direction:column; gap:8px; }
+
+/* ---------- карточка обращения ---------- */
+.case {
+  background:var(--surface); border:1px solid var(--line); border-radius:var(--radius);
+  border-left-width:4px; border-left-color:var(--line);
+  padding:11px 13px; cursor:pointer; display:flex; flex-direction:column; gap:5px;
+}
+.case:hover { border-color:var(--sand); }
+.case.on { border-color:var(--accent); background:var(--accent-soft); }
+.case.flag { border-left-color:var(--danger); }
+.case__top { display:flex; align-items:baseline; gap:8px; }
+.case__name { font-weight:600; font-size:15px; flex:1; min-width:0;
+  overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.case__meta { font-size:12.5px; color:var(--muted); display:flex; gap:8px; flex-wrap:wrap; }
+.case__need { font-size:13px; color:var(--ink-soft); }
+.case__flags { font-size:12.5px; color:var(--danger); font-weight:500; }
+
+.pill { font-size:11.5px; font-weight:600; padding:3px 9px; border-radius:100px; white-space:nowrap; }
+.pill--Новое   { background:var(--warn-soft); color:var(--warn); }
+.pill--Вработе { background:var(--accent-soft); color:var(--accent); }
+.pill--Закрыто { background:var(--sunk); color:var(--muted); }
+.pill--part    { background:var(--sunk); color:var(--muted); }
+
+/* ---------- подробности ---------- */
+.detail { padding:16px; }
+.empty { color:var(--muted); text-align:center; padding:60px 20px; font-size:15px; }
+.card {
+  background:var(--surface); border:1px solid var(--line); border-radius:var(--radius);
+  padding:16px; margin-bottom:12px;
+}
+.card h2 { margin:0 0 12px; font-size:15px; font-weight:700; }
+.head__name { font-size:22px; font-weight:800; letter-spacing:-.02em; margin:0 0 4px; }
+.head__meta { font-size:13px; color:var(--muted); margin-bottom:12px; }
+.phone { font-size:19px; font-weight:700; color:var(--accent); text-decoration:none; }
+.actions { display:flex; gap:7px; flex-wrap:wrap; margin-top:13px; }
+
+.alerts { background:var(--danger-soft); border:1px solid var(--danger);
+  border-left-width:4px; border-radius:var(--radius); padding:13px 15px; margin-bottom:12px; }
+.alerts b { color:var(--danger); display:block; font-size:12.5px; letter-spacing:.05em;
+  text-transform:uppercase; margin-bottom:7px; }
+.alerts ul { margin:0; padding-left:18px; }
+.alerts li { font-size:14.5px; color:var(--ink-soft); }
+
+.ans { display:grid; grid-template-columns:1fr; gap:0; }
+.ans__sec { font-size:11.5px; font-weight:700; letter-spacing:.06em; text-transform:uppercase;
+  color:var(--accent); margin:14px 0 6px; }
+.ans__sec:first-child { margin-top:0; }
+.ans__row { display:grid; grid-template-columns:minmax(120px,42%) 1fr; gap:10px;
+  padding:7px 0; border-top:1px solid var(--line-soft); }
+.ans__q { font-size:13px; color:var(--muted); }
+.ans__a { font-size:14.5px; }
+
+.notes { display:flex; flex-direction:column; gap:9px; }
+.note { border-left:2px solid var(--line); padding-left:11px; }
+.note--sys { border-left-color:var(--sand); }
+.note__meta { font-size:12px; color:var(--muted); }
+.note__text { font-size:14.5px; color:var(--ink-soft); }
+
+.sent { border-left:2px solid var(--accent); padding-left:11px; }
+.sent__state { font-size:12px; }
+.sent__state.ok { color:var(--ok); }
+.sent__state.bad { color:var(--danger); }
+.sent__state.wait { color:var(--warn); }
+
+textarea {
+  width:100%; min-height:78px; padding:11px 12px; border-radius:10px;
+  border:1px solid var(--line); background:var(--ground); color:var(--ink);
+  font-size:14.5px; resize:vertical;
+}
+.btn {
+  border:0; border-radius:9px; padding:9px 15px; font-size:14px; font-weight:600;
+  cursor:pointer; background:var(--accent-deep); color:var(--on-accent);
+}
+.btn--ghost { background:var(--surface); color:var(--ink); border:1px solid var(--line); font-weight:500; }
+.btn--ghost.on { border-color:var(--accent); color:var(--accent); }
+.btn:disabled { opacity:.5; cursor:default; }
+
+.tpl { display:flex; gap:6px; flex-wrap:wrap; margin-bottom:9px; }
+.tpl button {
+  border:1px solid var(--line); background:var(--ground); color:var(--ink-soft);
+  border-radius:100px; padding:5px 11px; font-size:12.5px; cursor:pointer;
+}
+.tpl button:hover { border-color:var(--accent); color:var(--accent); }
+
+.warn { background:var(--warn-soft); border-left:3px solid var(--warn);
+  border-radius:0 9px 9px 0; padding:11px 13px; font-size:13.5px; color:var(--ink-soft);
+  margin-top:11px; }
+.toast {
+  position:fixed; left:50%; bottom:22px; transform:translateX(-50%);
+  background:var(--accent-deep); color:var(--on-accent); padding:11px 18px;
+  border-radius:10px; font-size:14px; font-weight:500; z-index:50;
+  opacity:0; pointer-events:none; transition:opacity .2s;
+}
+.toast.show { opacity:1; }
+</style>
+</head>
+<body>
+
+<header class="top">
+  <div class="mark">СДУТ</div>
+  <h1>CRM оператора</h1>
+  <span class="top__who" id="who"></span>
+  <button class="tbtn" id="refresh" type="button">Обновить</button>
+  <button class="tbtn" id="logout" type="button">Выйти</button>
+</header>
+
+<div class="bar">
+  <button class="chip on" data-status="" type="button">Все</button>
+  <button class="chip" data-status="flag" type="button">С флагами</button>
+  <button class="chip" data-status="Новое" type="button">Новое</button>
+  <button class="chip" data-status="В работе" type="button">В работе</button>
+  <button class="chip" data-status="Закрыто" type="button">Закрыто</button>
+  <input class="search" id="search" placeholder="Имя или телефон" autocomplete="off">
+</div>
+
+<div class="wrap">
+  <div class="list" id="list"></div>
+  <div class="detail" id="detail"><div class="empty">Выберите обращение слева</div></div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+(function () {
+  "use strict";
+
+  var state = { cases: [], questions: [], statuses: [], selected: null, filter: "", query: "" };
+  var $ = function (s) { return document.querySelector(s); };
+
+  function toast(text) {
+    var el = $("#toast");
+    el.textContent = text;
+    el.classList.add("show");
+    setTimeout(function () { el.classList.remove("show"); }, 2200);
+  }
+
+  function api(path, body) {
+    var options = { headers: { "Content-Type": "application/json" } };
+    if (body) { options.method = "POST"; options.body = JSON.stringify(body); }
+    return fetch(path, options).then(function (r) {
+      if (r.status === 401) { window.location = "/login"; throw new Error("нужен вход"); }
+      return r.json().then(function (d) {
+        if (!r.ok) throw new Error(d.error || "ошибка");
+        return d;
+      });
+    });
+  }
+
+  function when(iso) {
+    if (!iso) return "";
+    var d = new Date(iso);
+    if (isNaN(d)) return iso;
+    var today = new Date();
+    var sameDay = d.toDateString() === today.toDateString();
+    var time = d.toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" });
+    return sameDay ? "сегодня " + time : d.toLocaleDateString("ru-RU") + " " + time;
+  }
+
+  function pillClass(status) { return "pill pill--" + status.replace(/\s/g, ""); }
+
+  /* ---------------------------------------------------------- список */
+
+  function visible() {
+    return state.cases.filter(function (c) {
+      if (state.filter === "flag" && !c.alerts.length) return false;
+      if (state.filter && state.filter !== "flag" && c.status !== state.filter) return false;
+      if (state.query) {
+        var hay = (c.name + " " + c.phone).toLowerCase();
+        if (hay.indexOf(state.query.toLowerCase()) === -1) return false;
+      }
+      return true;
+    });
+  }
+
+  function renderList() {
+    var list = $("#list");
+    var items = visible();
+    list.innerHTML = "";
+    if (!items.length) {
+      list.innerHTML = '<div class="empty">Ничего не найдено</div>';
+      return;
+    }
+    items.forEach(function (c) {
+      var el = document.createElement("div");
+      el.className = "case" + (c.alerts.length ? " flag" : "") +
+        (state.selected === c.user_id ? " on" : "");
+      el.innerHTML =
+        '<div class="case__top">' +
+          '<span class="case__name"></span>' +
+          '<span class="' + pillClass(c.status) + '"></span>' +
+        '</div>' +
+        '<div class="case__meta"><span class="ph"></span><span class="tm"></span></div>' +
+        (c.need ? '<div class="case__need"></div>' : "") +
+        (c.alerts.length ? '<div class="case__flags"></div>' : "") +
+        (!c.complete ? '<div><span class="pill pill--part">не дозаполнено</span></div>' : "");
+      el.querySelector(".case__name").textContent = c.name || "без имени";
+      el.querySelector(".pill").textContent = c.status;
+      el.querySelector(".ph").textContent = c.phone || "";
+      el.querySelector(".tm").textContent = when(c.started);
+      if (c.need) el.querySelector(".case__need").textContent = c.need;
+      if (c.alerts.length) {
+        el.querySelector(".case__flags").textContent = "⚠ " + c.alerts.length +
+          (c.alerts.length === 1 ? " признак" : " признака");
+      }
+      el.addEventListener("click", function () {
+        state.selected = c.user_id;
+        renderList();
+        renderDetail();
+        if (window.innerWidth < 900) $("#detail").scrollIntoView({ behavior: "smooth" });
+      });
+      list.appendChild(el);
+    });
+  }
+
+  /* ------------------------------------------------------- подробности */
+
+  function current() {
+    return state.cases.filter(function (c) { return c.user_id === state.selected; })[0];
+  }
+
+  function answersHtml(c) {
+    var html = "";
+    var section = null;
+    state.questions.forEach(function (q) {
+      var value = c.answers[q.id];
+      if (!value) return;
+      if (q.section && q.section !== section) {
+        section = q.section;
+        html += '<div class="ans__sec">' + escape(section) + "</div>";
+      }
+      html += '<div class="ans__row"><div class="ans__q">' + escape(q.text) +
+        '</div><div class="ans__a">' + escape(value) + "</div></div>";
+    });
+    return html || '<p style="color:var(--muted)">Ответов пока нет</p>';
+  }
+
+  function escape(s) {
+    return String(s).replace(/[&<>"]/g, function (ch) {
+      return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[ch];
+    });
+  }
+
+  function renderDetail() {
+    var c = current();
+    var box = $("#detail");
+    if (!c) { box.innerHTML = '<div class="empty">Выберите обращение слева</div>'; return; }
+
+    var alerts = c.alerts.length
+      ? '<div class="alerts"><b>Требует внимания</b><ul>' +
+        c.alerts.map(function (a) { return "<li>" + escape(a) + "</li>"; }).join("") +
+        "</ul></div>"
+      : "";
+
+    var notes = (c.notes || []).slice().reverse().map(function (n) {
+      return '<div class="note' + (n.system ? " note--sys" : "") + '">' +
+        '<div class="note__meta">' + escape(n.who) + " · " + when(n.at) + "</div>" +
+        '<div class="note__text">' + escape(n.text) + "</div></div>";
+    }).join("") || '<p style="color:var(--muted)">Заметок нет</p>';
+
+    var sent = (c.sent || []).slice().reverse().map(function (m) {
+      var cls = m.delivered === true ? "ok" : m.delivered === false ? "bad" : "wait";
+      var label = m.delivered === true ? "доставлено"
+        : m.delivered === false ? ("не доставлено: " + (m.error || "ошибка"))
+        : "в очереди — бот отправит, когда запущен";
+      return '<div class="sent"><div class="note__meta">' + escape(m.who) + " · " + when(m.at) +
+        ' · <span class="sent__state ' + cls + '">' + escape(label) + "</span></div>" +
+        '<div class="note__text">' + escape(m.text) + "</div></div>";
+    }).join("");
+
+    box.innerHTML =
+      '<div class="card">' +
+        '<h1 class="head__name">' + escape(c.name || "без имени") + "</h1>" +
+        '<div class="head__meta">' + escape(c.who || "") +
+          (c.started ? " · обратился " + when(c.started) : "") +
+          (c.assigned ? " · ведёт " + escape(c.assigned) : "") + "</div>" +
+        (c.phone ? '<a class="phone" href="tel:' + escape(c.phone.replace(/[^\d+]/g, "")) +
+          '">' + escape(c.phone) + "</a>" : "") +
+        '<div class="actions" id="acts"></div>' +
+      "</div>" +
+      alerts +
+      '<div class="card"><h2>Ответы анкеты</h2><div class="ans">' + answersHtml(c) + "</div></div>" +
+      '<div class="card"><h2>Написать в чат</h2>' +
+        '<div class="tpl" id="tpl"></div>' +
+        '<textarea id="reply" placeholder="Короткое сообщение человеку в чат бота"></textarea>' +
+        '<div class="actions"><button class="btn" id="send" type="button">Отправить в чат</button></div>' +
+        '<div class="warn">Сообщение придёт человеку от имени бота и будет подписано вашим именем. ' +
+        'Это способ быстро связаться, а не давать медицинские рекомендации: если состояние острое — звоните.</div>' +
+        (sent ? '<h2 style="margin-top:16px">Отправленные</h2><div class="notes">' + sent + "</div>" : "") +
+      "</div>" +
+      '<div class="card"><h2>Заметки</h2>' +
+        '<textarea id="note" placeholder="Что выяснили, о чём договорились"></textarea>' +
+        '<div class="actions"><button class="btn btn--ghost" id="addnote" type="button">Добавить заметку</button></div>' +
+        '<div class="notes" style="margin-top:14px">' + notes + "</div>" +
+      "</div>";
+
+    // статусы и «взять в работу»
+    var acts = $("#acts");
+    state.statuses.forEach(function (s) {
+      var b = document.createElement("button");
+      b.className = "btn btn--ghost" + (c.status === s ? " on" : "");
+      b.textContent = s;
+      b.addEventListener("click", function () {
+        api("/api/case/" + c.user_id + "/status", { status: s })
+          .then(load).then(function () { toast("Статус: " + s); });
+      });
+      acts.appendChild(b);
+    });
+    var take = document.createElement("button");
+    take.className = "btn btn--ghost";
+    take.textContent = "Взять в работу";
+    take.addEventListener("click", function () {
+      api("/api/case/" + c.user_id + "/assign", {})
+        .then(load).then(function () { toast("Записали за вами"); });
+    });
+    acts.appendChild(take);
+
+    // готовые ответы
+    var templates = [
+      "Здравствуйте! Получили ваше обращение, координатор свяжется с вами сегодня.",
+      "Здравствуйте! Уточните, пожалуйста, удобное время для звонка.",
+      "Здравствуйте! Мы передали ваше обращение специалисту, он позвонит в ближайшее время.",
+      "Если состояние ухудшилось — не ждите нашего звонка, вызывайте скорую по номеру 103.",
+    ];
+    var tpl = $("#tpl");
+    templates.forEach(function (t) {
+      var b = document.createElement("button");
+      b.type = "button";
+      b.textContent = t.length > 34 ? t.slice(0, 32) + "…" : t;
+      b.title = t;
+      b.addEventListener("click", function () { $("#reply").value = t; });
+      tpl.appendChild(b);
+    });
+
+    $("#send").addEventListener("click", function () {
+      var text = $("#reply").value.trim();
+      if (!text) { toast("Сообщение пустое"); return; }
+      this.disabled = true;
+      api("/api/case/" + c.user_id + "/reply", { text: text })
+        .then(function () { $("#reply").value = ""; return load(); })
+        .then(function () { toast("В очереди на отправку"); })
+        .catch(function (e) { toast(e.message); })
+        .finally(function () { var b = $("#send"); if (b) b.disabled = false; });
+    });
+
+    $("#addnote").addEventListener("click", function () {
+      var text = $("#note").value.trim();
+      if (!text) { toast("Заметка пустая"); return; }
+      api("/api/case/" + c.user_id + "/note", { text: text })
+        .then(function () { $("#note").value = ""; return load(); })
+        .then(function () { toast("Заметка добавлена"); })
+        .catch(function (e) { toast(e.message); });
+    });
+  }
+
+  /* ------------------------------------------------------------ загрузка */
+
+  function load() {
+    return api("/api/cases").then(function (d) {
+      state.cases = d.cases;
+      state.questions = d.questions;
+      state.statuses = d.statuses;
+      $("#who").textContent = d.operator || "";
+      renderList();
+      renderDetail();
+    });
+  }
+
+  document.querySelectorAll(".chip").forEach(function (chip) {
+    chip.addEventListener("click", function () {
+      document.querySelectorAll(".chip").forEach(function (c) { c.classList.remove("on"); });
+      chip.classList.add("on");
+      state.filter = chip.getAttribute("data-status");
+      renderList();
+    });
+  });
+
+  $("#search").addEventListener("input", function () {
+    state.query = this.value.trim();
+    renderList();
+  });
+
+  $("#refresh").addEventListener("click", function () {
+    load().then(function () { toast("Обновлено"); });
+  });
+
+  $("#logout").addEventListener("click", function () {
+    api("/api/logout", {}).then(function () { window.location = "/login"; });
+  });
+
+  load().catch(function () {});
+  // Новые обращения приходят, пока оператор смотрит в экран
+  setInterval(function () { load().catch(function () {}); }, 30000);
+})();
+</script>
+</body>
+</html>

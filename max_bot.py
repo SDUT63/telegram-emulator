@@ -121,6 +121,36 @@ def build_dispatcher(survey: Survey):
     return dp
 
 
+async def outbox_worker(bot) -> None:
+    """Отправляет сообщения, которые оператор поставил в очередь из CRM.
+
+    CRM не может писать людям сама: связь с MAX есть только у бота. Поэтому
+    она складывает сообщения файлами в папку outbox, а бот их разбирает.
+    Каждое сообщение — отдельный файл, так что два процесса никогда не
+    пишут в один и тот же файл и блокировки не нужны.
+    """
+    import crm_store
+
+    while True:
+        try:
+            for message in crm_store.pending_messages():
+                text = (
+                    f"{message['text']}\n\n"
+                    f"— {message['who']}, служба долговременного ухода"
+                )
+                try:
+                    await bot.send_message(user_id=int(message["user_id"]), text=text)
+                    crm_store.mark_sent(message)
+                    log.info("Оператор %s написал %s", message["who"], message["user_id"])
+                except Exception as error:  # noqa: BLE001
+                    crm_store.mark_sent(message, error=str(error))
+                    log.warning("Не отправилось %s: %s", message["user_id"], error)
+        except Exception as error:  # noqa: BLE001
+            # Очередь не должна ронять бота: анкеты важнее
+            log.warning("Очередь сообщений: %s", error)
+        await asyncio.sleep(3)
+
+
 async def main() -> None:
     token = read_token()
 
@@ -216,7 +246,12 @@ async def main() -> None:
     except Exception:  # noqa: BLE001 — подписки может не быть, это нормально
         pass
 
-    await dp.start_polling(bot)
+    # Очередь сообщений от операторов крутится рядом с опросом MAX
+    queue = asyncio.create_task(outbox_worker(bot))
+    try:
+        await dp.start_polling(bot)
+    finally:
+        queue.cancel()
 
 
 if __name__ == "__main__":
