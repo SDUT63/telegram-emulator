@@ -77,12 +77,113 @@ def read_token() -> str:
     sys.exit(1)
 
 
+# Команды, которые видно в меню бота внутри MAX. Без этого списка меню
+# пустое, и человек не понимает, что боту вообще можно написать.
+COMMANDS = [
+    ("start", "Начать анкету"),
+    ("answers", "Показать, что уже заполнено"),
+    ("help", "Что можно написать боту"),
+    ("cancel", "Прервать анкету"),
+]
+
+BUTTON_LIMIT = 64  # столько символов помещается на кнопке MAX
+
+
+def _fits(text: str) -> str:
+    return text if len(text) <= BUTTON_LIMIT else text[: BUTTON_LIMIT - 1] + "…"
+
+
+def keyboard_for(survey: Survey, user_id: str):
+    """Кнопки под тем вопросом, на котором человек стоит сейчас.
+
+    Варианты ответа приходят из анкеты как обычные данные — про кнопки она
+    ничего не знает. Ответ кнопкой идёт тем же путём, что и напечатанный
+    номер, поэтому проверки и предупреждения работают одинаково, а печатать
+    номера по-прежнему можно.
+    """
+    from maxapi.enums.intent import Intent
+    from maxapi.types.attachments.buttons import CallbackButton
+    from maxapi.utils.inline_keyboard import InlineKeyboardBuilder
+
+    keyboard = InlineKeyboardBuilder()
+    spot = survey.current(user_id)
+
+    if spot is None:
+        # Анкета закончена: оставляем только то, что осмысленно нажать
+        keyboard.row(CallbackButton(text="Посмотреть мои ответы", payload="m"))
+        keyboard.row(CallbackButton(text="Заполнить заново", payload="n"))
+        return keyboard.as_markup()
+
+    step, question = spot
+    if question["kind"] != "choice":
+        return None
+
+    options: list[str] = question["options"]
+    multi = bool(question.get("multi"))
+    picked = survey.picked(user_id, step) if multi else []
+
+    for index, name in enumerate(options):
+        if multi:
+            mark = "✓ " if index in picked else ""
+            keyboard.row(
+                CallbackButton(
+                    text=_fits(mark + name),
+                    payload=f"t:{step}:{index}",
+                    intent=Intent.POSITIVE if index in picked else Intent.DEFAULT,
+                )
+            )
+        else:
+            keyboard.row(
+                CallbackButton(text=_fits(name), payload=f"a:{step}:{index}")
+            )
+
+    if multi:
+        keyboard.row(
+            CallbackButton(
+                text="Готово" + (f" ({len(picked)})" if picked else ""),
+                payload=f"d:{step}",
+                intent=Intent.POSITIVE if picked else Intent.DEFAULT,
+            )
+        )
+    if not question.get("required", True):
+        keyboard.row(CallbackButton(text="Пропустить вопрос", payload=f"s:{step}"))
+
+    person = survey.state.get(user_id) or {}
+    if person.get("history"):
+        keyboard.row(CallbackButton(text="← Вернуться назад", payload="b"))
+
+    return keyboard.as_markup()
+
+
 def build_dispatcher(survey: Survey):
     """Собрать обработчики сообщений. Отдельная функция — чтобы её было видно."""
     from maxapi import Dispatcher
-    from maxapi.types import BotStarted, MessageCreated
+    from maxapi.types import BotStarted, MessageCallback, MessageCreated
 
     dp = Dispatcher()
+
+    def note_if_finished(user_id: str, was_done: bool) -> None:
+        """Сводка в окно бота, как только анкета закрылась."""
+        person = survey.state.get(user_id, {})
+        if person.get("finished") and not was_done:
+            print()
+            print("  ── НОВОЕ ОБРАЩЕНИЕ " + "─" * 39)
+            print("  " + survey.brief(user_id))
+            print("  " + "─" * 58)
+            print()
+        started, finished = survey.stats()
+        log.info("Всего обращений: %s, заполнено до конца: %s", started, finished)
+
+    async def say(bot, chat_id, user_id: str, text: str) -> None:
+        """Отправить ответ вместе с кнопками текущего вопроса."""
+        markup = keyboard_for(survey, user_id)
+        attachments = [markup] if markup else None
+        if chat_id is not None:
+            await bot.send_message(chat_id=chat_id, text=text, attachments=attachments)
+        else:
+            await bot.send_message(
+                user_id=int(user_id), text=text, attachments=attachments
+            )
 
     @dp.bot_started()
     async def on_started(event: BotStarted) -> None:
@@ -90,33 +191,107 @@ def build_dispatcher(survey: Survey):
         chat_id, user_id = event.get_ids()
         log.info("Новый человек: %s", user_id)
         text = survey.start(str(user_id))
-        await event.bot.send_message(chat_id=chat_id, text=text)
+        await say(event.bot, chat_id, str(user_id), text)
 
     @dp.message_created()
     async def on_message(event: MessageCreated) -> None:
         """Любое сообщение в диалоге."""
         chat_id, user_id = event.get_ids()
-        incoming = (event.message.body.text or "").strip()
+        body = event.message.body
+        incoming = ((body.text if body else None) or "").strip()
         log.info("%s: %s", user_id, incoming[:70] or "(без текста)")
 
-        person = survey.state.get(str(user_id), {})
-        was_done = bool(person.get("finished"))
-
+        was_done = bool(survey.state.get(str(user_id), {}).get("finished"))
         reply = survey.handle(str(user_id), incoming)
-        await event.message.answer(reply)
+        await say(event.bot, chat_id, str(user_id), reply)
+        note_if_finished(str(user_id), was_done)
 
-        # Как только анкета закрыта — показываем оператору сводку одной
-        # строкой, чтобы не лезть в таблицу за каждым обращением
-        person = survey.state.get(str(user_id), {})
-        if person.get("finished") and not was_done:
-            print()
-            print("  ── НОВОЕ ОБРАЩЕНИЕ " + "─" * 39)
-            print("  " + survey.brief(str(user_id)))
-            print("  " + "─" * 58)
-            print()
+    @dp.message_callback()
+    async def on_button(event: MessageCallback) -> None:
+        """Человек нажал кнопку под вопросом."""
+        chat_id, user_id = event.get_ids()
+        who = str(user_id)
+        parts = (event.callback.payload or "").split(":")
+        action = parts[0] if parts else ""
+        log.info("%s нажал: %s", who, event.callback.payload)
 
-        started, finished = survey.stats()
-        log.info("Всего обращений: %s, заполнено до конца: %s", started, finished)
+        # Кнопка от прошлого вопроса: сообщения в чате остаются, и нажать
+        # старую кнопку можно в любой момент. Молча применять её нельзя —
+        # ответ уйдёт не в тот вопрос.
+        def stale(step_text: str) -> bool:
+            spot = survey.current(who)
+            return not spot or str(spot[0]) != step_text
+
+        body = event.message.body if event.message else None
+        original = (body.text if body else None) or None
+
+        async def repaint(text: str | None, attachments: list) -> None:
+            """Переписать сообщение с кнопками. Его могли и удалить."""
+            try:
+                await event.edit(
+                    text=text, attachments=attachments, raise_if_not_exists=False
+                )
+            except Exception as error:  # noqa: BLE001
+                log.debug("Не удалось обновить кнопки: %s", error)
+                await event.ack()
+
+        if action == "t" and len(parts) == 3:
+            if not survey.toggle(who, int(parts[1]), int(parts[2])):
+                await event.ack(notification="Это кнопка от другого вопроса.")
+                return
+            await repaint(original, [keyboard_for(survey, who)])
+            return
+
+        was_done = bool(survey.state.get(who, {}).get("finished"))
+
+        if action in {"a", "s", "d"} and len(parts) >= 2 and stale(parts[1]):
+            await event.ack(notification="Это кнопка от другого вопроса.")
+            return
+
+        # chosen — что показать в самом сообщении вместо кнопок. В MAX
+        # нажатие кнопки не остаётся в переписке, и без такой пометки
+        # человек видит подряд одни вопросы, не понимая, что он ответил.
+        chosen = ""
+        if action == "a" and len(parts) == 3:
+            spot = survey.current(who)
+            chosen = spot[1]["options"][int(parts[2])] if spot else ""
+            reply = survey.answer_by_numbers(who, [int(parts[2]) + 1])
+        elif action == "s":
+            chosen = "пропущено"
+            reply = survey.handle(who, "далее")
+        elif action == "d":
+            step = int(parts[1])
+            picked = survey.picked(who, step)
+            spot = survey.current(who)
+            if picked:
+                options = spot[1]["options"] if spot else []
+                chosen = "; ".join(options[i] for i in picked if i < len(options))
+                reply = survey.answer_by_numbers(who, [i + 1 for i in picked])
+            elif spot and not spot[1].get("required", True):
+                chosen = "пропущено"
+                reply = survey.handle(who, "далее")
+            else:
+                await event.ack(notification="Отметьте хотя бы один вариант.")
+                return
+        elif action == "b":
+            reply = survey.handle(who, "назад")
+        elif action == "n":
+            reply = survey.start(who)
+        elif action == "m":
+            reply = survey.summary(who)
+        else:
+            await event.ack()
+            return
+
+        # Кнопки со старого сообщения убираем: иначе на один вопрос можно
+        # ответить дважды, а в переписке остаётся два живых набора кнопок
+        await repaint(
+            (original + "\n\n➤ " + chosen) if (original and chosen) else original,
+            [],
+        )
+
+        await say(event.bot, chat_id, who, reply)
+        note_if_finished(who, was_done)
 
     return dp
 
@@ -228,7 +403,9 @@ async def main() -> None:
     print("=" * 62)
     print(f"  Бот запущен: {name}" + (f" (@{username})" if username else ""))
     print()
-    print("  Найдите его в MAX и напишите ему любое сообщение.")
+    print("  Найдите его в MAX и напишите ему любое сообщение — анкета")
+    print("  начнётся сама. Варианты ответа приходят кнопками.")
+    print()
     print("  Ответы сохраняются в survey_responses.csv — файл открывается")
     print("  двойным щелчком в Excel.")
     print()
@@ -245,6 +422,19 @@ async def main() -> None:
         await bot.delete_webhook()
     except Exception:  # noqa: BLE001 — подписки может не быть, это нормально
         pass
+
+    # Меню команд внутри MAX. Без него человек открывает бота и видит пустой
+    # чат: непонятно, что писать. Список хранится на стороне MAX, поэтому
+    # достаточно отправить его при запуске.
+    from maxapi.types import BotCommand
+
+    try:
+        await bot.set_commands(
+            *(BotCommand(name=name, description=text) for name, text in COMMANDS)
+        )
+        log.info("Меню команд обновлено: %s", ", ".join("/" + n for n, _ in COMMANDS))
+    except Exception as error:  # noqa: BLE001 — без меню бот всё равно работает
+        log.warning("Не удалось обновить меню команд: %s", error)
 
     # Очередь сообщений от операторов крутится рядом с опросом MAX
     queue = asyncio.create_task(outbox_worker(bot))

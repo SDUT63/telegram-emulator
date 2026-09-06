@@ -29,11 +29,13 @@ CSV_EXPORT = "survey_responses.csv"
 GREETING = (
     "Здравствуйте! Это служба долговременного ухода Тольятти.\n\n"
     "Задам несколько вопросов, чтобы координатор пришёл к вам "
-    "подготовленным. Почти везде нужно выбрать номер ответа.\n\n"
+    "подготовленным. Почти везде достаточно нажать кнопку с ответом.\n\n"
     "Если человеку плохо прямо сейчас — закройте анкету и звоните 103."
 )
 
 HELP = (
+    "Варианты ответа приходят кнопками — проще всего нажать нужную. "
+    "Если кнопок не видно, напишите номер ответа цифрой.\n\n"
     "Что можно написать в любой момент:\n\n"
     "далее — пропустить вопрос, если он не обязательный\n"
     "назад — вернуться к предыдущему вопросу\n"
@@ -55,12 +57,27 @@ DONE_SHORT = (
     "Если станет хуже — звоните 103."
 )
 
-RESTART_WORDS = {"заново", "start", "старт", "начать", "/start", "продолжить"}
-CANCEL_WORDS = {"отмена", "стоп", "cancel", "/cancel"}
+RESUMED = (
+    "Анкета не закончена — продолжаем с того места, где остановились.\n\n"
+    "Если хотите начать сначала, напишите «заново»."
+)
+
+ALREADY_DONE = (
+    "Анкета уже заполнена — координатор с вами свяжется.\n\n"
+    "«ответы» — посмотреть заполненное, «заново» — пройти снова."
+)
+
+# «заново» стирает ответы и начинает сначала — это осознанное действие.
+# «/start» и «начать» ведут себя бережнее: если анкета не дозаполнена,
+# они возвращают человека к тому же вопросу, а не выбрасывают ответы.
+RESTART_WORDS = {"заново", "начать заново", "/restart", "сначала"}
+BEGIN_WORDS = {"/start", "start", "старт", "начать", "начнём", "начнем"}
+CANCEL_WORDS = {"отмена", "стоп", "cancel", "/cancel", "/stop"}
 SUMMARY_WORDS = {"ответы", "результаты", "мои ответы", "/answers"}
 HELP_WORDS = {"помощь", "help", "/help", "?"}
 SKIP_WORDS = {"далее", "пропустить", "skip", "-"}
 BACK_WORDS = {"назад", "back"}
+CONTINUE_WORDS = {"продолжить", "продолжаем", "дальше"}
 
 EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]{2,}$")
 NO_WORDS = {"нет", "-", "—", "no", "нету", "отсутствует", "не знаю"}
@@ -117,6 +134,9 @@ class Survey:
             "finished": None,
             "shown_sections": [],
             "total_seen": 0,
+            # Что человек уже отметил кнопками в вопросе с несколькими
+            # ответами, пока не нажал «Готово»
+            "pending": None,
         }
 
     # ------------------------------------------------------- ход по вопросам
@@ -164,7 +184,14 @@ class Survey:
         text = (text or "").strip()
         low = text.lower()
 
-        if low in RESTART_WORDS and low != "продолжить":
+        # Первое сообщение от незнакомого человека начинает анкету, что бы
+        # он ни написал. Событие «открыл диалог» приходит не всегда — если
+        # полагаться только на него, человек пишет «здравствуйте» и получает
+        # придирку к формату ответа вместо приветствия.
+        if user_id not in self.state:
+            return self.start(user_id)
+
+        if low in RESTART_WORDS:
             return self.start(user_id)
         if low in HELP_WORDS:
             return HELP
@@ -180,13 +207,17 @@ class Survey:
         step = self._next(person["step"], answers)
 
         if step >= len(QUESTIONS) or person["finished"]:
-            return (
-                "Анкета уже заполнена — координатор с вами свяжется.\n\n"
-                "«ответы» — посмотреть заполненное, «заново» — пройти снова."
-            )
+            if low in BEGIN_WORDS:
+                return self.start(user_id)
+            return ALREADY_DONE
+
+        # «/start» на недозаполненной анкете возвращает к тому же вопросу.
+        # Стирать чужие ответы по такой безобидной команде нельзя.
+        if low in BEGIN_WORDS:
+            return RESUMED + "\n\n" + self._ask(user_id, step)
 
         # «продолжить» после предупреждения просто повторяет вопрос
-        if low == "продолжить":
+        if low in CONTINUE_WORDS:
             return self._ask(user_id, step)
 
         if low in BACK_WORDS:
@@ -241,6 +272,7 @@ class Survey:
         question = QUESTIONS[step]
         person["answers"][question["id"]] = value
         person["history"].append(step)
+        person["pending"] = None
         if person["started"] is None:
             person["started"] = datetime.now().isoformat(timespec="seconds")
 
@@ -303,15 +335,82 @@ class Survey:
             for number, name in enumerate(question["options"], 1):
                 parts.append(f"{number}. {name}")
             parts.append("")
+            # Кнопки рисует транспорт, но текст должен читаться и без них:
+            # в веб-версии или после перезапуска кнопки могут не появиться
             if question.get("multi"):
-                parts.append("Напишите номера через запятую, например: 1, 3")
+                parts.append(
+                    "Нажмите нужные кнопки, потом «Готово». "
+                    "Или напишите номера через запятую: 1, 3"
+                )
             else:
-                parts.append("Напишите номер ответа.")
+                parts.append("Нажмите кнопку с ответом или напишите его номер.")
 
         if not question.get("required", True):
-            parts.append("Можно пропустить: напишите «далее».")
+            parts.append("Можно пропустить: кнопка «Пропустить вопрос» или слово «далее».")
 
         return "\n".join(parts)
+
+    # ------------------------------------------------------- варианты ответа
+    # Всё, что нужно транспорту, чтобы показать варианты кнопками. Сама
+    # анкета о кнопках ничего не знает: она отдаёт данные, а как их
+    # нарисовать — дело max_bot.py. Ответ кнопкой проходит ровно тот же
+    # путь, что и напечатанный номер, поэтому проверки и предупреждения
+    # работают одинаково.
+
+    def current(self, user_id: str) -> tuple[int, dict[str, Any]] | None:
+        """Номер и содержание вопроса, на котором человек стоит сейчас."""
+        person = self.state.get(user_id)
+        if not person or person.get("finished"):
+            return None
+        step = self._next(person.get("step", 0), person.get("answers", {}))
+        if step >= len(QUESTIONS):
+            return None
+        return step, QUESTIONS[step]
+
+    @staticmethod
+    def _is_none_option(name: str) -> bool:
+        """«Ничего из перечисленного» и подобные — они исключают остальные."""
+        low = name.lower()
+        return low.startswith(("ничего", "не было", "нет,"))
+
+    def picked(self, user_id: str, step: int) -> list[int]:
+        """Что уже отмечено в вопросе с несколькими ответами."""
+        person = self.state.get(user_id) or {}
+        pending = person.get("pending") or {}
+        if pending.get("step") != step:
+            return []
+        return list(pending.get("picked", []))
+
+    def toggle(self, user_id: str, step: int, index: int) -> bool:
+        """Отметить или снять вариант. False — кнопка от другого вопроса."""
+        spot = self.current(user_id)
+        if not spot or spot[0] != step:
+            return False
+
+        options: list[str] = spot[1].get("options", [])
+        if not 0 <= index < len(options):
+            return False
+
+        person = self._person(user_id)
+        picked = self.picked(user_id, step)
+
+        if index in picked:
+            picked.remove(index)
+        elif self._is_none_option(options[index]):
+            # «Ничего из перечисленного» снимает всё остальное — иначе
+            # получается ответ, который сам себе противоречит
+            picked = [index]
+        else:
+            picked = [i for i in picked if not self._is_none_option(options[i])]
+            picked.append(index)
+
+        person["pending"] = {"step": step, "picked": sorted(picked)}
+        self.save()
+        return True
+
+    def answer_by_numbers(self, user_id: str, numbers: list[int]) -> str:
+        """Ответ кнопками. Идёт тем же путём, что и напечатанные номера."""
+        return self.handle(user_id, ", ".join(str(n) for n in numbers))
 
     # ------------------------------------------------------------ проверка
 

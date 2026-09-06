@@ -214,6 +214,74 @@ def check_library() -> str | None:
     return url
 
 
+def check_bot() -> str:
+    """Живая проверка: отзывается ли бот на наш токен и что у него в меню.
+
+    Связь может быть в порядке, а бот молчать — потому что токен не тот
+    или окно с ботом просто не запущено. Отличить одно от другого можно
+    только настоящим запросом.
+    """
+    import asyncio
+    import logging
+
+    here = os.path.dirname(os.path.abspath(__file__))
+    token = (os.getenv("MAX_BOT_TOKEN") or "").strip()
+    if not token:
+        path = os.path.join(here, "token.txt")
+        if not os.path.exists(path):
+            say("  [!]       token.txt не найден — боту нечем представиться")
+            return "нет токена"
+        with open(path, encoding="utf-8-sig") as fh:
+            for line in fh:
+                line = line.strip()
+                if line and not line.startswith("#"):
+                    token = line
+                    break
+    if not token:
+        say("  [!]       token.txt пустой")
+        return "нет токена"
+
+    certs = os.path.join(here, "certs.pem")
+    if os.path.exists(certs):
+        os.environ.setdefault("SSL_CERT_FILE", certs)
+
+    for name in ("backoff", "maxapi"):
+        logging.getLogger(name).setLevel(logging.CRITICAL)
+
+    async def ask() -> tuple[object | None, str]:
+        from maxapi import Bot
+
+        bot = Bot(token)
+        try:
+            return await bot.get_me(), ""
+        except Exception as error:  # noqa: BLE001
+            return None, str(error)
+        finally:
+            await bot.close_session()
+
+    try:
+        me, error = asyncio.run(ask())
+    except Exception as error:  # noqa: BLE001
+        me, error = None, str(error)
+
+    if me is None:
+        say("  [!]       MAX не принял токен")
+        say(f"            {error[:120]}")
+        return "токен не принят"
+
+    title = getattr(me, "name", None) or getattr(me, "first_name", "") or "без имени"
+    username = getattr(me, "username", None)
+    say(f"  [ок]      токен рабочий: {title}" + (f" (@{username})" if username else ""))
+
+    commands = getattr(me, "commands", None)
+    if commands:
+        say("  меню команд: " + ", ".join("/" + str(getattr(c, "name", c)) for c in commands))
+    else:
+        say("  [инфо]    меню команд пустое")
+        say("            оно заполняется при запуске: python max_bot.py")
+    return "ок"
+
+
 def main() -> int:
     say()
     say(LINE)
@@ -299,8 +367,34 @@ def main() -> int:
         return 1
 
     if working:
-        say("  Связь с MAX в порядке. Если бот всё равно не запускается,")
-        say("  дело не в сети, а в токене — проверьте token.txt.")
+        say("  Связь с MAX в порядке.")
+        say()
+        say("--- сам бот ---")
+        verdict = check_bot()
+        say()
+        if verdict == "нет токена":
+            say("  Сеть работает, дело за токеном. Создайте рядом с ботом")
+            say("  файл token.txt и вставьте туда токен одной строкой.")
+            say()
+            say("  Где взять: найдите в MAX бота @MasterBot, отправьте /list,")
+            say("  выберите своего бота и скопируйте выданный токен.")
+            say()
+            return 1
+        if verdict != "ок":
+            say("  Сеть работает, но MAX не принимает этот токен. Возьмите новый:")
+            say("  найдите в MAX бота @MasterBot, отправьте /list, выберите")
+            say("  своего бота и скопируйте токен в token.txt одной строкой.")
+            say()
+            return 1
+        say("  И сеть, и токен в порядке. Если бот молчит в чате — значит,")
+        say("  он просто не запущен: отвечает не MAX, а программа на вашем")
+        say("  компьютере. Откройте окно и оставьте его открытым:")
+        say()
+        say("      python max_bot.py")
+        say()
+        say("  Кнопка мини-приложения работает и без запущенного бота —")
+        say("  её показывает сам MAX. Поэтому по ней нельзя понять, жив бот")
+        say("  или нет.")
         say()
         return 0
 
