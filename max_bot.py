@@ -88,9 +88,30 @@ COMMANDS = [
 
 BUTTON_LIMIT = 64  # столько символов помещается на кнопке MAX
 
+# Насколько короткой должна быть самая длинная подпись, чтобы варианты
+# встали в два столбца. Два столбца вдвое укорачивают список — но только
+# пока подписи целиком помещаются в половину ширины экрана и их не режет.
+# У отмечаемых вариантов впереди ещё галочка, поэтому запас меньше.
+TWO_COLUMNS_AT = 22
+TWO_COLUMNS_AT_MULTI = 20
+
+# Отмеченное помечаем зелёной галочкой, неотмеченное — ничем. Ставить
+# значок и на неотмеченные значит удвоить пестроту ради разницы, которую
+# и так видно: кнопки выровнены по центру, ряд не разъезжается.
+MARK_ON = "✅ "
+MARK_OFF = ""
+
 
 def _fits(text: str) -> str:
     return text if len(text) <= BUTTON_LIMIT else text[: BUTTON_LIMIT - 1] + "…"
+
+
+def _columns(options: list[str], multi: bool) -> int:
+    """Один столбец или два. Решаем по самой длинной подписи."""
+    limit = TWO_COLUMNS_AT_MULTI if multi else TWO_COLUMNS_AT
+    if len(options) < 3:
+        return 1
+    return 2 if max(len(name) for name in options) <= limit else 1
 
 
 def keyboard_for(survey: Survey, user_id: str):
@@ -100,6 +121,10 @@ def keyboard_for(survey: Survey, user_id: str):
     ничего не знает. Ответ кнопкой идёт тем же путём, что и напечатанный
     номер, поэтому проверки и предупреждения работают одинаково, а печатать
     номера по-прежнему можно.
+
+    Держим список коротким. Варианты встают в два столбца, когда подписи
+    это позволяют; служебные кнопки — «назад», «пропустить», «готово» —
+    занимают одну строку внизу, а не по строке каждая.
     """
     from maxapi.enums.intent import Intent
     from maxapi.types.attachments.buttons import CallbackButton
@@ -110,8 +135,10 @@ def keyboard_for(survey: Survey, user_id: str):
 
     if spot is None:
         # Анкета закончена: оставляем только то, что осмысленно нажать
-        keyboard.row(CallbackButton(text="Посмотреть мои ответы", payload="m"))
-        keyboard.row(CallbackButton(text="Заполнить заново", payload="n"))
+        keyboard.row(
+            CallbackButton(text="Мои ответы", payload="m"),
+            CallbackButton(text="Заполнить заново", payload="n"),
+        )
         return keyboard.as_markup()
 
     step, question = spot
@@ -121,36 +148,56 @@ def keyboard_for(survey: Survey, user_id: str):
     options: list[str] = question["options"]
     multi = bool(question.get("multi"))
     picked = survey.picked(user_id, step) if multi else []
+    nothing = Survey.none_index(question) if multi else None
 
-    for index, name in enumerate(options):
+    # «Ничего из этого нет» — не признак наравне с остальными, а ответ
+    # «признаков нет». Ему место внизу, отдельно от списка
+    shown = [i for i in range(len(options)) if i != nothing]
+
+    row: list = []
+    per_row = _columns([options[i] for i in shown], multi)
+    for index in shown:
         if multi:
-            mark = "✓ " if index in picked else ""
-            keyboard.row(
-                CallbackButton(
-                    text=_fits(mark + name),
-                    payload=f"t:{step}:{index}",
-                    intent=Intent.POSITIVE if index in picked else Intent.DEFAULT,
-                )
+            on = index in picked
+            button = CallbackButton(
+                text=_fits((MARK_ON if on else MARK_OFF) + options[index]),
+                payload=f"t:{step}:{index}",
+                intent=Intent.POSITIVE if on else Intent.DEFAULT,
             )
         else:
-            keyboard.row(
-                CallbackButton(text=_fits(name), payload=f"a:{step}:{index}")
-            )
+            button = CallbackButton(text=_fits(options[index]), payload=f"a:{step}:{index}")
+        row.append(button)
+        if len(row) == per_row:
+            keyboard.row(*row)
+            row = []
+    if row:
+        keyboard.row(*row)
 
-    if multi:
-        keyboard.row(
-            CallbackButton(
-                text="Готово" + (f" ({len(picked)})" if picked else ""),
-                payload=f"d:{step}",
-                intent=Intent.POSITIVE if picked else Intent.DEFAULT,
-            )
-        )
-    if not question.get("required", True):
-        keyboard.row(CallbackButton(text="Пропустить вопрос", payload=f"s:{step}"))
-
+    # Нижняя строка: одно главное действие и, если есть куда, «назад»
+    bottom: list = []
     person = survey.state.get(user_id) or {}
     if person.get("history"):
-        keyboard.row(CallbackButton(text="← Вернуться назад", payload="b"))
+        bottom.append(CallbackButton(text="← Назад", payload="b"))
+
+    if multi and picked:
+        bottom.append(
+            CallbackButton(
+                text=f"Готово · {len(picked)}",
+                payload=f"d:{step}",
+                intent=Intent.POSITIVE,
+            )
+        )
+    elif multi and nothing is not None:
+        bottom.append(
+            CallbackButton(text=options[nothing], payload=f"a:{step}:{nothing}")
+        )
+    elif not question.get("required", True):
+        bottom.append(CallbackButton(text="Пропустить", payload=f"s:{step}"))
+    elif multi:
+        bottom.append(CallbackButton(text="Готово", payload=f"d:{step}"))
+
+    if bottom:
+        keyboard.row(*bottom)
 
     return keyboard.as_markup()
 
@@ -236,10 +283,17 @@ def build_dispatcher(survey: Survey):
                 await event.ack()
 
         if action == "t" and len(parts) == 3:
-            if not survey.toggle(who, int(parts[1]), int(parts[2])):
+            step = int(parts[1])
+            if not survey.toggle(who, step, int(parts[2])):
                 await event.ack(notification="Это кнопка от другого вопроса.")
                 return
-            await repaint(original, [keyboard_for(survey, who)])
+            # Отмеченное пишем словами прямо в сообщении: галочка на кнопке
+            # видна не всем и не всегда, а строка читается однозначно
+            text = survey.question_text(who)
+            names = survey.picked_names(who, step)
+            if names:
+                text += "\n\nОтмечено: " + ", ".join(names)
+            await repaint(text, [keyboard_for(survey, who)])
             return
 
         was_done = bool(survey.state.get(who, {}).get("finished"))
@@ -247,6 +301,14 @@ def build_dispatcher(survey: Survey):
         if action in {"a", "s", "d"} and len(parts) >= 2 and stale(parts[1]):
             await event.ack(notification="Это кнопка от другого вопроса.")
             return
+
+        # Заголовок вопроса запоминаем до ответа: после него survey уже
+        # смотрит на следующий вопрос
+        asked = (
+            survey.question_text(who, hint=False)
+            if action in {"a", "s", "d"}
+            else None
+        )
 
         # chosen — что показать в самом сообщении вместо кнопок. В MAX
         # нажатие кнопки не остаётся в переписке, и без такой пометки
@@ -265,7 +327,7 @@ def build_dispatcher(survey: Survey):
             spot = survey.current(who)
             if picked:
                 options = spot[1]["options"] if spot else []
-                chosen = "; ".join(options[i] for i in picked if i < len(options))
+                chosen = ", ".join(options[i] for i in picked if i < len(options))
                 reply = survey.answer_by_numbers(who, [i + 1 for i in picked])
             elif spot and not spot[1].get("required", True):
                 chosen = "пропущено"
@@ -285,10 +347,10 @@ def build_dispatcher(survey: Survey):
 
         # Кнопки со старого сообщения убираем: иначе на один вопрос можно
         # ответить дважды, а в переписке остаётся два живых набора кнопок
-        await repaint(
-            (original + "\n\n➤ " + chosen) if (original and chosen) else original,
-            [],
-        )
+        if asked and chosen:
+            await repaint(asked + "\n\n➤ " + chosen, [])
+        else:
+            await repaint(original, [])
 
         await say(event.bot, chat_id, who, reply)
         note_if_finished(who, was_done)
@@ -331,7 +393,8 @@ async def main() -> None:
 
     from maxapi import Bot
 
-    survey = Survey()
+    # Варианты рисуем кнопками, поэтому перечислять их ещё и текстом не надо
+    survey = Survey(list_options=False)
     bot = Bot(token)
     dp = build_dispatcher(survey)
 

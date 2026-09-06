@@ -28,17 +28,15 @@ CSV_EXPORT = "survey_responses.csv"
 
 GREETING = (
     "Здравствуйте! Это служба долговременного ухода Тольятти.\n\n"
-    "Задам несколько вопросов, чтобы координатор пришёл к вам "
-    "подготовленным. Почти везде достаточно нажать кнопку с ответом.\n\n"
-    "Если человеку плохо прямо сейчас — закройте анкету и звоните 103."
+    "Несколько вопросов — и с вами свяжется координатор.\n\n"
+    "Если человеку плохо прямо сейчас — звоните 103, анкета подождёт."
 )
 
 HELP = (
-    "Варианты ответа приходят кнопками — проще всего нажать нужную. "
-    "Если кнопок не видно, напишите номер ответа цифрой.\n\n"
-    "Что можно написать в любой момент:\n\n"
-    "далее — пропустить вопрос, если он не обязательный\n"
+    "Отвечать проще кнопками. Если их не видно — напишите номер ответа.\n\n"
+    "Слова, которые понимаю в любой момент:\n\n"
     "назад — вернуться к предыдущему вопросу\n"
+    "далее — пропустить необязательный вопрос\n"
     "ответы — показать, что уже заполнено\n"
     "заново — начать анкету сначала\n"
     "отмена — прервать\n\n"
@@ -82,12 +80,29 @@ CONTINUE_WORDS = {"продолжить", "продолжаем", "дальше"
 EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]{2,}$")
 NO_WORDS = {"нет", "-", "—", "no", "нету", "отсутствует", "не знаю"}
 
+# Раздел действует до следующего заголовка, а не только на первом вопросе:
+# строка «Подвижность · вопрос 8 из 29» говорит человеку, где он находится,
+# и стоит она недорого — одна короткая строка.
+SECTIONS: list[str] = []
+for _question in QUESTIONS:
+    SECTIONS.append(_question.get("section") or (SECTIONS[-1] if SECTIONS else ""))
+
 
 class Survey:
     """Ведёт анкету по каждому человеку и хранит состояние между запусками."""
 
-    def __init__(self, storage_path: str = STORAGE) -> None:
+    def __init__(
+        self, storage_path: str = STORAGE, *, list_options: bool = True
+    ) -> None:
+        """list_options=False — если варианты рисует сам транспорт.
+
+        В чате варианты приходят кнопками, и перечислять их ещё и текстом
+        значит показать человеку один и тот же список дважды. Сообщение
+        разбухает, а читать его страшно. В командной строке и в разборе
+        анкеты кнопок нет, поэтому там список нужен.
+        """
         self.storage_path = storage_path
+        self.list_options = list_options
         self.state: dict[str, dict[str, Any]] = {}
         self.load()
 
@@ -132,7 +147,6 @@ class Survey:
             "history": [],
             "started": None,
             "finished": None,
-            "shown_sections": [],
             "total_seen": 0,
             # Что человек уже отметил кнопками в вопросе с несколькими
             # ответами, пока не нажал «Готово»
@@ -315,40 +329,49 @@ class Survey:
         self.save()
         return "Вернулись назад.\n\n" + self._ask(user_id, previous)
 
-    def _ask(self, user_id: str, step: int) -> str:
+    def _ask(self, user_id: str, step: int, *, hint: bool = True) -> str:
+        """Сообщение с вопросом.
+
+        Держим его коротким: строка «где я», сам вопрос и, только если без
+        неё непонятно, одна строка подсказки. Остальное человек видит
+        кнопками — дублировать варианты ещё и текстом значит показать один
+        и тот же список дважды.
+        """
         person = self._person(user_id)
         question = QUESTIONS[step]
-        parts: list[str] = []
 
-        section = question.get("section")
-        if section and section not in person["shown_sections"]:
-            person["shown_sections"].append(section)
-            parts.append(f"— {section} —")
-            self.save()
+        where = self._progress(person, step)
+        if SECTIONS[step]:
+            where = f"{SECTIONS[step]} · {where.lower()}"
 
-        parts.append(self._progress(person, step))
-        parts.append("")
-        parts.append(question["text"])
+        parts = [where, "", question["text"]]
 
-        if question["kind"] == "choice":
+        if question["kind"] == "choice" and self.list_options:
+            # Без кнопок список нужен: иначе отвечать не на что
             parts.append("")
             for number, name in enumerate(question["options"], 1):
                 parts.append(f"{number}. {name}")
             parts.append("")
-            # Кнопки рисует транспорт, но текст должен читаться и без них:
-            # в веб-версии или после перезапуска кнопки могут не появиться
             if question.get("multi"):
-                parts.append(
-                    "Нажмите нужные кнопки, потом «Готово». "
-                    "Или напишите номера через запятую: 1, 3"
-                )
+                parts.append("Напишите номера через запятую, например: 1, 3")
             else:
-                parts.append("Нажмите кнопку с ответом или напишите его номер.")
-
-        if not question.get("required", True):
-            parts.append("Можно пропустить: кнопка «Пропустить вопрос» или слово «далее».")
+                parts.append("Напишите номер ответа.")
+            if not question.get("required", True):
+                parts.append("Можно пропустить: напишите «далее».")
+        elif hint and question.get("multi"):
+            parts.append("")
+            parts.append("Отметьте всё, что подходит.")
 
         return "\n".join(parts)
+
+    def question_text(self, user_id: str, *, hint: bool = True) -> str:
+        """Текст текущего вопроса — чтобы транспорт мог переписать сообщение.
+
+        hint=False для уже отвеченного вопроса: подсказка, как отвечать,
+        в переписке потом только мешает.
+        """
+        spot = self.current(user_id)
+        return "" if spot is None else self._ask(user_id, spot[0], hint=hint)
 
     # ------------------------------------------------------- варианты ответа
     # Всё, что нужно транспорту, чтобы показать варианты кнопками. Сама
@@ -369,9 +392,20 @@ class Survey:
 
     @staticmethod
     def _is_none_option(name: str) -> bool:
-        """«Ничего из перечисленного» и подобные — они исключают остальные."""
-        low = name.lower()
-        return low.startswith(("ничего", "не было", "нет,"))
+        """«Ничего из этого нет» и подобные — они исключают остальные."""
+        return name.lower().startswith("ничего")
+
+    @classmethod
+    def none_index(cls, question: dict[str, Any]) -> int | None:
+        """Где в списке вариант «ничего из этого нет», если он есть.
+
+        Транспорт показывает его не в общем ряду, а отдельной кнопкой
+        внизу: он не признак наравне с остальными, а ответ «признаков нет».
+        """
+        for index, name in enumerate(question.get("options", [])):
+            if cls._is_none_option(name):
+                return index
+        return None
 
     def picked(self, user_id: str, step: int) -> list[int]:
         """Что уже отмечено в вопросе с несколькими ответами."""
@@ -380,6 +414,14 @@ class Survey:
         if pending.get("step") != step:
             return []
         return list(pending.get("picked", []))
+
+    def picked_names(self, user_id: str, step: int) -> list[str]:
+        """Отмеченное словами — чтобы написать его прямо в сообщении."""
+        spot = self.current(user_id)
+        if not spot or spot[0] != step:
+            return []
+        options = spot[1].get("options", [])
+        return [options[i] for i in self.picked(user_id, step) if i < len(options)]
 
     def toggle(self, user_id: str, step: int, index: int) -> bool:
         """Отметить или снять вариант. False — кнопка от другого вопроса."""
@@ -555,12 +597,12 @@ def _demo() -> None:
 
     # Тяжёлый лежачий пациент — проходим подробную часть целиком
     replies = [
-        "2",              # о близком
+        "2",              # о близком человеке
         "Анна",
         "89171234567",
         "4",              # 85 и старше
-        "2, 8",           # боль + рана на коже
-        "6",              # регулярная помощь на дому
+        "4, 8",           # боль + покраснение на коже
+        "6",              # помощь по уходу на дому
         "1",              # продолжить
         "5",              # не встаёт с постели
         "3",              # не переворачивается сам
@@ -568,16 +610,16 @@ def _demo() -> None:
         "3",              # кормить с ложки
         "4",              # поперхивается -> предупреждение
         "3", "4", "3",    # гигиена, туалет, одевание
-        "2", "2", "3",    # речь, ориентация, одна нельзя
+        "2", "2", "3",    # речь, ориентация, одного нельзя
         "3",              # боль постоянная
         "1, 3",           # боль мешает движению и сну
-        "2",              # мочевой катетер
+        "1",              # мочевой катетер
         "3",              # лекарства даём мы
-        "1",              # родственник живёт вместе
+        "1",              # родные, живём вместе
         "4",              # круглосуточно
         "4",              # уже не справляемся -> предупреждение
-        "1",              # ничего из оборудования
-        "2",              # инвалидность
+        "7",              # ничего из оборудования нет
+        "1",              # инвалидность
         "Живём на пятом этаже без лифта.",
     ]
 
