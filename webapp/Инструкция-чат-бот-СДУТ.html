@@ -41,19 +41,22 @@
   --caution:       #9A6B22;
   --caution-soft:  #F6EBD8;
 
-  /* Телефон внутри страницы — отдельный мирок: это чужое приложение,
-     и выглядеть оно должно как чужое приложение, а не как наш блок. */
-  --bezel:         #D9CFC0;
-  --screen:        #FFFFFF;
-  --chat:          #F2F4F5;
-  --bubble:        #FFFFFF;
-  --bubble-line:   #E6E9EB;
-  --bubble-ink:    #14212B;
-  --bubble-meta:   #7C8B93;
-  --mine:          #DCEFE9;
-  --key:           #FFFFFF;
-  --key-line:      #D9E0E3;
-  --key-ink:       #1F5257;
+  /* Телефон внутри страницы — это чужое приложение, и выглядеть оно
+     должно как чужое приложение. Цвета сняты пипеткой с записи экрана
+     настоящего MAX, поэтому в обеих темах страницы они одни и те же:
+     человек должен узнать свой мессенджер, а не нашу страницу. */
+  --bezel:         #2A2B33;
+  --screen:        #121212;
+  --chat:          #121212;
+  --bar:           #15161B;
+  --bubble:        #36394D;
+  --bubble-ink:    #FAFBFF;
+  --bubble-meta:   #9A9CAB;
+  --mine:          #7257CD;
+  --key:           #3B3D71;
+  --key-ink:       #EDEEFB;
+  --key-on:        #4B4E8C;
+  --open:          #0075FC;
 
   --f-body: "Golos Text", "Segoe UI", Roboto, -apple-system, system-ui, sans-serif;
   --f-chat: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
@@ -87,17 +90,7 @@
     --caution:       #DFAE55;
     --caution-soft:  #2B2214;
 
-    --bezel:         #26383A;
-    --screen:        #0E1719;
-    --chat:          #131F22;
-    --bubble:        #1C2B2E;
-    --bubble-line:   #26383B;
-    --bubble-ink:    #E4EDEC;
-    --bubble-meta:   #8B9DA0;
-    --mine:          #1E3F3A;
-    --key:           #1C2B2E;
-    --key-line:      #2C4145;
-    --key-ink:       #8FD3C2;
+    /* Телефон в тёмной теме не меняется: MAX выглядит так всегда */
   }
 }
 :root[data-theme="dark"] {
@@ -123,17 +116,7 @@
   --caution:       #DFAE55;
   --caution-soft:  #2B2214;
 
-  --bezel:         #26383A;
-  --screen:        #0E1719;
-  --chat:          #131F22;
-  --bubble:        #1C2B2E;
-  --bubble-line:   #26383B;
-  --bubble-ink:    #E4EDEC;
-  --bubble-meta:   #8B9DA0;
-  --mine:          #1E3F3A;
-  --key:           #1C2B2E;
-  --key-line:      #2C4145;
-  --key-ink:       #8FD3C2;
+  /* Телефон в тёмной теме не меняется: MAX выглядит так всегда */
 }
 
 *, *::before, *::after { box-sizing: border-box; }
@@ -378,107 +361,143 @@ kbd {
   max-width: 100%;
   background: var(--bezel);
   border-radius: 30px;
-  padding: 9px;
-  box-shadow: 0 1px 2px rgba(22, 56, 74, .06), 0 18px 34px -22px rgba(22, 56, 74, .45);
+  padding: 8px;
+  box-shadow: 0 1px 2px rgba(20, 20, 30, .18), 0 20px 36px -22px rgba(20, 20, 30, .6);
 }
 .phone__screen {
   background: var(--screen);
-  border-radius: 22px;
+  border-radius: 23px;
   overflow: hidden;
 }
 .phone__bar {
-  display: flex; align-items: center; gap: 10px;
-  padding: 11px 13px;
-  background: var(--bubble);
-  border-bottom: 1px solid var(--bubble-line);
+  display: flex; align-items: center; gap: 9px;
+  padding: 10px 12px;
+  background: var(--bar);
   font-family: var(--f-chat);
 }
+.phone__back { color: var(--bubble-meta); font-size: 15px; line-height: 1; flex: none; }
 .phone__ava {
-  width: 30px; height: 30px; border-radius: 50%;
-  background: var(--accent-deep);
+  width: 28px; height: 28px; border-radius: 50%;
+  background: #1F5257;
   color: #FFFFFF;
   display: grid; place-items: center;
-  font: 700 9px/1 var(--f-body);
+  font: 700 8px/1 var(--f-body);
   flex: none;
 }
-.phone__who { font-size: 13px; font-weight: 600; color: var(--bubble-ink); line-height: 1.25; }
-.phone__sub { font-size: 11px; color: var(--bubble-meta); }
+.phone__who { font-size: 13px; font-weight: 700; color: var(--bubble-ink); line-height: 1.2; }
+.phone__sub { font-size: 10.5px; color: var(--bubble-meta); }
+
+/* Нижняя полоса MAX. Синяя кнопка «Открыть» — вход в наш справочник,
+   поэтому она в мануале должна быть видна. */
+.phone__foot {
+  display: flex; align-items: center; gap: 8px;
+  padding: 9px 11px;
+  background: var(--bar);
+  font-family: var(--f-chat);
+  font-size: 11.5px;
+  color: var(--bubble-meta);
+}
+.phone__open {
+  background: var(--open);
+  color: #FFFFFF;
+  border-radius: 100px;
+  padding: 5px 12px 5px 9px;
+  font-size: 11.5px;
+  font-weight: 600;
+  flex: none;
+  letter-spacing: .01em;
+}
 
 .chat {
   background: var(--chat);
-  padding: 12px 11px 14px;
+  padding: 11px 10px 13px;
   display: flex;
   flex-direction: column;
-  gap: 9px;
+  gap: 7px;
   font-family: var(--f-chat);
-  min-height: 210px;
+  min-height: 190px;
 }
 .msg {
   background: var(--bubble);
-  border: 1px solid var(--bubble-line);
   color: var(--bubble-ink);
-  border-radius: 15px 15px 15px 5px;
-  padding: 10px 12px;
-  font-size: 13.5px;
-  line-height: 1.45;
+  border-radius: 14px 14px 14px 4px;
+  padding: 9px 11px;
+  font-size: 13px;
+  line-height: 1.42;
   white-space: pre-wrap;
   align-self: stretch;
 }
 .msg--mine {
   background: var(--mine);
-  border-color: transparent;
-  border-radius: 15px 15px 5px 15px;
+  border-radius: 14px 14px 4px 14px;
   align-self: flex-end;
   max-width: 76%;
 }
-.msg--alarm {
-  background: var(--critical-soft);
-  border-color: var(--critical);
-  color: var(--critical);
-  font-weight: 500;
-}
+.msg--alarm { border-left: 3px solid #FFC53D; }
 .msg__meta {
   display: block;
-  font-size: 11px;
+  font-size: 10.5px;
   color: var(--bubble-meta);
-  margin-bottom: 6px;
-  letter-spacing: .01em;
+  margin-bottom: 5px;
 }
 .msg__pick {
   display: block;
-  margin-top: 9px;
-  padding-top: 8px;
-  border-top: 1px dashed var(--bubble-line);
-  color: var(--accent);
+  margin-top: 8px;
+  color: #C9CBE8;
   font-weight: 600;
 }
 .msg__marked {
   display: block;
-  margin-top: 9px;
-  color: var(--accent);
+  margin-top: 8px;
+  color: #C9CBE8;
   font-weight: 600;
 }
 
-.keys { display: flex; flex-direction: column; gap: 5px; margin-top: 2px; }
-.keys__row { display: flex; gap: 5px; }
+.keys { display: flex; flex-direction: column; gap: 4px; margin-top: 8px; }
+.keys__row { display: flex; gap: 4px; }
 .key {
   flex: 1 1 0;
   min-width: 0;
   background: var(--key);
-  border: 1px solid var(--key-line);
   color: var(--key-ink);
-  border-radius: 9px;
-  padding: 8px 6px;
-  font: 500 12px/1.25 var(--f-chat);
+  border-radius: 8px;
+  padding: 8px 5px;
+  font: 500 11.5px/1.2 var(--f-chat);
   text-align: center;
-  overflow-wrap: break-word;
+  /* MAX не переносит подпись, а обрезает её. Показываем так же —
+     иначе мануал обещал бы то, чего человек не увидит. */
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
-.key--on { border-color: var(--accent); background: var(--accent-soft); font-weight: 600; }
-.key--go { background: var(--accent-deep); border-color: var(--accent-deep); color: #FFFFFF; font-weight: 600; }
-.key--tap {
-  border-color: var(--accent);
-  box-shadow: 0 0 0 3px var(--accent-soft);
+.key--on { background: var(--key-on); font-weight: 600; }
+.key--go { background: var(--key-on); font-weight: 700; }
+.key--tap { box-shadow: 0 0 0 3px rgba(114, 87, 205, .55); }
+
+/* Справочник, который открывается синей кнопкой: он светлый, как и есть */
+.guide {
+  background: #F6F1E8;
+  padding: 12px 11px 16px;
+  font-family: var(--f-chat);
+  min-height: 190px;
 }
+.guide__tabs { display: flex; gap: 5px; margin-bottom: 12px; overflow: hidden; }
+.guide__tab {
+  background: #FFFCF7; border: 1px solid #E4DACA; color: #33525E;
+  border-radius: 100px; padding: 4px 10px; font-size: 10.5px; white-space: nowrap;
+}
+.guide__tab.on { background: #A93E32; border-color: #A93E32; color: #FFFFFF; font-weight: 600; }
+.guide__h {
+  font: 800 15px/1.15 var(--f-body); color: #16384A;
+  letter-spacing: -.01em; margin-bottom: 5px;
+}
+.guide__p { margin: 0 0 11px; font-size: 11.5px; color: #33525E; line-height: 1.4; }
+.guide__card {
+  background: #F8E7E3; border: 1px solid #A93E32; border-left-width: 4px;
+  border-radius: 10px; padding: 10px 11px;
+}
+.guide__card b { display: block; font: 700 12px/1.3 var(--f-body); color: #A93E32; margin-bottom: 5px; }
+.guide__card span { font-size: 11px; color: #16384A; line-height: 1.4; }
 
 .shot__cap {
   margin: 9px 0 0;
@@ -612,10 +631,11 @@ kbd {
       <div class="phone" id="demoPhone">
         <div class="phone__screen">
           <div class="phone__bar">
+            <span class="phone__back">←</span>
             <div class="phone__ava">СДУТ</div>
             <div>
-              <div class="phone__who">Служба долговременного ухода</div>
-              <div class="phone__sub">бот</div>
+              <div class="phone__who">SDUT63</div>
+              <div class="phone__sub">Бот</div>
             </div>
           </div>
           <div class="chat" id="demoChat">
@@ -629,6 +649,7 @@ kbd {
                 <span class="keys__row"><span class="key">Я специалист</span></span>
               </span></div>
           </div>
+          <div class="phone__foot"><span class="phone__open">▦ Открыть</span><span>Сообщение</span></div>
         </div>
       </div>
 
@@ -665,10 +686,11 @@ kbd {
           <div class="phone">
             <div class="phone__screen">
               <div class="phone__bar">
+                <span class="phone__back">←</span>
                 <div class="phone__ava">СДУТ</div>
                 <div>
-                  <div class="phone__who">Служба долговременного ухода</div>
-                  <div class="phone__sub">бот</div>
+                  <div class="phone__who">SDUT63</div>
+                  <div class="phone__sub">Бот</div>
                 </div>
               </div>
               <div class="chat">
@@ -679,6 +701,7 @@ kbd {
 
 Если человеку плохо прямо сейчас — звоните 103, анкета подождёт.</div>
               </div>
+              <div class="phone__foot"><span class="phone__open">▦ Открыть</span><span>Сообщение</span></div>
             </div>
           </div>
           <p class="shot__cap">Вы написали одно слово — бот уже отвечает</p>
@@ -698,16 +721,18 @@ kbd {
           <div class="phone">
             <div class="phone__screen">
               <div class="phone__bar">
+                <span class="phone__back">←</span>
                 <div class="phone__ava">СДУТ</div>
                 <div>
-                  <div class="phone__who">Служба долговременного ухода</div>
-                  <div class="phone__sub">бот</div>
+                  <div class="phone__who">SDUT63</div>
+                  <div class="phone__sub">Бот</div>
                 </div>
               </div>
               <div class="chat">
                 <div class="msg"><span class="msg__meta">Кто обращается · вопрос 1 из 7</span>Вы обращаетесь о себе или о близком человеке?<span class="msg__pick">➤ О близком человеке</span></div>
                 <div class="msg"><span class="msg__meta">Кто обращается · вопрос 2 из 7</span>Как к вам обращаться?</div>
               </div>
+              <div class="phone__foot"><span class="phone__open">▦ Открыть</span><span>Сообщение</span></div>
             </div>
           </div>
           <p class="shot__cap">Кнопки исчезли, а ваш ответ остался в сообщении</p>
@@ -728,10 +753,11 @@ kbd {
           <div class="phone">
             <div class="phone__screen">
               <div class="phone__bar">
+                <span class="phone__back">←</span>
                 <div class="phone__ava">СДУТ</div>
                 <div>
-                  <div class="phone__who">Служба долговременного ухода</div>
-                  <div class="phone__sub">бот</div>
+                  <div class="phone__who">SDUT63</div>
+                  <div class="phone__sub">Бот</div>
                 </div>
               </div>
               <div class="chat">
@@ -740,6 +766,7 @@ kbd {
                 <div class="msg"><span class="msg__meta">Кто обращается · вопрос 3 из 7</span>Номер телефона для связи.</div>
                 <div class="msg msg--mine">8 917 123-45-67</div>
               </div>
+              <div class="phone__foot"><span class="phone__open">▦ Открыть</span><span>Сообщение</span></div>
             </div>
           </div>
           <p class="shot__cap">Ваши сообщения — справа, ответы бота — слева</p>
@@ -762,24 +789,26 @@ kbd {
           <div class="phone">
             <div class="phone__screen">
               <div class="phone__bar">
+                <span class="phone__back">←</span>
                 <div class="phone__ava">СДУТ</div>
                 <div>
-                  <div class="phone__who">Служба долговременного ухода</div>
-                  <div class="phone__sub">бот</div>
+                  <div class="phone__who">SDUT63</div>
+                  <div class="phone__sub">Бот</div>
                 </div>
               </div>
               <div class="chat">
                 <div class="msg"><span class="msg__meta">Состояние сейчас · вопрос 5 из 7</span>Что беспокоит прямо сейчас?
 
-Отметьте всё, что подходит.<span class="msg__marked">Отмечено: Боль, Плохо ест и пьёт</span><span class="keys">
-                    <span class="keys__row"><span class="key">Тяжело дышит</span><span class="key">Спутанное сознание</span></span>
-                    <span class="keys__row"><span class="key">Резко стало хуже</span><span class="key key--on">✅ Боль</span></span>
-                    <span class="keys__row"><span class="key key--on">✅ Плохо ест и пьёт</span><span class="key">Тошнота, рвота</span></span>
-                    <span class="keys__row"><span class="key">Запор</span><span class="key">Покраснение, рана</span></span>
-                    <span class="keys__row"><span class="key">Стома или катетер</span><span class="key">Недавно упал</span></span>
+Отметьте всё, что подходит.<span class="msg__marked">Отмечено: Боль, Плохо ест</span><span class="keys">
+                    <span class="keys__row"><span class="key">Тяжело дышит</span><span class="key">Спутанность</span></span>
+                    <span class="keys__row"><span class="key">Резко хуже</span><span class="key key--on">✅ Боль</span></span>
+                    <span class="keys__row"><span class="key key--on">✅ Плохо ест</span><span class="key">Тошнота, рвота</span></span>
+                    <span class="keys__row"><span class="key">Запор</span><span class="key">Рана, краснота</span></span>
+                    <span class="keys__row"><span class="key">Стома, катетер</span><span class="key">Недавно упал</span></span>
                     <span class="keys__row"><span class="key">← Назад</span><span class="key key--go">Готово · 2</span></span>
                   </span></div>
               </div>
+              <div class="phone__foot"><span class="phone__open">▦ Открыть</span><span>Сообщение</span></div>
             </div>
           </div>
           <p class="shot__cap">Отмечено два признака — и это видно тремя способами сразу</p>
@@ -800,10 +829,11 @@ kbd {
           <div class="phone">
             <div class="phone__screen">
               <div class="phone__bar">
+                <span class="phone__back">←</span>
                 <div class="phone__ava">СДУТ</div>
                 <div>
-                  <div class="phone__who">Служба долговременного ухода</div>
-                  <div class="phone__sub">бот</div>
+                  <div class="phone__who">SDUT63</div>
+                  <div class="phone__sub">Бот</div>
                 </div>
               </div>
               <div class="chat">
@@ -815,6 +845,7 @@ kbd {
                     <span class="keys__row"><span class="key">← Назад</span></span>
                   </span></div>
               </div>
+              <div class="phone__foot"><span class="phone__open">▦ Открыть</span><span>Сообщение</span></div>
             </div>
           </div>
           <p class="shot__cap">Выбор ваш — оба ответа правильные</p>
@@ -834,10 +865,11 @@ kbd {
           <div class="phone">
             <div class="phone__screen">
               <div class="phone__bar">
+                <span class="phone__back">←</span>
                 <div class="phone__ava">СДУТ</div>
                 <div>
-                  <div class="phone__who">Служба долговременного ухода</div>
-                  <div class="phone__sub">бот</div>
+                  <div class="phone__who">SDUT63</div>
+                  <div class="phone__sub">Бот</div>
                 </div>
               </div>
               <div class="chat">
@@ -848,9 +880,48 @@ kbd {
                     <span class="keys__row"><span class="key">Мои ответы</span><span class="key">Заполнить заново</span></span>
                   </span></div>
               </div>
+              <div class="phone__foot"><span class="phone__open">▦ Открыть</span><span>Сообщение</span></div>
             </div>
           </div>
           <p class="shot__cap">Всё. Больше ничего делать не нужно</p>
+        </div>
+      </article>
+
+      <article class="step">
+        <div class="step__num">7</div>
+        <div class="step__body">
+          <h3>Синяя кнопка «Открыть» — это справочник</h3>
+          <p>Она стоит внизу чата и работает в любой момент: до анкеты,
+            во время и после. Открывается «Навигатор помощи» — что делать при
+            ухудшении, куда обращаться, как ухаживать, права и льготы.</p>
+          <p class="aside">Справочник можно листать, ничего не заполняя.
+            Анкета от этого не сбивается: вернётесь в чат и продолжите
+            с того же вопроса.</p>
+        </div>
+        <div class="step__shot">
+          <div class="phone">
+            <div class="phone__screen">
+              <div class="phone__bar">
+                <span class="phone__back">✕</span>
+                <div class="phone__ava">СДУТ</div>
+                <div>
+                  <div class="phone__who">SDUT63</div>
+                  <div class="phone__sub">Навигатор помощи</div>
+                </div>
+              </div>
+              <div class="guide">
+                <div class="guide__tabs"><span class="guide__tab on">Срочно</span><span class="guide__tab">Куда обратиться</span><span class="guide__tab">Что такое уход</span></div>
+                <div class="guide__h">Насколько это срочно</div>
+                <p class="guide__p">От этого зависит, кому звонить в ближайшую минуту.</p>
+                <div class="guide__card">
+                  <b>Опасно для жизни — звоните 103</b>
+                  <span>Потеря сознания · нарастающая одышка · резкое ухудшение</span>
+                </div>
+              </div>
+              <div class="phone__foot"><span class="phone__open">▦ Открыть</span><span>Сообщение</span></div>
+            </div>
+          </div>
+          <p class="shot__cap">Справочник открывается прямо внутри MAX</p>
         </div>
       </article>
 
@@ -1076,13 +1147,13 @@ kbd {
       msgs: [
         { meta: "Состояние сейчас · вопрос 5 из 7",
           text: "Что беспокоит прямо сейчас?\n\nОтметьте всё, что подходит.",
-          marked: "Боль, Плохо ест и пьёт",
+          marked: "Боль, Плохо ест",
           keys: [
-            ["Тяжело дышит", "Спутанное сознание"],
-            ["Резко стало хуже", "+✅ Боль"],
-            ["+✅ Плохо ест и пьёт", "Тошнота, рвота"],
-            ["Запор", "Покраснение, рана"],
-            ["Стома или катетер", "Недавно упал"],
+            ["Тяжело дышит", "Спутанность"],
+            ["Резко хуже", "+✅ Боль"],
+            ["+✅ Плохо ест", "Тошнота, рвота"],
+            ["Запор", "Рана, краснота"],
+            ["Стома, катетер", "Недавно упал"],
             ["← Назад", "*Готово · 2"]
           ] }
       ]
@@ -1106,6 +1177,15 @@ kbd {
                 "Если захотите дополнить — напишите «заново», анкета откроется снова.\n" +
                 "Если станет хуже — звоните 103.",
           keys: [["Мои ответы", "Заполнить заново"]] }
+      ]
+    },
+    {
+      cap: "<b>Синяя кнопка «Открыть».</b> Она внизу чата и работает всегда — " +
+           "это справочник службы, его можно листать, ничего не заполняя.",
+      msgs: [
+        { text: "Здесь — что делать при ухудшении, куда обращаться, как ухаживать, " +
+                "какие есть права и льготы.\n\nАнкета от этого не сбивается: " +
+                "вернётесь в чат и продолжите с того же вопроса." }
       ]
     }
   ];

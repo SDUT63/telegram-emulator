@@ -1,0 +1,271 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>Кадры</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Golos+Text:wght@400;500;600;700;800&display=swap">
+<style>
+:root{
+  --ground:#F6F1E8; --surface:#FFFCF7; --ink:#16384A; --ink-soft:#33525E;
+  --muted:#6E7C81; --line:#E4DACA; --accent:#2E6E63; --accent-deep:#1F5257;
+  --sand:#C09A6B; --critical:#A93E32; --critical-soft:#F8E7E3;
+  --bar:#15161B; --chat:#121212; --bubble:#36394D; --bubble-ink:#FAFBFF;
+  --bubble-meta:#9A9CAB; --mine:#7257CD; --key:#3B3D71; --key-ink:#EDEEFB;
+  --key-on:#4B4E8C; --open:#0075FC;
+  --f:"Golos Text","Segoe UI",Roboto,system-ui,sans-serif;
+  --fc:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;
+}
+*,*::before,*::after{box-sizing:border-box}
+body{margin:0;background:var(--ground);color:var(--ink);font:400 16px/1.5 var(--f)}
+
+.frame{
+  width:540px; height:960px; position:relative; overflow:hidden;
+  background:var(--ground);
+  display:flex; flex-direction:column;
+}
+
+/* шапка */
+.hd{display:flex;align-items:center;gap:11px;padding:20px 26px 0;flex:none}
+.mk{width:38px;height:38px;border-radius:10px;background:var(--accent-deep);color:#fff;
+    display:grid;place-items:center;font:800 8px/1 var(--f);letter-spacing:0;flex:none;overflow:hidden}
+.hd b{display:block;font-size:13.5px;font-weight:700;display:block;line-height:1.2}
+.hd > span > span{display:block;font-size:11.5px;color:var(--muted)}
+.hd .of{margin-left:auto;font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums}
+
+/* сцена с телефоном */
+.stage{flex:1;display:grid;place-items:center;padding:12px 0 0;min-height:0}
+
+/* подпись снизу */
+.cap{flex:none;padding:0 26px 30px;display:flex;gap:16px;align-items:flex-start}
+.num{font:800 44px/1 var(--f);color:var(--sand);letter-spacing:-.04em;flex:none;
+     font-variant-numeric:tabular-nums;min-width:46px}
+.cap h2{margin:0 0 5px;font:700 21px/1.22 var(--f);letter-spacing:-.02em}
+.cap p{margin:0;font-size:15.5px;line-height:1.42;color:var(--ink-soft)}
+.rule{height:4px;background:var(--sand);border-radius:2px;width:52px;margin:0 26px 14px}
+
+/* ---- телефон, цвета сняты с записи настоящего MAX ---- */
+.phone{width:300px;background:#2A2B33;border-radius:30px;padding:8px;
+       box-shadow:0 24px 44px -22px rgba(20,20,30,.55)}
+.scr{background:var(--chat);border-radius:23px;overflow:hidden}
+.bar{display:flex;align-items:center;gap:9px;padding:10px 12px;background:var(--bar);font-family:var(--fc)}
+.bk{color:var(--bubble-meta);font-size:15px;line-height:1;flex:none}
+.av{width:28px;height:28px;border-radius:50%;background:#1F5257;color:#fff;
+    display:grid;place-items:center;font:700 6.5px/1 var(--f);flex:none;letter-spacing:0}
+.who{display:block;font-size:13px;font-weight:700;color:var(--bubble-ink);line-height:1.2}
+.sub{display:block;font-size:10.5px;color:var(--bubble-meta)}
+.foot{display:flex;align-items:center;gap:8px;padding:9px 11px;background:var(--bar);
+      font-family:var(--fc);font-size:11.5px;color:var(--bubble-meta)}
+.open{background:var(--open);color:#fff;border-radius:100px;padding:5px 12px;
+      font-size:11.5px;font-weight:600;flex:none}
+.chat{background:var(--chat);padding:11px 10px 13px;display:flex;flex-direction:column;
+      gap:7px;font-family:var(--fc);min-height:340px}
+.msg{background:var(--bubble);color:var(--bubble-ink);border-radius:14px 14px 14px 4px;
+     padding:9px 11px;font-size:13px;line-height:1.42;white-space:pre-wrap}
+.msg.me{background:var(--mine);border-radius:14px 14px 4px 14px;align-self:flex-end;max-width:76%}
+.msg.al{border-left:3px solid #FFC53D}
+.mt{display:block;font-size:10.5px;color:var(--bubble-meta);margin-bottom:5px}
+.pk,.mk2{display:block;margin-top:8px;color:#C9CBE8;font-weight:600}
+.keys{display:flex;flex-direction:column;gap:4px;margin-top:8px}
+.kr{display:flex;gap:4px}
+.k{flex:1 1 0;min-width:0;background:var(--key);color:var(--key-ink);border-radius:8px;
+   padding:8px 5px;font:500 11.5px/1.2 var(--fc);text-align:center;
+   white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.k.on{background:var(--key-on);font-weight:600}
+.k.go{background:var(--key-on);font-weight:700}
+
+/* справочник */
+.gd{background:#F6F1E8;padding:12px 11px 16px;font-family:var(--fc);min-height:340px}
+.tabs{display:flex;gap:5px;margin-bottom:12px;overflow:hidden}
+.tab{background:#FFFCF7;border:1px solid #E4DACA;color:#33525E;border-radius:100px;
+     padding:4px 10px;font-size:10.5px;white-space:nowrap}
+.tab.on{background:#A93E32;border-color:#A93E32;color:#fff;font-weight:600}
+.gh{font:800 15px/1.15 var(--f);color:#16384A;margin-bottom:5px}
+.gp{margin:0 0 11px;font-size:11.5px;color:#33525E;line-height:1.4}
+.gc{background:#F8E7E3;border:1px solid #A93E32;border-left-width:4px;border-radius:10px;padding:10px 11px}
+.gc b{display:block;font:700 12px/1.3 var(--f);color:#A93E32;margin-bottom:5px}
+.gc span{font-size:11px;color:#16384A;line-height:1.4}
+
+/* титры */
+.title{flex:1;display:flex;flex-direction:column;justify-content:center;padding:0 40px;gap:0}
+.title .eyebrow{font:700 12.5px/1 var(--f);letter-spacing:.16em;text-transform:uppercase;
+                color:var(--accent);margin-bottom:20px}
+.title h1{margin:0 0 18px;font:800 41px/1.1 var(--f);letter-spacing:-.03em}
+.title p{margin:0;font-size:18px;line-height:1.45;color:var(--ink-soft)}
+.facts{margin:30px 0 0;padding:0;list-style:none;display:grid;gap:12px}
+.facts li{display:flex;gap:12px;align-items:baseline;font-size:16.5px}
+.facts i{width:9px;height:9px;border-radius:50%;background:var(--sand);flex:none;
+         transform:translateY(-2px)}
+.big{font:800 60px/1 var(--f);color:var(--critical);letter-spacing:-.02em}
+.end{align-items:center;text-align:center}
+.end h1{font-size:35px;letter-spacing:.02em}
+.end .at{font:800 26px/1 var(--f);color:var(--accent);margin-top:6px}
+.end .sm{font-size:14px;color:var(--muted);margin-top:26px}
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script>
+var GREET = "Здравствуйте! Это служба долговременного ухода Тольятти.\n\n" +
+  "Несколько вопросов — и с вами свяжется координатор.\n\n" +
+  "Если человеку плохо прямо сейчас — звоните 103, анкета подождёт.";
+
+function keys(rows){
+  return '<span class="keys">' + rows.map(function(r){
+    return '<span class="kr">' + r.map(function(k){
+      var c = "k";
+      if (k[0] === "*") { c += " go"; k = k.slice(1); }
+      if (k[0] === "+") { c += " on"; k = k.slice(1); }
+      return '<span class="' + c + '">' + k + '</span>';
+    }).join("") + '</span>';
+  }).join("") + '</span>';
+}
+function msg(o){
+  var h = '<div class="msg' + (o.me ? " me" : "") + (o.al ? " al" : "") + '">';
+  if (o.meta) h += '<span class="mt">' + o.meta + '</span>';
+  h += o.text;
+  if (o.marked) h += '<span class="mk2">Отмечено: ' + o.marked + '</span>';
+  if (o.pick) h += '<span class="pk">➤ ' + o.pick + '</span>';
+  if (o.keys) h += keys(o.keys);
+  return h + '</div>';
+}
+function phone(inner, sub){
+  return '<div class="phone"><div class="scr">' +
+    '<div class="bar"><span class="bk">←</span><span class="av">СДУТ</span>' +
+    '<span><span class="who">SDUT63</span><span class="sub">' + (sub || "Бот") + '</span></span></div>' +
+    inner +
+    '<div class="foot"><span class="open">Открыть</span><span>Сообщение</span></div>' +
+    '</div></div>';
+}
+function chat(msgs){ return '<div class="chat">' + msgs.map(msg).join("") + '</div>'; }
+
+var FRAMES = [
+  { kind: "title", html:
+    '<div class="title">' +
+      '<div class="eyebrow">Служба долговременного ухода · Тольятти</div>' +
+      '<h1>Как обратиться<br>через чат-бота</h1>' +
+      '<p>Бот <b>SDUT63</b> в мессенджере MAX. Он задаст несколько вопросов ' +
+      'и передаст всё координатору — тому, кто вам перезвонит.</p>' +
+      '<ul class="facts">' +
+        '<li><i></i><span>Семь вопросов — потом можно остановиться</span></li>' +
+        '<li><i></i><span>Отвечать кнопками, печатать почти не нужно</span></li>' +
+        '<li><i></i><span>Закрыли на середине — продолжите с того же места</span></li>' +
+      '</ul>' +
+    '</div>' },
+
+  { n: 1, h: "Напишите боту что угодно",
+    p: "Достаточно одного «здравствуйте». Регистрироваться не нужно — бот ответит сам.",
+    body: phone(chat([{ me: true, text: "Здравствуйте" }, { text: GREET }])) },
+
+  { n: 2, h: "Нажимайте кнопки под вопросом",
+    p: "Это и есть ответ. Наверху видно, где вы: раздел и номер вопроса.",
+    body: phone(chat([
+      { meta: "Кто обращается · вопрос 1 из 7",
+        text: "Вы обращаетесь о себе или о близком человеке?",
+        keys: [["О себе", "+О близком человеке"], ["Я специалист"]] }
+    ])) },
+
+  { n: 2, h: "Ответ остаётся в переписке",
+    p: "Кнопки исчезают, а под вопросом появляется то, что вы выбрали.",
+    body: phone(chat([
+      { meta: "Кто обращается · вопрос 1 из 7",
+        text: "Вы обращаетесь о себе или о близком человеке?",
+        pick: "О близком человеке" },
+      { meta: "Кто обращается · вопрос 2 из 7", text: "Как к вам обращаться?" }
+    ])) },
+
+  { n: 3, h: "Имя и телефон впишите руками",
+    p: "Это единственные два вопроса, где нужно печатать. Ваши сообщения — справа.",
+    body: phone(chat([
+      { meta: "Кто обращается · вопрос 2 из 7", text: "Как к вам обращаться?" },
+      { me: true, text: "Мария" },
+      { meta: "Кто обращается · вопрос 3 из 7", text: "Номер телефона для связи." },
+      { me: true, text: "8 917 123-45-67" }
+    ])) },
+
+  { n: 4, h: "Можно отметить несколько сразу",
+    p: "Отмеченное помечается галочкой и выписывается словами. Внизу — «Готово» с числом отметок.",
+    body: phone(chat([
+      { meta: "Состояние сейчас · вопрос 5 из 7",
+        text: "Что беспокоит прямо сейчас?\n\nОтметьте всё, что подходит.",
+        marked: "Боль, Плохо ест",
+        keys: [
+          ["Тяжело дышит", "Спутанность"],
+          ["Резко хуже", "+✅ Боль"],
+          ["+✅ Плохо ест", "Тошнота, рвота"],
+          ["Запор", "Рана, краснота"],
+          ["Стома, катетер", "Недавно упал"],
+          ["← Назад", "*Готово · 2"]
+        ] }
+    ])) },
+
+  { n: "!", h: "Бот сам остановит, если дело срочное",
+    p: "Отметили тревожные признаки — анкета прервётся и отправит звонить. Ответы при этом сохранятся.",
+    body: phone(chat([
+      { al: true, text: "⚠️ Остановитесь. Вы отметили сразу несколько тревожных признаков.\n\n" +
+          "Когда их столько одновременно, разбираться с анкетой уже поздно — нужен человек, который осмотрит.\n\n" +
+          "Позвоните 103, а с мобильного можно 112. Это бесплатно и без ожидания.\n\n" +
+          "Анкета никуда не денется: она сохранена. Напишете «продолжить» — вернёмся к тому же вопросу." }
+    ])) },
+
+  { n: 5, h: "После седьмого вопроса можно остановиться",
+    p: "«Достаточно» — заявка уже ушла. «Продолжить» — ещё 3–5 минут, зато звонок будет короче.",
+    body: phone(chat([
+      { meta: "Основное собрано · вопрос 7 из 7",
+        text: "Этого достаточно — с вами свяжутся в любом случае.\n\n" +
+              "Ещё 3–5 минут вопросов о состоянии избавят от долгого разговора по телефону: " +
+              "координатор придёт, уже зная, что нужно.",
+        keys: [["Продолжить"], ["+Достаточно, свяжитесь"], ["← Назад"]] }
+    ])) },
+
+  { n: 6, h: "Готово — заявка у координатора",
+    p: "Дальше вам позвонят по указанному телефону. Больше ничего делать не нужно.",
+    body: phone(chat([
+      { text: "Спасибо, записали. Координатор свяжется с вами по указанному телефону.\n\n" +
+              "Если захотите дополнить — напишите «заново», анкета откроется снова.\n" +
+              "Если станет хуже — звоните 103.",
+        keys: [["Мои ответы", "Заполнить заново"]] }
+    ])) },
+
+  { n: 7, h: "Синяя кнопка «Открыть» — справочник",
+    p: "Работает всегда: что делать при ухудшении, куда обращаться, как ухаживать, права и льготы.",
+    body: phone('<div class="gd">' +
+      '<div class="tabs"><span class="tab on">Срочно</span><span class="tab">Куда обратиться</span>' +
+      '<span class="tab">Что такое уход</span></div>' +
+      '<div class="gh">Насколько это срочно</div>' +
+      '<p class="gp">От этого зависит, кому звонить в ближайшую минуту.</p>' +
+      '<div class="gc"><b>Опасно для жизни — звоните 103</b>' +
+      '<span>Потеря сознания · нарастающая одышка · резкое ухудшение</span></div>' +
+      '</div>', "Навигатор помощи") },
+
+  { kind: "title", html:
+    '<div class="title end">' +
+      '<div class="eyebrow">Точка входа</div>' +
+      '<h1>Система<br>долговременного ухода</h1>' +
+      '<p>Тольятти</p>' +
+      '<div class="at">@SDUT63</div>' +
+      '<p class="sm">Чат-бот в MAX · справочник · горячая линия<br>Бот работает в тестовом режиме</p>' +
+    '</div>' }
+];
+
+var at = parseInt((location.search.match(/\d+/) || [0])[0], 10) || 0;
+var f = FRAMES[at] || FRAMES[0];
+var html = '<div class="frame">';
+if (f.kind === "title") {
+  html += '<div class="hd"><span class="mk">СДУТ</span><span><b>Служба долговременного ухода</b>' +
+          '<span>Тольятти</span></span></div>' + f.html;
+} else {
+  html += '<div class="hd"><span class="mk">СДУТ</span><span><b>Как обратиться через чат-бота</b>' +
+          '<span>Бот SDUT63 в мессенджере MAX</span></span>' +
+          '<span class="of">' + (at) + " / " + (FRAMES.length - 1) + '</span></div>';
+  html += '<div class="stage">' + f.body + '</div>';
+  html += '<div class="rule"></div>';
+  html += '<div class="cap"><div class="num">' + f.n + '</div><div><h2>' + f.h +
+          '</h2><p>' + f.p + '</p></div></div>';
+}
+html += '</div>';
+document.getElementById("root").innerHTML = html;
+document.title = "frame-" + at;
+window.FRAME_COUNT = FRAMES.length;
+</script>
+</body>
+</html>
