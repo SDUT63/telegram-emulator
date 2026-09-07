@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Как обратиться в СДУТ</title>
+<title>Инструкция по использованию чат-бота СДУТ</title>
 <meta name="description" content="Пошаговая инструкция: как оставить заявку в службу долговременного ухода Тольятти через чат-бота в мессенджере MAX.">
 <meta name="color-scheme" content="light dark">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 100 100%27%3E%3Ctext y=%27.9em%27 font-size=%2790%27%3E%F0%9F%92%AC%3C/text%3E%3C/svg%3E">
@@ -171,7 +171,7 @@ body {
 .sizer { margin-left: auto; display: flex; align-items: center; gap: 8px; }
 .sizer__label { font-size: 13px; color: var(--muted); }
 .sizer button {
-  min-width: 42px; min-height: 42px;
+  min-width: 44px; min-height: 44px;
   border: 1px solid var(--line);
   background: var(--ground);
   color: var(--ink-soft);
@@ -338,6 +338,7 @@ h2 {
 .step__shot { justify-self: center; }
 
 /* Мелкая врезка внутри шага — не карточка, просто отступ и полоска слева */
+.aside a { color: var(--accent); font-weight: 600; }
 .aside {
   border-left: 3px solid var(--sand);
   padding: 2px 0 2px 15px;
@@ -549,6 +550,17 @@ kbd {
 .foot p { margin: 0 0 8px; }
 
 .links { display: flex; gap: 10px; flex-wrap: wrap; margin: 18px 0 24px; }
+.links--hero { margin: 26px 0 0; }
+/* Того, чего ещё нет, не притворяемся кнопкой: ни рамки, ни нажатия */
+.soon {
+  min-height: 50px;
+  display: inline-flex; align-items: center;
+  padding: 0 18px;
+  border-radius: 11px;
+  border: 1px dashed var(--line);
+  color: var(--muted);
+  font-size: .96em;
+}
 .links a {
   min-height: 50px;
   display: inline-flex; align-items: center;
@@ -607,9 +619,14 @@ kbd {
 
   <div class="hero">
     <p class="eyebrow">Инструкция</p>
-    <h1>Как обратиться в службу через чат-бота</h1>
+    <h1>Инструкция по использованию чат-бота СДУТ</h1>
     <p class="lede">Бот живёт в мессенджере MAX. Он задаст несколько вопросов и передаст всё
       координатору — тому человеку, который вам перезвонит.</p>
+
+    <div class="links links--hero">
+      <a class="primary" href="https://max.ru/id6320093220_bot">Открыть бота в MAX</a>
+      <a href="#steps">Посмотреть, как это выглядит</a>
+    </div>
 
     <ul class="promise">
       <li><b>Семь вопросов</b><span>После них можно остановиться — этого уже хватит, чтобы с вами связались</span></li>
@@ -619,10 +636,10 @@ kbd {
   </div>
 
   <!-- ===================================================== показ вживую -->
-  <section>
+  <section id="steps">
     <div class="rule"></div>
     <h2>Сначала посмотрите, как это выглядит</h2>
-    <p class="sub">Шесть экранов — весь разговор с ботом от начала до конца.
+    <p class="sub">Семь экранов — весь разговор с ботом от начала до конца.
       Листайте кнопками или нажмите «Показать по порядку».</p>
 
     <div class="demo">
@@ -679,8 +696,9 @@ kbd {
           <h3>Откройте бота и напишите ему что угодно</h3>
           <p>Достаточно одного «здравствуйте». Регистрироваться, заполнять анкеты
             на сайте и куда-то звонить не нужно — бот ответит сам.</p>
-          <p class="aside">Ссылка на бота — в посте, под которым вы читаете эту инструкцию.
-            Нажмите её с телефона, и MAX откроется сразу на нужном чате.</p>
+          <p class="aside">Бот называется <b>SDUT63</b>. Проще всего нажать
+            <a href="https://max.ru/id6320093220_bot">эту ссылку</a> с телефона —
+            MAX откроется сразу на нужном чате.</p>
         </div>
         <div class="step__shot">
           <div class="phone">
@@ -994,17 +1012,12 @@ kbd {
     <p class="sub">Написать можно и в наши сообщества — читаем там же.</p>
 
     <div class="links">
-      <!-- ===================================================================
-           ЗАПОЛНИТЬ ПЕРЕД ПУБЛИКАЦИЕЙ
-           Ниже — ссылка на бота и телефон горячей линии. Пока они пустые,
-           кнопки просто не показываются: выдуманного номера здесь быть
-           не должно. Впишите значения между кавычками в самом низу файла,
-           в блоке CONFIG.
-           =================================================================== -->
-      <a class="primary" id="botLink" href="#" hidden>Открыть бота в MAX</a>
-      <a id="phoneLink" href="#" hidden>Позвонить на горячую линию</a>
+      <!-- Ссылка на бота встречается на странице дважды: здесь и в шапке.
+           Переедет бот — менять в обоих местах. -->
+      <a class="primary" href="https://max.ru/id6320093220_bot">Открыть бота в MAX</a>
       <a href="https://t.me/SDUT63">Канал в Telegram</a>
       <a href="https://vk.ru/sdut63">Группа ВКонтакте</a>
+      <span class="soon">Горячая линия — в разработке</span>
     </div>
 
     <p class="sub" style="margin:0">Эту страницу можно сохранить себе или распечатать
@@ -1013,8 +1026,10 @@ kbd {
 
   <footer class="foot">
     <p><b>АНО «СДУТ»</b> — служба долговременного ухода, Тольятти.</p>
-    <p>Инструкция к чат-боту в мессенджере MAX. Экраны в инструкции показаны
-      такими, какими их присылает бот.</p>
+    <p>Инструкция к чат-боту в мессенджере MAX. Экраны показаны такими,
+      какими их присылает бот.</p>
+    <p>Бот работает в тестовом режиме. Исходный код открыт:
+      <a href="https://github.com/SDUT63/telegram-emulator">github.com/SDUT63</a></p>
   </footer>
 
 </div>
@@ -1023,33 +1038,8 @@ kbd {
 (function () {
   "use strict";
 
-  /* =====================================================================
-     ЗАПОЛНИТЬ ПЕРЕД ПУБЛИКАЦИЕЙ
-
-     botUrl    — ссылка на чат-бота в MAX
-     phone     — телефон горячей линии для набора: только цифры и плюс
-     phoneText — как показать телефон человеку
-
-     Пустое поле = кнопки нет. Придумывать номер нельзя.
-     ===================================================================== */
-  var CONFIG = {
-    botUrl:    "",
-    phone:     "",
-    phoneText: ""
-  };
-
-  function show(id, href, text) {
-    var el = document.getElementById(id);
-    if (!el || !href) return;
-    el.href = href;
-    if (text) el.textContent = text;
-    el.hidden = false;
-  }
-  show("botLink", CONFIG.botUrl, "");
-  if (CONFIG.phone) {
-    show("phoneLink", "tel:" + CONFIG.phone.replace(/[^\d+]/g, ""),
-         CONFIG.phoneText ? "Позвонить: " + CONFIG.phoneText : "");
-  }
+  /* Ссылки вписаны прямо в разметку: подставлять их скриптом незачем,
+     а страница должна работать и там, где скрипты отключены. */
 
   /* ---------------------------------------------------- размер текста */
 
