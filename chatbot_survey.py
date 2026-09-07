@@ -55,6 +55,55 @@ DONE_SHORT = (
     "Если станет хуже — звоните 103."
 )
 
+# ---------------------------------------------------------------- согласие
+#
+# Анкета спрашивает о здоровье: 18 вопросов из 29 — подвижность, боль,
+# питание, стомы, память. По ч. 1 ст. 10 ФЗ-152 это специальная категория
+# персональных данных, и обрабатывать её без основания нельзя.
+#
+# Технически здесь сделано следующее: до первого вопроса человек видит
+# экран согласия, его решение записывается вместе с датой и версией
+# текста, и эта запись потом видна оператору и попадает в выгрузку.
+# Какое именно основание из ч. 2 ст. 10 использует организация —
+# согласие субъекта, оказание медико-социальных услуг или иное —
+# определяет юрист. Механизм рассчитан на любой из вариантов: он
+# фиксирует факт и момент, а текст берётся из одной константы ниже.
+#
+# ВНИМАНИЕ: текст CONSENT должен быть утверждён юристом до запуска, а
+# политика обработки персональных данных — опубликована. Нажатие кнопки
+# в мессенджере — это простая электронная подпись; приравнять её к
+# письменной форме можно только при соблюдении ст. 9 ФЗ-152.
+
+CONSENT_VERSION = "1.0"
+
+CONSENT = (
+    "Прежде чем начать — одно важное.\n\n"
+    "Чтобы координатор мог помочь, анкета спросит про состояние человека: "
+    "как он ходит, ест, спит, что беспокоит. Это сведения о здоровье, "
+    "и закон разрешает их собирать только с вашего согласия.\n\n"
+    "Что мы записываем: имя и телефон для связи, ваши ответы на вопросы "
+    "анкеты, дату обращения.\n\n"
+    "Зачем: чтобы координатор перезвонил и подобрал помощь.\n\n"
+    "Кому передаём: только сотрудникам службы. Никому больше.\n\n"
+    "Сколько храним: пока вы не попросите удалить. Напишите «удалить» — "
+    "сотрём всё и подтвердим."
+)
+
+CONSENT_NO = (
+    "Понимаем. Без согласия анкету заполнить нельзя — таков закон.\n\n"
+    "Но помощь всё равно доступна: напишите нам в сообществах службы "
+    "или позвоните на горячую линию. Там можно спросить что угодно, "
+    "ничего о себе не сообщая.\n\n"
+    "Если передумаете — напишите «начать», анкета откроется."
+)
+
+CONSENT_YES = "Спасибо. Записали ваше согласие — теперь к делу."
+
+ERASED = (
+    "Готово, всё удалено: и ответы, и контакты.\n\n"
+    "Если понадобится помощь — просто напишите сюда, начнём заново."
+)
+
 RESUMED = (
     "Анкета не закончена — продолжаем с того места, где остановились.\n\n"
     "Если хотите начать сначала, напишите «заново»."
@@ -76,6 +125,10 @@ HELP_WORDS = {"помощь", "help", "/help", "?"}
 SKIP_WORDS = {"далее", "пропустить", "skip", "-"}
 BACK_WORDS = {"назад", "back"}
 CONTINUE_WORDS = {"продолжить", "продолжаем", "дальше"}
+AGREE_WORDS = {"согласен", "согласна", "да", "принимаю", "хорошо"}
+REFUSE_WORDS = {"не согласен", "не согласна", "нет", "отказываюсь"}
+# Право на удаление — ст. 14 и 21 ФЗ-152. Работает в любой момент.
+ERASE_WORDS = {"удалить", "удалите", "сотрите", "забудь меня", "/delete"}
 
 EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]{2,}$")
 NO_WORDS = {"нет", "-", "—", "no", "нету", "отсутствует", "не знаю"}
@@ -148,6 +201,9 @@ class Survey:
             "started": None,
             "finished": None,
             "total_seen": 0,
+            # Согласие на обработку: {"at": ..., "version": ...} либо
+            # {"refused": ...}. Пусто — человек ещё не отвечал.
+            "consent": None,
             # Что человек уже отметил кнопками в вопросе с несколькими
             # ответами, пока не нажал «Готово»
             "pending": None,
@@ -188,11 +244,85 @@ class Survey:
 
     # -------------------------------------------------------------- диалог
 
+    # --------------------------------------------------------- согласие
+
+    def stage(self, user_id: str) -> str:
+        """Где человек находится: «consent», «survey» или «done».
+
+        Транспорт по этому решает, какие кнопки рисовать. Разделение
+        нужно потому, что до согласия вопросов не существует вовсе —
+        не «первый вопрос заблокирован», а именно не существует.
+        """
+        person = self.state.get(user_id)
+        if not person:
+            return "consent"
+        if not (person.get("consent") or {}).get("at"):
+            return "consent"
+        if person.get("finished"):
+            return "done"
+        return "survey"
+
+    def consented(self, user_id: str) -> dict[str, Any] | None:
+        """Запись о согласии: когда дано и по какой версии текста."""
+        person = self.state.get(user_id) or {}
+        mark = person.get("consent") or {}
+        return mark if mark.get("at") else None
+
+    def grant_consent(self, user_id: str) -> str:
+        """Человек согласился. Записываем факт, время и версию текста.
+
+        Запись делается один раз. Повторное нажатие не меняет дату:
+        согласие — это доказательство законности обработки, и его момент
+        подделывать нельзя даже случайно.
+        """
+        person = self._person(user_id)
+        if not (person.get("consent") or {}).get("at"):
+            person["consent"] = {
+                "at": datetime.now().isoformat(timespec="seconds"),
+                "version": CONSENT_VERSION,
+            }
+        if person["started"] is None:
+            person["started"] = person["consent"]["at"]
+        self.save()
+        return CONSENT_YES + "\n\n" + self._ask(user_id, self._next(0, person["answers"]))
+
+    def refuse_consent(self, user_id: str) -> str:
+        """Отказ. Ничего, кроме самого отказа, не храним."""
+        person = self._person(user_id)
+        person["consent"] = {
+            "refused": datetime.now().isoformat(timespec="seconds"),
+            "version": CONSENT_VERSION,
+        }
+        person["answers"] = {}
+        self.save()
+        return CONSENT_NO
+
+    def erase(self, user_id: str) -> str:
+        """Удалить всё об этом человеке. Право по ст. 14 и 21 ФЗ-152."""
+        self.state.pop(user_id, None)
+        self.save()
+        self.export_csv()
+        return ERASED
+
+    # -------------------------------------------------------------- начало
+
     def start(self, user_id: str) -> str:
         self.state[user_id] = self._blank()
+        self.save()
+        return GREETING + "\n\n" + CONSENT
+
+    def restart_after_consent(self, user_id: str) -> str:
+        """Начать анкету заново, не переспрашивая согласие.
+
+        Согласие дано на обработку, а не на конкретный набор ответов:
+        переспрашивать его на каждый круг — навязчиво и бессмысленно.
+        """
+        keep = (self.state.get(user_id) or {}).get("consent")
+        self.state[user_id] = self._blank()
+        self.state[user_id]["consent"] = keep
         self.state[user_id]["started"] = datetime.now().isoformat(timespec="seconds")
         self.save()
-        return GREETING + "\n\n" + self._ask(user_id, 0)
+        return self._ask(user_id, 0)
 
     def handle(self, user_id: str, text: str) -> str:
         text = (text or "").strip()
@@ -205,8 +335,25 @@ class Survey:
         if user_id not in self.state:
             return self.start(user_id)
 
+        # Удаление работает в любой момент и не требует подтверждений:
+        # человек имеет на это право, а лишний экран — препятствие.
+        if low in ERASE_WORDS:
+            return self.erase(user_id)
+
+        # До согласия анкеты не существует. Никакие другие слова здесь
+        # не обрабатываются — иначе получится, что мы что-то собираем
+        # до того, как человек разрешил.
+        if self.stage(user_id) == "consent":
+            if low in AGREE_WORDS or low in BEGIN_WORDS or low in RESTART_WORDS:
+                return self.grant_consent(user_id)
+            if low in REFUSE_WORDS or low in CANCEL_WORDS:
+                return self.refuse_consent(user_id)
+            if low in HELP_WORDS:
+                return HELP
+            return CONSENT
+
         if low in RESTART_WORDS:
-            return self.start(user_id)
+            return self.restart_after_consent(user_id)
         if low in HELP_WORDS:
             return HELP
         if low in SUMMARY_WORDS:
@@ -385,6 +532,8 @@ class Survey:
         person = self.state.get(user_id)
         if not person or person.get("finished"):
             return None
+        if not (person.get("consent") or {}).get("at"):
+            return None          # до согласия вопросов нет
         step = self._next(person.get("step", 0), person.get("answers", {}))
         if step >= len(QUESTIONS):
             return None

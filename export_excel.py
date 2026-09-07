@@ -141,7 +141,8 @@ def build(path: str | None = None) -> str:
     # ------------------------------------------------ лист «Обращения»
     sheet = book.create_sheet("Обращения")
     header = [
-        "Обратился", "Заполнено", "Статус", "Кто ведёт", "Требует внимания",
+        "Обратился", "Согласие дано", "Версия согласия",
+        "Заполнено", "Статус", "Кто ведёт", "Требует внимания",
         "Звонок 7 дней", "Звонок 30 дней", "Заметки", "Написано в чат",
     ] + [q["text"].splitlines()[0] for q in QUESTIONS]
     sheet.append(header)
@@ -163,6 +164,8 @@ def build(path: str | None = None) -> str:
         sheet.append(
             [
                 (person.get("started") or "")[:16].replace("T", " "),
+                ((person.get("consent") or {}).get("at") or "")[:16].replace("T", " "),
+                (person.get("consent") or {}).get("version", ""),
                 "да" if person.get("finished") else "нет",
                 operator.get("status", store.STATUSES[0]),
                 operator.get("assigned", ""),
@@ -176,12 +179,12 @@ def build(path: str | None = None) -> str:
         )
         row = sheet[sheet.max_row]
         if alerts:
-            row[4].font = Font(color=RED, bold=True)
+            row[6].font = Font(color=RED, bold=True)
         for cell in row:
             cell.alignment = Alignment(vertical="top", wrap_text=True)
             cell.border = BORDER
 
-    style_header(sheet, [17, 11, 12, 14, 34, 13, 14, 40, 34] + [26] * len(QUESTIONS))
+    style_header(sheet, [17, 17, 9, 11, 12, 14, 34, 13, 14, 40, 34] + [26] * len(QUESTIONS))
     if sheet.max_row > 1:
         sheet.auto_filter.ref = f"A1:{get_column_letter(len(header))}{sheet.max_row}"
 

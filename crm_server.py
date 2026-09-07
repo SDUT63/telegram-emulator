@@ -202,6 +202,9 @@ def _case_view(user_id: str, person: dict, delivered: dict) -> dict:
         "need": answers.get("need", ""),
         "mobility": answers.get("mobility", ""),
         "started": person.get("started", ""),
+        # Согласие — доказательство законности обработки. Оператор должен
+        # видеть его в карточке, а не искать в файлах.
+        "consent": person.get("consent") or {},
         "finished": person.get("finished", ""),
         "alerts": person.get("alerts", []),
         "answers": answers,

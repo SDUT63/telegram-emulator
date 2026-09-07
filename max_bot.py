@@ -143,8 +143,18 @@ def keyboard_for(survey: Survey, user_id: str):
     from maxapi.utils.inline_keyboard import InlineKeyboardBuilder
 
     keyboard = InlineKeyboardBuilder()
-    spot = survey.current(user_id)
+    stage = survey.stage(user_id)
 
+    if stage == "consent":
+        # Согласие — не вопрос анкеты, а вход в неё. Кнопки равновелики:
+        # отказ не спрятан и не помечен как ошибка, это законный выбор.
+        keyboard.row(
+            CallbackButton(text="Согласен, продолжим", payload="c:y",
+                           intent=Intent.POSITIVE))
+        keyboard.row(CallbackButton(text="Не согласен", payload="c:n"))
+        return keyboard.as_markup()
+
+    spot = survey.current(user_id)
     if spot is None:
         # Анкета закончена: оставляем только то, что осмысленно нажать
         keyboard.row(
@@ -208,10 +218,46 @@ def keyboard_for(survey: Survey, user_id: str):
     elif multi:
         bottom.append(CallbackButton(text="Готово", payload=f"d:{step}"))
 
-    if bottom:
+    # Служебные кнопки просятся в одну строку — но только если обе туда
+    # влезают. «Ничего не оформлено» рядом с «Назад» обрезается, а
+    # обрезанная кнопка хуже лишней строки.
+    if len(bottom) == 2 and max(_width(b.text) for b in bottom) > TWO_COLUMNS_AT:
+        for button in bottom:
+            keyboard.row(button)
+    elif bottom:
         keyboard.row(*bottom)
 
     return keyboard.as_markup()
+
+
+class Seen:
+    """Что уже обработано. Защита от повторной доставки одного события.
+
+    MAX повторяет доставку вебхука, если сервер не ответил за 30 секунд,
+    и делает это до десяти раз. Без защиты один ответ человека запишется
+    дважды, а анкета перескочит через вопрос. При long polling то же самое
+    происходит после обрыва связи.
+
+    Ключ берём тот, что платформа гарантирует уникальным: у сообщения —
+    mid, у нажатия кнопки — callback_id. Держим последние ~5000 и
+    вытесняем самые старые: этого хватает на сутки работы, а память
+    не растёт.
+    """
+
+    def __init__(self, limit: int = 5000) -> None:
+        self.limit = limit
+        self._keys: dict[str, None] = {}
+
+    def fresh(self, key: str | None) -> bool:
+        """True — событие новое. False — уже обрабатывали, надо пропустить."""
+        if not key:
+            return True          # нечем отличить: лучше обработать, чем потерять
+        if key in self._keys:
+            return False
+        self._keys[key] = None
+        while len(self._keys) > self.limit:
+            self._keys.pop(next(iter(self._keys)))
+        return True
 
 
 def build_dispatcher(survey: Survey):
@@ -220,6 +266,7 @@ def build_dispatcher(survey: Survey):
     from maxapi.types import BotStarted, MessageCallback, MessageCreated
 
     dp = Dispatcher()
+    seen = Seen()
 
     def note_if_finished(user_id: str, was_done: bool) -> None:
         """Сводка в окно бота, как только анкета закрылась."""
@@ -257,8 +304,14 @@ def build_dispatcher(survey: Survey):
         """Любое сообщение в диалоге."""
         chat_id, user_id = event.get_ids()
         body = event.message.body
+        if not seen.fresh(getattr(body, "mid", None)):
+            log.info("%s: повтор доставки, пропускаем", user_id)
+            return
         incoming = ((body.text if body else None) or "").strip()
-        log.info("%s: %s", user_id, incoming[:70] or "(без текста)")
+        # В журнал не пишем ни текст, ни длину: на отладке это помогало,
+        # в боевой среде туда попадут имя, телефон и жалобы на здоровье.
+        # Достаточно знать, что сообщение было и от кого.
+        log.info("%s: сообщение", user_id)
 
         was_done = bool(survey.state.get(str(user_id), {}).get("finished"))
         reply = survey.handle(str(user_id), incoming)
@@ -270,8 +323,13 @@ def build_dispatcher(survey: Survey):
         """Человек нажал кнопку под вопросом."""
         chat_id, user_id = event.get_ids()
         who = str(user_id)
+        if not seen.fresh(event.callback.callback_id):
+            log.info("%s: повтор нажатия, пропускаем", who)
+            return
         parts = (event.callback.payload or "").split(":")
         action = parts[0] if parts else ""
+        # payload — служебный код кнопки («a:5:2»), ответа в нём нет,
+        # поэтому его писать можно: без него разбор сбоев невозможен.
         log.info("%s нажал: %s", who, event.callback.payload)
 
         # Кнопка от прошлого вопроса: сообщения в чате остаются, и нажать
@@ -293,6 +351,19 @@ def build_dispatcher(survey: Survey):
             except Exception as error:  # noqa: BLE001
                 log.debug("Не удалось обновить кнопки: %s", error)
                 await event.ack()
+
+        if action == "c":
+            # Сначала смотрим, где человек стоит, и только потом меняем
+            # состояние: иначе старая кнопка из истории чата переписала бы
+            # уже данное согласие новой датой.
+            if survey.stage(who) != "consent":
+                await event.ack(notification="Это уже решено, идём дальше.")
+                return
+            reply = (survey.grant_consent(who) if parts[1:2] == ["y"]
+                     else survey.refuse_consent(who))
+            await repaint(original, [])
+            await say(event.bot, chat_id, who, reply)
+            return
 
         if action == "t" and len(parts) == 3:
             step = int(parts[1])
@@ -350,7 +421,7 @@ def build_dispatcher(survey: Survey):
         elif action == "b":
             reply = survey.handle(who, "назад")
         elif action == "n":
-            reply = survey.start(who)
+            reply = survey.restart_after_consent(who)
         elif action == "m":
             reply = survey.summary(who)
         else:
