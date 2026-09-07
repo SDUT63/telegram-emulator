@@ -1,0 +1,1154 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Как обратиться в СДУТ</title>
+<meta name="description" content="Пошаговая инструкция: как оставить заявку в службу долговременного ухода Тольятти через чат-бота в мессенджере MAX.">
+<meta name="color-scheme" content="light dark">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 100 100%27%3E%3Ctext y=%27.9em%27 font-size=%2790%27%3E%F0%9F%92%AC%3C/text%3E%3C/svg%3E">
+<!-- Фирменный шрифт грузится, только если есть интернет, и не задерживает
+     страницу, если его нет: файл откроют и с флешки, и в дороге. -->
+<link rel="stylesheet" media="print" onload="this.media='all'"
+      href="https://fonts.googleapis.com/css2?family=Golos+Text:wght@400;500;600;700;800&display=swap">
+<style>
+/* ==========================================================================
+   Инструкция к чат-боту СДУТ
+   Палитра и шрифт — те же, что на страницах службы и в постах канала.
+   Светлая тема объявлена целиком в :root; тёмная только переопределяет
+   значения, иначе цвет не применится в состоянии «системная тема».
+   ========================================================================== */
+:root {
+  --ground:        #F6F1E8;
+  --surface:       #FFFCF7;
+  --surface-warm:  #EFE6D8;
+  --ink:           #16384A;
+  --ink-soft:      #33525E;
+  --muted:         #6E7C81;
+  --line:          #E4DACA;
+  --line-soft:     #EFE7DA;
+
+  --accent:        #2E6E63;
+  --accent-deep:   #1F5257;
+  --accent-soft:   #DFEAE6;
+  --on-accent:     #FFFFFF;
+
+  --sand:          #C09A6B;
+  --sand-soft:     #EDE0CC;
+
+  --critical:      #A93E32;
+  --critical-soft: #F8E7E3;
+  --caution:       #9A6B22;
+  --caution-soft:  #F6EBD8;
+
+  /* Телефон внутри страницы — отдельный мирок: это чужое приложение,
+     и выглядеть оно должно как чужое приложение, а не как наш блок. */
+  --bezel:         #D9CFC0;
+  --screen:        #FFFFFF;
+  --chat:          #F2F4F5;
+  --bubble:        #FFFFFF;
+  --bubble-line:   #E6E9EB;
+  --bubble-ink:    #14212B;
+  --bubble-meta:   #7C8B93;
+  --mine:          #DCEFE9;
+  --key:           #FFFFFF;
+  --key-line:      #D9E0E3;
+  --key-ink:       #1F5257;
+
+  --f-body: "Golos Text", "Segoe UI", Roboto, -apple-system, system-ui, sans-serif;
+  --f-chat: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+
+  /* Размер шрифта переключается кнопками вверху: читателю за 70 это
+     нужнее любого оформления. */
+  --base: 19px;
+  --radius: 14px;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --ground:        #101E20;
+    --surface:       #18292B;
+    --surface-warm:  #22312F;
+    --ink:           #E8EFEC;
+    --ink-soft:      #C4D4D2;
+    --muted:         #93A5A6;
+    --line:          #294042;
+    --line-soft:     #223639;
+
+    --accent:        #6FBFAE;
+    --accent-deep:   #8FD3C2;
+    --accent-soft:   #143732;
+    --on-accent:     #08211E;
+
+    --sand:          #D9B583;
+    --sand-soft:     #33291C;
+
+    --critical:      #EE8074;
+    --critical-soft: #311916;
+    --caution:       #DFAE55;
+    --caution-soft:  #2B2214;
+
+    --bezel:         #26383A;
+    --screen:        #0E1719;
+    --chat:          #131F22;
+    --bubble:        #1C2B2E;
+    --bubble-line:   #26383B;
+    --bubble-ink:    #E4EDEC;
+    --bubble-meta:   #8B9DA0;
+    --mine:          #1E3F3A;
+    --key:           #1C2B2E;
+    --key-line:      #2C4145;
+    --key-ink:       #8FD3C2;
+  }
+}
+:root[data-theme="dark"] {
+  --ground:        #101E20;
+  --surface:       #18292B;
+  --surface-warm:  #22312F;
+  --ink:           #E8EFEC;
+  --ink-soft:      #C4D4D2;
+  --muted:         #93A5A6;
+  --line:          #294042;
+  --line-soft:     #223639;
+
+  --accent:        #6FBFAE;
+  --accent-deep:   #8FD3C2;
+  --accent-soft:   #143732;
+  --on-accent:     #08211E;
+
+  --sand:          #D9B583;
+  --sand-soft:     #33291C;
+
+  --critical:      #EE8074;
+  --critical-soft: #311916;
+  --caution:       #DFAE55;
+  --caution-soft:  #2B2214;
+
+  --bezel:         #26383A;
+  --screen:        #0E1719;
+  --chat:          #131F22;
+  --bubble:        #1C2B2E;
+  --bubble-line:   #26383B;
+  --bubble-ink:    #E4EDEC;
+  --bubble-meta:   #8B9DA0;
+  --mine:          #1E3F3A;
+  --key:           #1C2B2E;
+  --key-line:      #2C4145;
+  --key-ink:       #8FD3C2;
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+
+html { -webkit-text-size-adjust: 100%; }
+
+body {
+  margin: 0;
+  background: var(--ground);
+  color: var(--ink);
+  font: 400 var(--base)/1.65 var(--f-body);
+}
+
+:focus-visible {
+  outline: 3px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+
+.wrap {
+  max-width: 940px;
+  margin: 0 auto;
+  padding: 0 20px 72px;
+}
+
+/* ---------------------------------------------------------------- шапка */
+
+.top {
+  border-bottom: 1px solid var(--line);
+  background: var(--surface);
+}
+.top__in {
+  max-width: 940px;
+  margin: 0 auto;
+  padding: 22px 20px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+.mark {
+  width: 46px; height: 46px; flex: none;
+  border-radius: 13px;
+  background: var(--accent-deep);
+  color: #FFFFFF;
+  display: grid; place-items: center;
+  font-size: 12px; font-weight: 800; letter-spacing: .04em;
+}
+.top__name { font-size: 15px; font-weight: 600; line-height: 1.3; }
+.top__where { font-size: 13.5px; color: var(--muted); }
+
+.sizer { margin-left: auto; display: flex; align-items: center; gap: 8px; }
+.sizer__label { font-size: 13px; color: var(--muted); }
+.sizer button {
+  min-width: 42px; min-height: 42px;
+  border: 1px solid var(--line);
+  background: var(--ground);
+  color: var(--ink-soft);
+  border-radius: 9px;
+  font-family: inherit;
+  cursor: pointer;
+  line-height: 1;
+}
+.sizer button:nth-child(1) { font-size: 14px; }
+.sizer button:nth-child(2) { font-size: 18px; }
+.sizer button:nth-child(3) { font-size: 22px; }
+.sizer button[aria-pressed="true"] {
+  background: var(--accent-deep);
+  border-color: var(--accent-deep);
+  color: #FFFFFF;
+  font-weight: 700;
+}
+
+/* ------------------------------------------------------------- заголовок */
+
+.hero { padding: 44px 0 8px; }
+.eyebrow {
+  font-size: 12.5px; font-weight: 700; letter-spacing: .13em;
+  text-transform: uppercase; color: var(--accent);
+  margin: 0 0 14px;
+}
+h1 {
+  margin: 0 0 16px;
+  font-size: clamp(30px, 6vw, 46px);
+  font-weight: 800;
+  letter-spacing: -.025em;
+  line-height: 1.12;
+  text-wrap: balance;
+}
+.lede {
+  margin: 0;
+  max-width: 30em;
+  font-size: 1.13em;
+  color: var(--ink-soft);
+}
+
+/* Три обещания. Не карточки — просто три колонки, разделённые волоском:
+   это перечисление, а не три отдельных предмета. */
+.promise {
+  margin: 34px 0 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 1px;
+  background: var(--line);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+@media (min-width: 720px) { .promise { grid-template-columns: repeat(3, 1fr); } }
+.promise li { background: var(--surface); padding: 18px 20px; }
+.promise b {
+  display: block;
+  font-size: 1.05em;
+  font-weight: 700;
+  margin-bottom: 3px;
+}
+.promise span { font-size: .92em; color: var(--muted); }
+
+/* ------------------------------------------------------------- разделы */
+
+section { margin-top: 56px; }
+h2 {
+  margin: 0 0 8px;
+  font-size: clamp(23px, 4vw, 30px);
+  font-weight: 800;
+  letter-spacing: -.02em;
+  text-wrap: balance;
+}
+.sub { margin: 0 0 26px; max-width: 34em; color: var(--ink-soft); }
+
+.rule {
+  width: 54px; height: 4px;
+  background: var(--sand);
+  border-radius: 2px;
+  margin: 0 0 20px;
+}
+
+/* --------------------------------------------------------------- показ */
+
+.demo {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 20px;
+  padding: 24px 20px;
+  display: grid;
+  gap: 22px;
+  justify-items: center;
+}
+.demo__cap {
+  margin: 0;
+  text-align: center;
+  max-width: 26em;
+  color: var(--ink-soft);
+  min-height: 3.3em;
+}
+.demo__cap b { color: var(--ink); }
+.demo__bar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; justify-content: center; }
+.demo__btn {
+  min-height: 46px;
+  padding: 0 18px;
+  border: 1px solid var(--line);
+  background: var(--ground);
+  color: var(--ink);
+  border-radius: 10px;
+  font: 600 .92em var(--f-body);
+  cursor: pointer;
+}
+.demo__btn--go {
+  background: var(--accent-deep);
+  border-color: var(--accent-deep);
+  color: #FFFFFF;
+}
+.dots { display: flex; gap: 7px; }
+.dots i {
+  width: 9px; height: 9px; border-radius: 50%;
+  background: var(--line);
+  display: block;
+}
+.dots i.on { background: var(--accent); transform: scale(1.25); }
+
+/* --------------------------------------------------------------- шаги */
+
+.steps { display: grid; gap: 0; }
+
+.step {
+  display: grid;
+  gap: 20px 26px;
+  padding: 30px 0;
+  border-top: 1px solid var(--line-soft);
+  break-inside: avoid;
+}
+.step:first-child { border-top: 0; }
+@media (min-width: 860px) {
+  .step {
+    grid-template-columns: 62px 1fr 302px;
+    align-items: start;
+  }
+}
+.step__num {
+  font-size: 40px;
+  font-weight: 800;
+  line-height: 1;
+  color: var(--sand);
+  letter-spacing: -.04em;
+  font-variant-numeric: tabular-nums;
+}
+.step__body { min-width: 0; }
+.step h3 {
+  margin: 0 0 10px;
+  text-wrap: balance;
+  font-size: 1.25em;
+  font-weight: 700;
+  line-height: 1.3;
+  text-wrap: balance;
+}
+.step p { margin: 0 0 12px; color: var(--ink-soft); max-width: 32em; }
+.step p:last-child { margin-bottom: 0; }
+.step__shot { justify-self: center; }
+
+/* Мелкая врезка внутри шага — не карточка, просто отступ и полоска слева */
+.aside {
+  border-left: 3px solid var(--sand);
+  padding: 2px 0 2px 15px;
+  font-size: .95em;
+  color: var(--ink-soft);
+}
+kbd {
+  font: 600 .92em var(--f-body);
+  background: var(--surface-warm);
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  padding: 2px 8px;
+  white-space: nowrap;
+  color: var(--ink);
+}
+
+/* --------------------------------------------------------------- телефон */
+
+.phone {
+  width: 302px;
+  max-width: 100%;
+  background: var(--bezel);
+  border-radius: 30px;
+  padding: 9px;
+  box-shadow: 0 1px 2px rgba(22, 56, 74, .06), 0 18px 34px -22px rgba(22, 56, 74, .45);
+}
+.phone__screen {
+  background: var(--screen);
+  border-radius: 22px;
+  overflow: hidden;
+}
+.phone__bar {
+  display: flex; align-items: center; gap: 10px;
+  padding: 11px 13px;
+  background: var(--bubble);
+  border-bottom: 1px solid var(--bubble-line);
+  font-family: var(--f-chat);
+}
+.phone__ava {
+  width: 30px; height: 30px; border-radius: 50%;
+  background: var(--accent-deep);
+  color: #FFFFFF;
+  display: grid; place-items: center;
+  font: 700 9px/1 var(--f-body);
+  flex: none;
+}
+.phone__who { font-size: 13px; font-weight: 600; color: var(--bubble-ink); line-height: 1.25; }
+.phone__sub { font-size: 11px; color: var(--bubble-meta); }
+
+.chat {
+  background: var(--chat);
+  padding: 12px 11px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  font-family: var(--f-chat);
+  min-height: 210px;
+}
+.msg {
+  background: var(--bubble);
+  border: 1px solid var(--bubble-line);
+  color: var(--bubble-ink);
+  border-radius: 15px 15px 15px 5px;
+  padding: 10px 12px;
+  font-size: 13.5px;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  align-self: stretch;
+}
+.msg--mine {
+  background: var(--mine);
+  border-color: transparent;
+  border-radius: 15px 15px 5px 15px;
+  align-self: flex-end;
+  max-width: 76%;
+}
+.msg--alarm {
+  background: var(--critical-soft);
+  border-color: var(--critical);
+  color: var(--critical);
+  font-weight: 500;
+}
+.msg__meta {
+  display: block;
+  font-size: 11px;
+  color: var(--bubble-meta);
+  margin-bottom: 6px;
+  letter-spacing: .01em;
+}
+.msg__pick {
+  display: block;
+  margin-top: 9px;
+  padding-top: 8px;
+  border-top: 1px dashed var(--bubble-line);
+  color: var(--accent);
+  font-weight: 600;
+}
+.msg__marked {
+  display: block;
+  margin-top: 9px;
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.keys { display: flex; flex-direction: column; gap: 5px; margin-top: 2px; }
+.keys__row { display: flex; gap: 5px; }
+.key {
+  flex: 1 1 0;
+  min-width: 0;
+  background: var(--key);
+  border: 1px solid var(--key-line);
+  color: var(--key-ink);
+  border-radius: 9px;
+  padding: 8px 6px;
+  font: 500 12px/1.25 var(--f-chat);
+  text-align: center;
+  overflow-wrap: break-word;
+}
+.key--on { border-color: var(--accent); background: var(--accent-soft); font-weight: 600; }
+.key--go { background: var(--accent-deep); border-color: var(--accent-deep); color: #FFFFFF; font-weight: 600; }
+.key--tap {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+.shot__cap {
+  margin: 9px 0 0;
+  font-size: .82em;
+  color: var(--muted);
+  text-align: center;
+  max-width: 302px;
+}
+
+/* ------------------------------------------------------------ важный блок */
+
+.alarm {
+  margin-top: 56px;
+  background: var(--critical-soft);
+  border: 1px solid var(--critical);
+  border-left-width: 6px;
+  border-radius: var(--radius);
+  padding: 26px 24px;
+}
+.alarm h2 { color: var(--critical); margin-bottom: 12px; }
+.alarm p { margin: 0 0 12px; color: var(--ink); max-width: 34em; }
+.alarm p:last-child { margin-bottom: 0; }
+.alarm .num {
+  font-size: 1.55em;
+  font-weight: 800;
+  color: var(--critical);
+  letter-spacing: -.01em;
+}
+
+/* --------------------------------------------------------------- таблица */
+
+.fix { display: grid; gap: 1px; background: var(--line); border: 1px solid var(--line);
+       border-radius: var(--radius); overflow: hidden; }
+.fix__row { background: var(--surface); padding: 16px 20px; display: grid; gap: 4px 20px; }
+@media (min-width: 700px) { .fix__row { grid-template-columns: 15em 1fr; align-items: baseline; } }
+.fix__q { font-weight: 700; }
+.fix__a { color: var(--ink-soft); }
+
+/* ---------------------------------------------------------------- подвал */
+
+.foot {
+  margin-top: 60px;
+  padding-top: 26px;
+  border-top: 1px solid var(--line);
+  color: var(--muted);
+  font-size: .92em;
+}
+.foot a { color: var(--accent); }
+.foot p { margin: 0 0 8px; }
+
+.links { display: flex; gap: 10px; flex-wrap: wrap; margin: 18px 0 24px; }
+.links a {
+  min-height: 50px;
+  display: inline-flex; align-items: center;
+  padding: 0 20px;
+  border-radius: 11px;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--ink);
+  text-decoration: none;
+  font-weight: 600;
+  font-size: .96em;
+}
+.links a.primary {
+  background: var(--accent-deep);
+  border-color: var(--accent-deep);
+  color: #FFFFFF;
+}
+
+/* --------------------------------------------------------------- печать */
+
+@media print {
+  :root { --base: 12pt; }
+  body { background: #FFFFFF; }
+  .top, .sizer, .demo__bar, .dots { display: none !important; }
+  .wrap { max-width: none; padding: 0; }
+  .step, .fix__row, .alarm, .promise { break-inside: avoid; }
+  .phone { box-shadow: none; }
+  a[href^="http"]::after { content: " (" attr(href) ")"; font-size: 9pt; color: #555; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * { animation: none !important; transition: none !important; }
+}
+.dots i { transition: transform .18s ease, background .18s ease; }
+</style>
+</head>
+<body>
+
+<header class="top">
+  <div class="top__in">
+    <div class="mark">СДУТ</div>
+    <div>
+      <div class="top__name">Служба долговременного ухода</div>
+      <div class="top__where">Тольятти</div>
+    </div>
+    <div class="sizer">
+      <span class="sizer__label" id="sizerLabel">Размер текста</span>
+      <button type="button" data-size="19" aria-pressed="true" aria-labelledby="sizerLabel" aria-describedby="s1">А<span hidden id="s1">обычный</span></button>
+      <button type="button" data-size="23" aria-pressed="false" aria-labelledby="sizerLabel" aria-describedby="s2">А<span hidden id="s2">крупнее</span></button>
+      <button type="button" data-size="28" aria-pressed="false" aria-labelledby="sizerLabel" aria-describedby="s3">А<span hidden id="s3">самый крупный</span></button>
+    </div>
+  </div>
+</header>
+
+<div class="wrap">
+
+  <div class="hero">
+    <p class="eyebrow">Инструкция</p>
+    <h1>Как обратиться в службу через чат-бота</h1>
+    <p class="lede">Бот живёт в мессенджере MAX. Он задаст несколько вопросов и передаст всё
+      координатору — тому человеку, который вам перезвонит.</p>
+
+    <ul class="promise">
+      <li><b>Семь вопросов</b><span>После них можно остановиться — этого уже хватит, чтобы с вами связались</span></li>
+      <li><b>Печатать почти не нужно</b><span>Ответы приходят кнопками. Руками вписываете только имя и телефон</span></li>
+      <li><b>Ничего не пропадёт</b><span>Закрыли на середине — вернётесь и продолжите с того же вопроса</span></li>
+    </ul>
+  </div>
+
+  <!-- ===================================================== показ вживую -->
+  <section>
+    <div class="rule"></div>
+    <h2>Сначала посмотрите, как это выглядит</h2>
+    <p class="sub">Шесть экранов — весь разговор с ботом от начала до конца.
+      Листайте кнопками или нажмите «Показать по порядку».</p>
+
+    <div class="demo">
+      <!-- Первый кадр записан прямо в странице: он виден сразу,
+           даже если ничего не запустится. -->
+      <div class="phone" id="demoPhone">
+        <div class="phone__screen">
+          <div class="phone__bar">
+            <div class="phone__ava">СДУТ</div>
+            <div>
+              <div class="phone__who">Служба долговременного ухода</div>
+              <div class="phone__sub">бот</div>
+            </div>
+          </div>
+          <div class="chat" id="demoChat">
+            <div class="msg">Здравствуйте! Это служба долговременного ухода Тольятти.
+
+Несколько вопросов — и с вами свяжется координатор.
+
+Если человеку плохо прямо сейчас — звоните 103, анкета подождёт.</div>
+            <div class="msg"><span class="msg__meta">Кто обращается · вопрос 1 из 7</span>Вы обращаетесь о себе или о близком человеке?<span class="keys">
+                <span class="keys__row"><span class="key">О себе</span><span class="key">О близком человеке</span></span>
+                <span class="keys__row"><span class="key">Я специалист</span></span>
+              </span></div>
+          </div>
+        </div>
+      </div>
+
+      <p class="demo__cap" id="demoCap" aria-live="polite"><b>Начало.</b>
+        Бот здоровается и сразу задаёт первый вопрос. Ответ — это кнопка под сообщением.</p>
+
+      <div class="demo__bar">
+        <button class="demo__btn" type="button" id="demoPrev">← Назад</button>
+        <button class="demo__btn demo__btn--go" type="button" id="demoPlay">Показать по порядку</button>
+        <button class="demo__btn" type="button" id="demoNext">Дальше →</button>
+      </div>
+      <div class="dots" id="demoDots" aria-hidden="true"></div>
+    </div>
+  </section>
+
+  <!-- ======================================================== шаги -->
+  <section>
+    <div class="rule"></div>
+    <h2>Теперь по шагам</h2>
+    <p class="sub">Справа от каждого шага — тот самый экран, который вы увидите на телефоне.</p>
+
+    <div class="steps">
+
+      <article class="step">
+        <div class="step__num">1</div>
+        <div class="step__body">
+          <h3>Откройте бота и напишите ему что угодно</h3>
+          <p>Достаточно одного «здравствуйте». Регистрироваться, заполнять анкеты
+            на сайте и куда-то звонить не нужно — бот ответит сам.</p>
+          <p class="aside">Ссылка на бота — в посте, под которым вы читаете эту инструкцию.
+            Нажмите её с телефона, и MAX откроется сразу на нужном чате.</p>
+        </div>
+        <div class="step__shot">
+          <div class="phone">
+            <div class="phone__screen">
+              <div class="phone__bar">
+                <div class="phone__ava">СДУТ</div>
+                <div>
+                  <div class="phone__who">Служба долговременного ухода</div>
+                  <div class="phone__sub">бот</div>
+                </div>
+              </div>
+              <div class="chat">
+                <div class="msg msg--mine">Здравствуйте</div>
+                <div class="msg">Здравствуйте! Это служба долговременного ухода Тольятти.
+
+Несколько вопросов — и с вами свяжется координатор.
+
+Если человеку плохо прямо сейчас — звоните 103, анкета подождёт.</div>
+              </div>
+            </div>
+          </div>
+          <p class="shot__cap">Вы написали одно слово — бот уже отвечает</p>
+        </div>
+      </article>
+
+      <article class="step">
+        <div class="step__num">2</div>
+        <div class="step__body">
+          <h3>Нажимайте на кнопки под вопросом</h3>
+          <p>Это и есть ответ. Нажали — бот записал его и задал следующий вопрос,
+            а в переписке осталась пометка, что вы выбрали.</p>
+          <p>Строка сверху говорит, где вы находитесь: раздел и номер вопроса.
+            Так видно, сколько осталось.</p>
+        </div>
+        <div class="step__shot">
+          <div class="phone">
+            <div class="phone__screen">
+              <div class="phone__bar">
+                <div class="phone__ava">СДУТ</div>
+                <div>
+                  <div class="phone__who">Служба долговременного ухода</div>
+                  <div class="phone__sub">бот</div>
+                </div>
+              </div>
+              <div class="chat">
+                <div class="msg"><span class="msg__meta">Кто обращается · вопрос 1 из 7</span>Вы обращаетесь о себе или о близком человеке?<span class="msg__pick">➤ О близком человеке</span></div>
+                <div class="msg"><span class="msg__meta">Кто обращается · вопрос 2 из 7</span>Как к вам обращаться?</div>
+              </div>
+            </div>
+          </div>
+          <p class="shot__cap">Кнопки исчезли, а ваш ответ остался в сообщении</p>
+        </div>
+      </article>
+
+      <article class="step">
+        <div class="step__num">3</div>
+        <div class="step__body">
+          <h3>Имя и телефон впишите руками</h3>
+          <p>Это единственные два вопроса, где нужно печатать. Имя — как к вам
+            обращаться, хоть просто «Мария». Телефон — тот, по которому вам удобно
+            ответить на звонок.</p>
+          <p class="aside">Если в номере ошибётесь, бот скажет об этом сразу
+            и попросит написать ещё раз.</p>
+        </div>
+        <div class="step__shot">
+          <div class="phone">
+            <div class="phone__screen">
+              <div class="phone__bar">
+                <div class="phone__ava">СДУТ</div>
+                <div>
+                  <div class="phone__who">Служба долговременного ухода</div>
+                  <div class="phone__sub">бот</div>
+                </div>
+              </div>
+              <div class="chat">
+                <div class="msg"><span class="msg__meta">Кто обращается · вопрос 2 из 7</span>Как к вам обращаться?</div>
+                <div class="msg msg--mine">Мария</div>
+                <div class="msg"><span class="msg__meta">Кто обращается · вопрос 3 из 7</span>Номер телефона для связи.</div>
+                <div class="msg msg--mine">8 917 123-45-67</div>
+              </div>
+            </div>
+          </div>
+          <p class="shot__cap">Ваши сообщения — справа, ответы бота — слева</p>
+        </div>
+      </article>
+
+      <article class="step">
+        <div class="step__num">4</div>
+        <div class="step__body">
+          <h3>Где можно отметить несколько — отмечайте всё</h3>
+          <p>В вопросе о состоянии кнопки не отвечают сразу, а отмечаются.
+            Нажали — появилась <b>зелёная галочка</b>, а бот дописал в сообщение
+            строку «Отмечено» с вашим списком.</p>
+          <p>Внизу вместо «Ничего из этого нет» появится <b>«Готово»</b> с числом
+            отметок. Нажмите её, когда отметите всё.</p>
+          <p class="aside">Передумали — нажмите отмеченную кнопку ещё раз,
+            галочка снимется.</p>
+        </div>
+        <div class="step__shot">
+          <div class="phone">
+            <div class="phone__screen">
+              <div class="phone__bar">
+                <div class="phone__ava">СДУТ</div>
+                <div>
+                  <div class="phone__who">Служба долговременного ухода</div>
+                  <div class="phone__sub">бот</div>
+                </div>
+              </div>
+              <div class="chat">
+                <div class="msg"><span class="msg__meta">Состояние сейчас · вопрос 5 из 7</span>Что беспокоит прямо сейчас?
+
+Отметьте всё, что подходит.<span class="msg__marked">Отмечено: Боль, Плохо ест и пьёт</span><span class="keys">
+                    <span class="keys__row"><span class="key">Тяжело дышит</span><span class="key">Спутанное сознание</span></span>
+                    <span class="keys__row"><span class="key">Резко стало хуже</span><span class="key key--on">✅ Боль</span></span>
+                    <span class="keys__row"><span class="key key--on">✅ Плохо ест и пьёт</span><span class="key">Тошнота, рвота</span></span>
+                    <span class="keys__row"><span class="key">Запор</span><span class="key">Покраснение, рана</span></span>
+                    <span class="keys__row"><span class="key">Стома или катетер</span><span class="key">Недавно упал</span></span>
+                    <span class="keys__row"><span class="key">← Назад</span><span class="key key--go">Готово · 2</span></span>
+                  </span></div>
+              </div>
+            </div>
+          </div>
+          <p class="shot__cap">Отмечено два признака — и это видно тремя способами сразу</p>
+        </div>
+      </article>
+
+      <article class="step">
+        <div class="step__num">5</div>
+        <div class="step__body">
+          <h3>После седьмого вопроса можно остановиться</h3>
+          <p>Бот скажет, что основного уже достаточно, и предложит выбор.
+            Нажмёте <b>«Достаточно, свяжитесь»</b> — на этом всё, заявка ушла.</p>
+          <p>Нажмёте <b>«Продолжить»</b> — будут вопросы о том, как человек ходит,
+            ест, спит, кто за ним ухаживает. Это ещё 3–5 минут, зато координатор
+            позвонит уже подготовленным и не станет выяснять всё заново.</p>
+        </div>
+        <div class="step__shot">
+          <div class="phone">
+            <div class="phone__screen">
+              <div class="phone__bar">
+                <div class="phone__ava">СДУТ</div>
+                <div>
+                  <div class="phone__who">Служба долговременного ухода</div>
+                  <div class="phone__sub">бот</div>
+                </div>
+              </div>
+              <div class="chat">
+                <div class="msg"><span class="msg__meta">Основное собрано · вопрос 7 из 7</span>Этого достаточно — с вами свяжутся в любом случае.
+
+Ещё 3–5 минут вопросов о состоянии избавят от долгого разговора по телефону: координатор придёт, уже зная, что нужно.<span class="keys">
+                    <span class="keys__row"><span class="key">Продолжить</span></span>
+                    <span class="keys__row"><span class="key">Достаточно, свяжитесь</span></span>
+                    <span class="keys__row"><span class="key">← Назад</span></span>
+                  </span></div>
+              </div>
+            </div>
+          </div>
+          <p class="shot__cap">Выбор ваш — оба ответа правильные</p>
+        </div>
+      </article>
+
+      <article class="step">
+        <div class="step__num">6</div>
+        <div class="step__body">
+          <h3>Готово — заявка у координатора</h3>
+          <p>Бот подтвердит, что записал. Дальше вам позвонят по указанному телефону.</p>
+          <p>Кнопка <b>«Мои ответы»</b> покажет всё, что записано, — можно
+            перечитать. <b>«Заполнить заново»</b> начинает анкету сначала, если
+            хотите что-то изменить или обратиться ещё раз.</p>
+        </div>
+        <div class="step__shot">
+          <div class="phone">
+            <div class="phone__screen">
+              <div class="phone__bar">
+                <div class="phone__ava">СДУТ</div>
+                <div>
+                  <div class="phone__who">Служба долговременного ухода</div>
+                  <div class="phone__sub">бот</div>
+                </div>
+              </div>
+              <div class="chat">
+                <div class="msg">Спасибо, записали. Координатор свяжется с вами по указанному телефону.
+
+Если захотите дополнить — напишите «заново», анкета откроется снова.
+Если станет хуже — звоните 103.<span class="keys">
+                    <span class="keys__row"><span class="key">Мои ответы</span><span class="key">Заполнить заново</span></span>
+                  </span></div>
+              </div>
+            </div>
+          </div>
+          <p class="shot__cap">Всё. Больше ничего делать не нужно</p>
+        </div>
+      </article>
+
+    </div>
+  </section>
+
+  <!-- ==================================================== когда не бот -->
+  <div class="alarm">
+    <h2>Когда бот не нужен</h2>
+    <p>Если человеку плохо <b>прямо сейчас</b> — он задыхается, потерял сознание,
+      состояние резко ухудшилось или есть кровь — закройте анкету и звоните.</p>
+    <p><span class="num">103</span> — скорая помощь. С мобильного телефона работает
+      также <span class="num">112</span>. Оба номера бесплатные и без ожидания.</p>
+    <p>Анкета никуда не денется: она сохранена. Вернётесь позже и продолжите
+      с того же вопроса. Бот и сам остановит вас, если по ответам поймёт,
+      что дело срочное.</p>
+  </div>
+
+  <!-- ==================================================== если что-то -->
+  <section>
+    <div class="rule"></div>
+    <h2>Если что-то пошло не так</h2>
+    <p class="sub">Ничего непоправимого в анкете сделать нельзя. Вот что помогает
+      в самых частых случаях.</p>
+
+    <div class="fix">
+      <div class="fix__row">
+        <div class="fix__q">Нажали не ту кнопку</div>
+        <div class="fix__a">Нажмите <kbd>← Назад</kbd> внизу — вернётесь к предыдущему вопросу
+          и ответите заново.</div>
+      </div>
+      <div class="fix__row">
+        <div class="fix__q">Закрыли чат на середине</div>
+        <div class="fix__a">Просто откройте его снова и напишите что угодно.
+          Бот продолжит с того же вопроса — ответы сохранены.</div>
+      </div>
+      <div class="fix__row">
+        <div class="fix__q">Хотите начать всё сначала</div>
+        <div class="fix__a">Напишите слово <kbd>заново</kbd>. Прошлые ответы сотрутся,
+          анкета откроется с первого вопроса.</div>
+      </div>
+      <div class="fix__row">
+        <div class="fix__q">Хотите проверить, что записано</div>
+        <div class="fix__a">Напишите <kbd>ответы</kbd> — бот покажет список
+          всего, что вы уже заполнили.</div>
+      </div>
+      <div class="fix__row">
+        <div class="fix__q">Кнопки не появились</div>
+        <div class="fix__a">Такое бывает на старых телефонах. Тогда бот сам напишет
+          варианты списком, а вы отправите номер ответа цифрой: <kbd>2</kbd>.
+          Если можно отметить несколько — через запятую: <kbd>2, 5</kbd>.</div>
+      </div>
+      <div class="fix__row">
+        <div class="fix__q">Передумали заполнять</div>
+        <div class="fix__a">Напишите <kbd>отмена</kbd>. Или просто закройте чат —
+          никто вам не напишет.</div>
+      </div>
+      <div class="fix__row">
+        <div class="fix__q">Забыли, что боту можно писать</div>
+        <div class="fix__a">Напишите <kbd>помощь</kbd> — бот перечислит все слова,
+          которые понимает.</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ======================================================== контакты -->
+  <section id="contacts">
+    <div class="rule"></div>
+    <h2>Если удобнее не через бота</h2>
+    <p class="sub">Написать можно и в наши сообщества — читаем там же.</p>
+
+    <div class="links">
+      <!-- ===================================================================
+           ЗАПОЛНИТЬ ПЕРЕД ПУБЛИКАЦИЕЙ
+           Ниже — ссылка на бота и телефон горячей линии. Пока они пустые,
+           кнопки просто не показываются: выдуманного номера здесь быть
+           не должно. Впишите значения между кавычками в самом низу файла,
+           в блоке CONFIG.
+           =================================================================== -->
+      <a class="primary" id="botLink" href="#" hidden>Открыть бота в MAX</a>
+      <a id="phoneLink" href="#" hidden>Позвонить на горячую линию</a>
+      <a href="https://t.me/SDUT63">Канал в Telegram</a>
+      <a href="https://vk.ru/sdut63">Группа ВКонтакте</a>
+    </div>
+
+    <p class="sub" style="margin:0">Эту страницу можно сохранить себе или распечатать
+      и отдать тому, кому она нужнее: нажмите в браузере «Печать».</p>
+  </section>
+
+  <footer class="foot">
+    <p><b>АНО «СДУТ»</b> — служба долговременного ухода, Тольятти.</p>
+    <p>Инструкция к чат-боту в мессенджере MAX. Экраны в инструкции показаны
+      такими, какими их присылает бот.</p>
+  </footer>
+
+</div>
+
+<script>
+(function () {
+  "use strict";
+
+  /* =====================================================================
+     ЗАПОЛНИТЬ ПЕРЕД ПУБЛИКАЦИЕЙ
+
+     botUrl    — ссылка на чат-бота в MAX
+     phone     — телефон горячей линии для набора: только цифры и плюс
+     phoneText — как показать телефон человеку
+
+     Пустое поле = кнопки нет. Придумывать номер нельзя.
+     ===================================================================== */
+  var CONFIG = {
+    botUrl:    "",
+    phone:     "",
+    phoneText: ""
+  };
+
+  function show(id, href, text) {
+    var el = document.getElementById(id);
+    if (!el || !href) return;
+    el.href = href;
+    if (text) el.textContent = text;
+    el.hidden = false;
+  }
+  show("botLink", CONFIG.botUrl, "");
+  if (CONFIG.phone) {
+    show("phoneLink", "tel:" + CONFIG.phone.replace(/[^\d+]/g, ""),
+         CONFIG.phoneText ? "Позвонить: " + CONFIG.phoneText : "");
+  }
+
+  /* ---------------------------------------------------- размер текста */
+
+  var SIZE_KEY = "sdut-manual-size";
+  var buttons = Array.prototype.slice.call(document.querySelectorAll(".sizer button"));
+
+  function apply(size, remember) {
+    document.documentElement.style.setProperty("--base", size + "px");
+    buttons.forEach(function (b) {
+      b.setAttribute("aria-pressed", b.getAttribute("data-size") === String(size));
+    });
+    if (remember) {
+      try { localStorage.setItem(SIZE_KEY, String(size)); } catch (e) {}
+    }
+  }
+  buttons.forEach(function (b) {
+    b.addEventListener("click", function () {
+      apply(parseInt(b.getAttribute("data-size"), 10), true);
+    });
+  });
+  try {
+    var saved = parseInt(localStorage.getItem(SIZE_KEY), 10);
+    if (saved >= 19 && saved <= 28) apply(saved, false);
+  } catch (e) {}
+
+  /* ------------------------------------------------------------- показ */
+
+  var chat = document.getElementById("demoChat");
+  var cap = document.getElementById("demoCap");
+  var dots = document.getElementById("demoDots");
+  var playBtn = document.getElementById("demoPlay");
+  if (!chat || !cap) return;
+
+  function keys(rows) {
+    return '<span class="keys">' + rows.map(function (row) {
+      return '<span class="keys__row">' + row.map(function (k) {
+        var cls = "key";
+        if (k.charAt(0) === "*") { cls += " key--go";  k = k.slice(1); }
+        if (k.charAt(0) === "+") { cls += " key--on";  k = k.slice(1); }
+        if (k.charAt(0) === "@") { cls += " key--tap"; k = k.slice(1); }
+        return '<span class="' + cls + '">' + k + "</span>";
+      }).join("") + "</span>";
+    }).join("") + "</span>";
+  }
+
+  function bubble(o) {
+    var cls = "msg" + (o.mine ? " msg--mine" : "") + (o.alarm ? " msg--alarm" : "");
+    var html = '<div class="' + cls + '">';
+    if (o.meta) html += '<span class="msg__meta">' + o.meta + "</span>";
+    html += o.text;
+    if (o.marked) html += '<span class="msg__marked">Отмечено: ' + o.marked + "</span>";
+    if (o.pick) html += '<span class="msg__pick">➤ ' + o.pick + "</span>";
+    if (o.keys) html += keys(o.keys);
+    return html + "</div>";
+  }
+
+  var GREETING = "Здравствуйте! Это служба долговременного ухода Тольятти.\n\n" +
+    "Несколько вопросов — и с вами свяжется координатор.\n\n" +
+    "Если человеку плохо прямо сейчас — звоните 103, анкета подождёт.";
+
+  var frames = [
+    {
+      cap: "<b>Начало.</b> Бот здоровается и сразу задаёт первый вопрос. " +
+           "Ответ — это кнопка под сообщением.",
+      msgs: [
+        { text: GREETING },
+        { meta: "Кто обращается · вопрос 1 из 7",
+          text: "Вы обращаетесь о себе или о близком человеке?",
+          keys: [["О себе", "@О близком человеке"], ["Я специалист"]] }
+      ]
+    },
+    {
+      cap: "<b>Нажали кнопку.</b> Ответ записан, кнопки исчезли, " +
+           "а в сообщении осталась пометка — что именно вы выбрали.",
+      msgs: [
+        { meta: "Кто обращается · вопрос 1 из 7",
+          text: "Вы обращаетесь о себе или о близком человеке?",
+          pick: "О близком человеке" },
+        { meta: "Кто обращается · вопрос 2 из 7", text: "Как к вам обращаться?" }
+      ]
+    },
+    {
+      cap: "<b>Имя и телефон.</b> Единственные два вопроса, где нужно печатать. " +
+           "Ваши сообщения — справа.",
+      msgs: [
+        { meta: "Кто обращается · вопрос 2 из 7", text: "Как к вам обращаться?" },
+        { mine: true, text: "Мария" },
+        { meta: "Кто обращается · вопрос 3 из 7", text: "Номер телефона для связи." },
+        { mine: true, text: "8 917 123-45-67" }
+      ]
+    },
+    {
+      cap: "<b>Несколько ответов сразу.</b> Отмеченное помечается галочкой " +
+           "и выписывается словами. Внизу — «Готово» с числом отметок.",
+      msgs: [
+        { meta: "Состояние сейчас · вопрос 5 из 7",
+          text: "Что беспокоит прямо сейчас?\n\nОтметьте всё, что подходит.",
+          marked: "Боль, Плохо ест и пьёт",
+          keys: [
+            ["Тяжело дышит", "Спутанное сознание"],
+            ["Резко стало хуже", "+✅ Боль"],
+            ["+✅ Плохо ест и пьёт", "Тошнота, рвота"],
+            ["Запор", "Покраснение, рана"],
+            ["Стома или катетер", "Недавно упал"],
+            ["← Назад", "*Готово · 2"]
+          ] }
+      ]
+    },
+    {
+      cap: "<b>Седьмой вопрос.</b> Здесь можно остановиться — заявка уже " +
+           "полная. Или ответить подробнее, чтобы звонок был короче.",
+      msgs: [
+        { meta: "Основное собрано · вопрос 7 из 7",
+          text: "Этого достаточно — с вами свяжутся в любом случае.\n\n" +
+                "Ещё 3–5 минут вопросов о состоянии избавят от долгого разговора " +
+                "по телефону: координатор придёт, уже зная, что нужно.",
+          keys: [["Продолжить"], ["@Достаточно, свяжитесь"], ["← Назад"]] }
+      ]
+    },
+    {
+      cap: "<b>Готово.</b> Заявка у координатора, он позвонит по указанному " +
+           "телефону. Больше ничего делать не нужно.",
+      msgs: [
+        { text: "Спасибо, записали. Координатор свяжется с вами по указанному телефону.\n\n" +
+                "Если захотите дополнить — напишите «заново», анкета откроется снова.\n" +
+                "Если станет хуже — звоните 103.",
+          keys: [["Мои ответы", "Заполнить заново"]] }
+      ]
+    }
+  ];
+
+  var at = 0;
+  var timer = null;
+
+  dots.innerHTML = frames.map(function () { return "<i></i>"; }).join("");
+  var marks = Array.prototype.slice.call(dots.children);
+
+  function draw(index) {
+    at = (index + frames.length) % frames.length;
+    var frame = frames[at];
+    chat.innerHTML = frame.msgs.map(bubble).join("");
+    cap.innerHTML = frame.cap;
+    marks.forEach(function (m, i) { m.className = i === at ? "on" : ""; });
+  }
+
+  function stop() {
+    if (timer) { clearInterval(timer); timer = null; }
+    playBtn.textContent = "Показать по порядку";
+  }
+  function play() {
+    stop();
+    draw(0);
+    playBtn.textContent = "Остановить";
+    timer = setInterval(function () {
+      if (at === frames.length - 1) { stop(); return; }
+      draw(at + 1);
+    }, 4200);
+  }
+
+  playBtn.addEventListener("click", function () { timer ? stop() : play(); });
+  document.getElementById("demoNext").addEventListener("click", function () {
+    stop(); draw(at + 1);
+  });
+  document.getElementById("demoPrev").addEventListener("click", function () {
+    stop(); draw(at - 1);
+  });
+
+  draw(0);
+})();
+</script>
+
+</body>
+</html>
