@@ -30,7 +30,7 @@ def test_обязательная_часть_собирает_контакты(c
             break
         заданные.append(q["id"])
         walk.ответить(s, "u1", q, {"who": [2]})
-    for нужный in ("name", "patient_name", "phone", "district", "address"):
+    for нужный in ("name", "patient_name", "phone", "address"):
         assert нужный in заданные, f"без «{нужный}» координатор не доедет"
 
 

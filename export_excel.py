@@ -119,8 +119,9 @@ def build(path: str | None = None) -> str:
                     answers.get("phone", ""),
                     answers.get("when_call", ""),
                     answers.get("patient_name", ""),
-                    ", ".join(x for x in (answers.get("district"),
-                                          answers.get("address")) if x),
+                    # Адрес человек пишет одной строкой и обычно называет
+                    # район сам — приписывать разобранный ещё раз незачем
+                    answers.get("address") or answers.get("district", ""),
                     int(which),
                     operator.get("status", store.STATUSES[0]),
                     operator.get("assigned", ""),
@@ -154,6 +155,10 @@ def build(path: str | None = None) -> str:
         "Обратился", "Согласие дано", "Версия согласия",
         "Заполнено", "Статус", "Кто ведёт", "Требует внимания",
         "Звонок 7 дней", "Звонок 30 дней", "Заметки", "Написано в чат",
+        "Написал человек",
+        # Разобранное из адреса. Вопросами это не спрашивается, но по
+        # району считается маршрут, а лифт решает, как поедет бригада.
+        "Район (из адреса)", "Лифт (из адреса)",
     ] + [q["text"].splitlines()[0] for q in QUESTIONS]
     sheet.append(header)
 
@@ -164,6 +169,16 @@ def build(path: str | None = None) -> str:
         notes = "\n".join(
             f"{n.get('at','')[:16].replace('T',' ')} {n.get('who','')}: {n.get('text','')}"
             for n in operator.get("notes", [])
+        )
+        # То, что человек написал сверх анкеты. В выгрузке это нужно
+        # не меньше исходящих: по ней разбирают, чего людям не хватило.
+        incoming = "\n".join(
+            f"{(m.get('at') or '')[:16].replace('T', ' ')} {m.get('text', '')}"
+            + ("  [файл: " + ", ".join(
+                f.get("name") or f.get("kind", "файл")
+                for f in (m.get("files") or [])) + "]"
+               if m.get("files") else "")
+            for m in (person.get("messages") or [])
         )
         sent = "\n".join(
             f"{m.get('who','')}: {m.get('text','')}"
@@ -184,7 +199,9 @@ def build(path: str | None = None) -> str:
                 "сделан" if calls.get("30") else "",
                 notes,
                 sent,
+                incoming,
             ]
+            + [answers.get("district", ""), answers.get("lift", "")]
             + [answers.get(q["id"], "") for q in QUESTIONS]
         )
         row = sheet[sheet.max_row]
@@ -194,7 +211,9 @@ def build(path: str | None = None) -> str:
             cell.alignment = Alignment(vertical="top", wrap_text=True)
             cell.border = BORDER
 
-    style_header(sheet, [17, 17, 9, 11, 12, 14, 34, 13, 14, 40, 34] + [26] * len(QUESTIONS))
+    style_header(sheet,
+                 [17, 17, 9, 11, 12, 14, 34, 13, 14, 40, 34, 40, 16, 14]
+                 + [26] * len(QUESTIONS))
     if sheet.max_row > 1:
         sheet.auto_filter.ref = f"A1:{get_column_letter(len(header))}{sheet.max_row}"
 

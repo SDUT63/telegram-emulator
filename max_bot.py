@@ -253,6 +253,33 @@ def keyboard_for(survey: Survey, user_id: str):
     return keyboard.as_markup()
 
 
+# Что бот отвечает, когда человек прислал файл или фотографию.
+FILES_TAKEN = "Файл получил, приложу к вашему обращению."
+
+
+def _files_of(body) -> list[dict]:
+    """Вложения входящего сообщения: имя, вид и адрес у MAX.
+
+    Сам файл к себе не тянем. Он уже лежит у MAX, а держать копии
+    фотографий и выписок у себя — значит хранить о людях больше,
+    чем нужно, и отвечать за это хранилище.
+    """
+    found: list[dict] = []
+    for item in (getattr(body, "attachments", None) or []):
+        kind = getattr(item, "type", None)
+        kind = getattr(kind, "value", kind)
+        if kind in ("inline_keyboard", "reply_keyboard"):
+            continue
+        payload = getattr(item, "payload", None)
+        found.append({
+            "kind": str(kind or "file"),
+            "name": getattr(item, "filename", None) or "",
+            "url": getattr(payload, "url", None) or "",
+            "size": getattr(item, "size", None) or 0,
+        })
+    return found
+
+
 class Seen:
     """Что уже обработано. Защита от повторной доставки одного события.
 
@@ -338,6 +365,15 @@ def build_dispatcher(survey: Survey):
 
         was_done = bool(survey.state.get(str(user_id), {}).get("finished"))
         reply = survey.handle(str(user_id), incoming)
+
+        # Фотография выписки или скан направления — это ответ на вопрос
+        # координатора, а не мусор. Анкета их не разбирает, но потерять
+        # их нельзя: складываем в переписку рядом с текстом.
+        files = _files_of(body)
+        if files:
+            survey.note_message(str(user_id), incoming, files)
+            reply = FILES_TAKEN + "\n\n" + reply
+
         await say(event.bot, chat_id, str(user_id), reply)
         note_if_finished(str(user_id), was_done)
 
@@ -472,6 +508,26 @@ def build_dispatcher(survey: Survey):
     return dp
 
 
+def _outgoing_files(message: dict) -> list | None:
+    """Вложения оператора для отправки. Пропавший файл письмо не отменяет.
+
+    Памятка по уходу, бланк согласия, фотография — обычная часть работы
+    координатора. Отправляем как есть: MAX сам разбирает, картинка это
+    или документ.
+    """
+    from maxapi.types.input_media import InputMedia
+
+    ready = []
+    for item in message.get("files") or []:
+        path = item.get("path") or ""
+        if not os.path.exists(path):
+            log.warning("Вложение пропало, отправляем без него: %s",
+                        item.get("name", ""))
+            continue
+        ready.append(InputMedia(path))
+    return ready or None
+
+
 async def outbox_worker(bot) -> None:
     """Отправляет сообщения, которые оператор поставил в очередь из CRM.
 
@@ -490,7 +546,10 @@ async def outbox_worker(bot) -> None:
                     f"— {message['who']}, служба долговременного ухода"
                 )
                 try:
-                    await bot.send_message(user_id=int(message["user_id"]), text=text)
+                    await bot.send_message(
+                        user_id=int(message["user_id"]), text=text,
+                        attachments=_outgoing_files(message),
+                    )
                     crm_store.mark_sent(message)
                     log.info("Оператор %s написал %s", message["who"], message["user_id"])
                 except Exception as error:  # noqa: BLE001

@@ -205,6 +205,15 @@ ALREADY_DONE = (
     "«ответы» — посмотреть заполненное, «заново» — пройти снова."
 )
 
+# Что бот отвечает на сообщение после анкеты. Обещание «передадим» тут
+# не пустое: сообщение действительно ложится в карточку, и координатор
+# видит его рядом со своими.
+ANSWERED = (
+    "Записал, передам координатору — он ответит при звонке "
+    "или напишет сюда.\n\n"
+    "Если срочно и человеку плохо — звоните 103."
+)
+
 # «заново» стирает ответы и начинает сначала — это осознанное действие.
 # «/start» и «начать» ведут себя бережнее: если анкета не дозаполнена,
 # они возвращают человека к тому же вопросу, а не выбрасывают ответы.
@@ -305,6 +314,7 @@ class Survey:
             # Ссылки, приложенные к последнему сообщению: [[подпись, адрес]].
             # Живут до следующего ответа — кнопка не должна висеть вечно.
             "reading": False,
+            "messages": [],
         }
 
     # ------------------------------------------------------- ход по вопросам
@@ -415,6 +425,43 @@ class Survey:
             куски.append(CONSENT_GIVEN_AT.format(когда=_по_русски(дано["at"])))
         return "\n\n".join(куски)
 
+    # ------------------------------------------------------------ переписка
+
+    # Что человек написал сверх анкеты. Ответы на вопросы сюда не идут —
+    # они и так в answers; сюда попадает то, чего иначе никто не увидит:
+    # вопрос координатору, уточнение, ответ на его сообщение.
+    #
+    # Держим у себя, а не в CRM: писать в файл анкеты имеет право только
+    # бот, и это единственное место, где переписка гарантированно полна.
+    MESSAGES_LIMIT = 200
+
+    def note_message(self, user_id: str, text: str, files: list | None = None) -> None:
+        """Запомнить сообщение человека, не разобранное как ответ."""
+        text = (text or "").strip()
+        if not text and not files:
+            return
+        person = self.state.get(user_id)
+        if person is None:
+            return
+
+        запись: dict[str, Any] = {
+            "at": datetime.now().isoformat(timespec="seconds"),
+            "text": text[:2000],
+        }
+        if files:
+            # Только имя и адрес: сам файл лежит у MAX, качать его
+            # к себе без нужды — значит хранить лишние данные о людях.
+            запись["files"] = [dict(f) for f in files][:10]
+
+        журнал = person.setdefault("messages", [])
+        журнал.append(запись)
+        del журнал[:-self.MESSAGES_LIMIT]
+        self.save()
+
+    def messages(self, user_id: str) -> list[dict[str, Any]]:
+        """Переписка от человека, старые сверху."""
+        return list((self.state.get(user_id) or {}).get("messages") or [])
+
     def erase(self, user_id: str) -> str:
         """Удалить всё об этом человеке. Право по ст. 14 и 21 ФЗ-152."""
         self.state.pop(user_id, None)
@@ -490,7 +537,10 @@ class Survey:
         if step >= len(QUESTIONS) or person["finished"]:
             if low in BEGIN_WORDS:
                 return self.start(user_id)
-            return ALREADY_DONE
+            # Анкета закончена, а человек пишет — это уже разговор
+            # с координатором, и он не должен пропасть.
+            self.note_message(user_id, text)
+            return ANSWERED
 
         # «/start» на недозаполненной анкете возвращает к тому же вопросу.
         # Стирать чужие ответы по такой безобидной команде нельзя.
@@ -516,9 +566,24 @@ class Survey:
 
         ok, cleaned, problem = self._check(question, text)
         if not ok:
+            # Не подошло как ответ — возможно, это и не ответ, а вопрос
+            # к нам. Опечатку координатор отличит от вопроса сам, а вот
+            # потерянный вопрос не вернёшь.
+            if self._looks_like_speech(text):
+                self.note_message(user_id, text)
             return problem + "\n\n" + self._ask(user_id, step)
 
         return self._accept(user_id, step, cleaned)
+
+    @staticmethod
+    def _looks_like_speech(text: str) -> bool:
+        """Похоже на обращённую к нам фразу, а не на промах по кнопке.
+
+        «2», «12345», «дп» — промах или опечатка, их в переписку писать
+        незачем. «А сколько это стоит?» — вопрос, и он должен дойти.
+        """
+        text = (text or "").strip()
+        return len(text) >= 12 and " " in text
 
     @staticmethod
     def _alert_rules(question: dict[str, Any]) -> list[dict[str, Any]]:
@@ -554,6 +619,14 @@ class Survey:
         person["answers"][question["id"]] = value
         person["history"].append(step)
         person["pending"] = None
+
+        # Что удаётся разобрать из свободного ответа — район в адресе,
+        # например. Разобранное живёт отдельными полями: по ним считается
+        # маршрут и строится карточка. Исходная строка при этом остаётся
+        # нетронутой, и координатор всегда видит, что человек написал.
+        derive = question.get("derive")
+        if derive:
+            person["answers"].update(derive(value))
         if person["started"] is None:
             person["started"] = datetime.now().isoformat(timespec="seconds")
 
@@ -763,9 +836,11 @@ class Survey:
             # Адрес без номера дома бесполезен: ехать всё равно некуда,
             # и координатор потратит звонок на уточнение.
             if len(text) < 6 or not re.search(r"\d", text):
+                # Пример уже стоит в самом вопросе — повторять его
+                # в ошибке значит написать его дважды подряд.
                 return False, "", (
-                    "Нужен адрес с номером дома — иначе координатор "
-                    "не найдёт. Например: Ворошилова 19, кв. 5"
+                    "В адресе нужен номер дома — без него координатор "
+                    "не найдёт. Напишите ещё раз, пожалуйста."
                 )
             return True, text, ""
 
@@ -851,7 +926,9 @@ class Survey:
         if not person:
             return ""
         a = person["answers"]
-        куда = ", ".join(x for x in (a.get("district"), a.get("address")) if x)
+        # Адрес человек пишет одной строкой и обычно называет район сам;
+        # приписывать распознанный район ещё раз — значит удвоить его.
+        куда = a.get("address") or a.get("district", "")
         bits = [
             a.get("patient_name") or a.get("name", "без имени"),
             a.get("phone", "телефон не указан"),

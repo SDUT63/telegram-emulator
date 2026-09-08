@@ -126,6 +126,9 @@ button, input, textarea, select { font-family:inherit; }
 .aware { margin-top:9px; font-size:13.5px; color:var(--warn);
   background:var(--warn-soft); border-radius:10px; padding:8px 11px; }
 .case__where { font-size:12.5px; color:var(--muted); margin-top:3px; }
+/* Человек написал и ждёт. Таких теряют чаще всего — поэтому видно
+   из списка, не открывая карточку. */
+.case__wait { font-size:12.5px; color:var(--accent); font-weight:700; margin-top:3px; }
 /* Согласие — доказательство законности обработки. Оператор видит его
    в карточке, а не ищет в файлах. */
 .consent { margin-top:9px; font-size:12.5px; color:var(--muted); }
@@ -155,11 +158,26 @@ button, input, textarea, select { font-family:inherit; }
 .note__meta { font-size:12px; color:var(--muted); }
 .note__text { font-size:14.5px; color:var(--ink-soft); }
 
-.sent { border-left:2px solid var(--accent); padding-left:11px; }
 .sent__state { font-size:12px; }
 .sent__state.ok { color:var(--ok); }
 .sent__state.bad { color:var(--danger); }
 .sent__state.wait { color:var(--warn); }
+
+/* Переписка: слева то, что пишет человек, справа — ответы координатора.
+   Сторона важнее подписи: её видно, не читая. */
+.talk { display:flex; flex-direction:column; gap:10px; margin-bottom:14px; }
+.talk__empty { color:var(--muted); font-size:14px; }
+.turn { max-width:82%; padding:9px 12px; border-radius:14px; font-size:14.5px;
+  line-height:1.45; white-space:pre-wrap; word-wrap:break-word; }
+.turn--them { align-self:flex-start; background:var(--sunk);
+  border-radius:14px 14px 14px 4px; }
+.turn--us { align-self:flex-end; background:var(--accent-soft);
+  border-radius:14px 14px 4px 14px; }
+.turn__meta { display:block; font-size:11.5px; color:var(--muted);
+  margin-bottom:4px; white-space:normal; }
+.turn__file { display:block; margin-top:6px; font-size:13px; }
+.turn__file a { color:var(--accent); font-weight:600; }
+.picked { font-size:13px; color:var(--muted); align-self:center; }
 
 textarea {
   width:100%; min-height:78px; padding:11px 12px; border-radius:10px;
@@ -230,6 +248,7 @@ textarea {
   <button class="chip on" data-status="" type="button">Все</button>
   <button class="chip" data-status="flag" type="button">С флагами</button>
   <button class="chip" data-status="call" type="button">Пора звонить</button>
+  <button class="chip" data-status="wait" type="button">Ждут ответа</button>
   <button class="chip" data-status="Новое" type="button">Новое</button>
   <button class="chip" data-status="В работе" type="button">В работе</button>
   <button class="chip" data-status="Закрыто" type="button">Закрыто</button>
@@ -300,6 +319,17 @@ textarea {
   function api(path, body) {
     var options = { headers: { "Content-Type": "application/json" } };
     if (body) { options.method = "POST"; options.body = JSON.stringify(body); }
+    return отправить(path, options);
+  }
+
+  /* Файлы идут формой, а не JSON: браузер сам соберёт multipart
+     и выставит границы. Заголовок Content-Type при этом не ставим —
+     без границы сервер разобрать не сможет. */
+  function apiForm(path, form) {
+    return отправить(path, { method: "POST", body: form });
+  }
+
+  function отправить(path, options) {
     return fetch(path, options).then(function (r) {
       if (r.status === 401) { window.location = "/login"; throw new Error("нужен вход"); }
       return r.json().then(function (d) {
@@ -339,7 +369,8 @@ textarea {
     return state.cases.filter(function (c) {
       if (state.filter === "flag" && !c.alerts.length) return false;
       if (state.filter === "call" && !callDue(c)) return false;
-      if (state.filter && state.filter !== "flag" && state.filter !== "call"
+      if (state.filter === "wait" && !c.waiting) return false;
+      if (state.filter && ["flag", "call", "wait"].indexOf(state.filter) === -1
           && c.status !== state.filter) return false;
       if (state.query) {
         var hay = (c.name + " " + c.patient_name + " " + c.phone + " " +
@@ -371,6 +402,7 @@ textarea {
         (c.need ? '<div class="case__need"></div>' : "") +
         (c.alerts.length ? '<div class="case__flags"></div>' : "") +
         (due ? '<div class="case__flags cd"></div>' : "") +
+        (c.waiting ? '<div class="case__wait"></div>' : "") +
         (!c.complete ? '<div><span class="pill pill--part">не дозаполнено</span></div>' : "");
       el.querySelector(".case__name").textContent =
         c.patient_name || c.name || "без имени";
@@ -387,6 +419,7 @@ textarea {
           (c.alerts.length === 1 ? " признак" : " признака");
       }
       if (due) el.querySelector(".cd").textContent = "☎ пора звонить";
+      if (c.waiting) el.querySelector(".case__wait").textContent = "✉ ждёт ответа";
       el.addEventListener("click", function () {
         remember(c.user_id);
         renderList();
@@ -412,13 +445,22 @@ textarea {
     return " · обращается " + escape(c.name + кем);
   }
 
+  /* Адрес человек пишет одной строкой — её и показываем целиком.
+     Район и лифт разобраны из неё же: они нужны маршруту и планированию
+     выезда, но повторять их рядом со строкой незачем. */
   function whereHtml(c) {
-    if (!c.district && !c.address) {
+    if (!c.address && !c.district) {
       return '<div class="where where--none">Адрес не указан — уточните при звонке</div>';
     }
-    var строки = [c.district, c.address].filter(Boolean).join(", ");
-    return '<div class="where"><b>' + escape(строки) + "</b>" +
-      (c.floor ? "<span> · " + escape(c.floor.toLowerCase()) + "</span>" : "") + "</div>";
+    // Район и лифт обычно стоят в самой строке — тогда повторять их
+    // приписками незачем. Показываем только то, чего в строке нет.
+    var строка = (c.address || "").toLowerCase();
+    var метки = [c.district, c.lift].filter(function (x) {
+      return x && строка.indexOf(x.toLowerCase()) === -1;
+    }).map(function (x) { return x.toLowerCase(); });
+    return '<div class="where"><b>' + escape(c.address || c.district) + "</b>" +
+      (метки.length ? "<span> · " + escape(метки.join(" · ")) + "</span>" : "") +
+      "</div>";
   }
 
   /* Часть 3 статьи 18 ФЗ-152: если данные о человеке получены не от него,
@@ -441,6 +483,45 @@ textarea {
     }
     return '<div class="consent consent--none">Согласия нет — ' +
       "обрабатывать данные нельзя</div>";
+  }
+
+  /* Переписка одной лентой, старое сверху — как в любом мессенджере.
+     Человек пишет боту, координатор отвечает отсюда; в карточке видно
+     и то, и другое, а не только собственные отправленные. */
+  function dialogueHtml(c) {
+    var лента = c.dialogue || [];
+    if (!лента.length) {
+      return '<div class="talk"><p class="talk__empty">Переписки пока нет. ' +
+        "Человек ничего не писал сверх анкеты.</p></div>";
+    }
+    return '<div class="talk">' + лента.map(function (m) {
+      var свои = m.from === "оператор";
+      var шапка = свои
+        ? escape(m.who || "координатор") + " · " + when(m.at) + " · " + состояние(m)
+        : "человек · " + when(m.at);
+      return '<div class="turn turn--' + (свои ? "us" : "them") + '">' +
+        '<span class="turn__meta">' + шапка + "</span>" +
+        escape(m.text || "") + файлы(m) + "</div>";
+    }).join("") + "</div>";
+  }
+
+  function состояние(m) {
+    var cls = m.delivered === true ? "ok" : m.delivered === false ? "bad" : "wait";
+    var label = m.delivered === true ? "доставлено"
+      : m.delivered === false ? ("не доставлено: " + (m.error || "ошибка"))
+      : "в очереди — уйдёт, когда бот запущен";
+    return '<span class="sent__state ' + cls + '">' + escape(label) + "</span>";
+  }
+
+  /* Файл лежит у MAX, а не у нас: показываем ссылку, копий не держим. */
+  function файлы(m) {
+    return (m.files || []).map(function (f) {
+      var имя = f.name || (f.kind === "image" ? "фотография" : "файл");
+      return '<span class="turn__file">📎 ' + (f.url
+        ? '<a href="' + escape(f.url) + '" target="_blank" rel="noopener">' +
+          escape(имя) + "</a>"
+        : escape(имя)) + "</span>";
+    }).join("");
   }
 
   function answersHtml(c) {
@@ -492,15 +573,7 @@ textarea {
         '<div class="note__text">' + escape(n.text) + "</div></div>";
     }).join("") || '<p style="color:var(--muted)">Заметок нет</p>';
 
-    var sent = (c.sent || []).slice().reverse().map(function (m) {
-      var cls = m.delivered === true ? "ok" : m.delivered === false ? "bad" : "wait";
-      var label = m.delivered === true ? "доставлено"
-        : m.delivered === false ? ("не доставлено: " + (m.error || "ошибка"))
-        : "в очереди — бот отправит, когда запущен";
-      return '<div class="sent"><div class="note__meta">' + escape(m.who) + " · " + when(m.at) +
-        ' · <span class="sent__state ' + cls + '">' + escape(label) + "</span></div>" +
-        '<div class="note__text">' + escape(m.text) + "</div></div>";
-    }).join("");
+    var talk = dialogueHtml(c);
 
     box.innerHTML =
       '<div class="card">' +
@@ -520,14 +593,20 @@ textarea {
       alerts +
       callsHtml(c) +
       '<div class="card"><h2>Ответы анкеты</h2><div class="ans">' + answersHtml(c) + "</div></div>" +
-      '<div class="card"><h2>Написать в чат</h2>' +
+      '<div class="card"><h2>Переписка</h2>' +
+        talk +
         '<div class="tpl" id="tpl"></div>' +
         '<textarea id="reply" maxlength="2000" placeholder="Сообщение человеку в чат бота"></textarea>' +
         '<div class="counter" id="cnt"></div>' +
-        '<div class="actions"><button class="btn" id="send" type="button">Отправить в чат</button></div>' +
+        '<div class="actions">' +
+          '<button class="btn" id="send" type="button">Отправить в чат</button>' +
+          '<label class="btn btn--ghost" for="files">Приложить файл</label>' +
+          '<input type="file" id="files" multiple hidden ' +
+            'accept=".pdf,.docx,.doc,.rtf,.txt,.odt,.jpg,.jpeg,.png,.heic,.webp">' +
+          '<span class="picked" id="picked"></span>' +
+        "</div>" +
         '<div class="warn">Сообщение придёт человеку от имени бота и будет подписано вашим именем. ' +
         'Это способ быстро связаться, а не давать медицинские рекомендации: если состояние острое — звоните.</div>' +
-        (sent ? '<h2 style="margin-top:16px">Отправленные</h2><div class="notes">' + sent + "</div>" : "") +
       "</div>" +
       '<div class="card"><h2>Заметки</h2>' +
         '<textarea id="note" placeholder="Что выяснили, о чём договорились"></textarea>' +
@@ -603,13 +682,32 @@ textarea {
       tpl.appendChild(b);
     });
 
+    $("#files").addEventListener("change", function () {
+      var имена = Array.prototype.map.call(this.files, function (f) { return f.name; });
+      $("#picked").textContent = имена.length ? "📎 " + имена.join(", ") : "";
+    });
+
     $("#send").addEventListener("click", function () {
       var text = $("#reply").value.trim();
-      if (!text) { toast("Сообщение пустое"); return; }
+      var files = $("#files").files;
+      if (!text && !files.length) { toast("Сообщение пустое"); return; }
       this.disabled = true;
-      api("/api/case/" + c.user_id + "/reply", { text: text })
+
+      var запрос;
+      if (files.length) {
+        var form = new FormData();
+        form.append("text", text);
+        for (var i = 0; i < files.length; i++) form.append("files", files[i]);
+        запрос = apiForm("/api/case/" + c.user_id + "/reply", form);
+      } else {
+        запрос = api("/api/case/" + c.user_id + "/reply", { text: text });
+      }
+
+      запрос
         .then(function () {
           $("#reply").value = "";
+          $("#files").value = "";
+          $("#picked").textContent = "";
           setDraft("reply", "");
           return load();
         })

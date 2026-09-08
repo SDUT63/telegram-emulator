@@ -71,6 +71,9 @@ app.config.update(
     SESSION_COOKIE_HTTPONLY=True,
     SESSION_COOKIE_SAMESITE="Lax",
     PERMANENT_SESSION_LIFETIME=60 * 60 * 12,
+    # Пять вложений по десять мегабайт плюс текст. Больше не примет
+    # и мессенджер, а держать это в памяти незачем.
+    MAX_CONTENT_LENGTH=55 * 1024 * 1024,
 )
 
 
@@ -180,11 +183,43 @@ def _calls_view(person: dict, operator: dict) -> list[dict]:
     return out
 
 
+def _dialogue(person: dict, sent: list[dict]) -> list[dict]:
+    """Переписка одной лентой: что написал человек и что ответил оператор.
+
+    Два источника, потому что писать в них имеют право разные программы:
+    входящее кладёт бот в файл анкеты, исходящее — CRM в свой файл.
+    Сводим их только на чтение, здесь, и по времени.
+    """
+    лента = [
+        {
+            "from": "человек",
+            "at": m.get("at", ""),
+            "text": m.get("text", ""),
+            "files": m.get("files") or [],
+        }
+        for m in (person.get("messages") or [])
+    ]
+    лента += [
+        {
+            "from": "оператор",
+            "at": m.get("at", ""),
+            "text": m.get("text", ""),
+            "who": m.get("who", ""),
+            "delivered": m.get("delivered"),
+            "error": m.get("error", ""),
+            "files": m.get("files") or [],
+        }
+        for m in sent
+    ]
+    лента.sort(key=lambda m: m["at"] or "")
+    return лента
+
+
 def _case_view(user_id: str, person: dict, delivered: dict) -> dict:
     """Одно обращение в том виде, в каком его показывает CRM."""
     operator = store.case(user_id)
     answers = person.get("answers", {})
-    sent = []
+    sent: list[dict] = []
     for message in operator.get("sent", []):
         info = delivered.get(message.get("id"), {})
         sent.append(
@@ -194,6 +229,7 @@ def _case_view(user_id: str, person: dict, delivered: dict) -> dict:
                 "error": info.get("error", ""),
             }
         )
+    диалог = _dialogue(person, sent)
     return {
         "user_id": user_id,
         "name": answers.get("name", ""),
@@ -207,7 +243,7 @@ def _case_view(user_id: str, person: dict, delivered: dict) -> dict:
         "when_call": answers.get("when_call", ""),
         "district": answers.get("district", ""),
         "address": answers.get("address", ""),
-        "floor": answers.get("floor", ""),
+        "lift": answers.get("lift", ""),
         "who": answers.get("who", ""),
         "need": answers.get("need", ""),
         "mobility": answers.get("mobility", ""),
@@ -222,6 +258,11 @@ def _case_view(user_id: str, person: dict, delivered: dict) -> dict:
         "assigned": operator.get("assigned", ""),
         "notes": operator.get("notes", []),
         "sent": sent,
+        "dialogue": диалог,
+        # Последним написал человек — значит, ответа ждут. Без этой
+        # отметки оператору пришлось бы открывать каждую карточку,
+        # чтобы узнать, не написал ли кто.
+        "waiting": bool(диалог) and диалог[-1]["from"] == "человек",
         "calls": _calls_view(person, operator),
         "complete": bool(person.get("finished")),
     }
@@ -238,6 +279,10 @@ def api_cases():
     ]
     # Свежие сверху, а обращения с тревожными признаками — ещё выше
     cases.sort(key=lambda c: (not c["alerts"], c["started"] or ""), reverse=True)
+    # Наверх — где ждут ответа, ещё выше — где тревожные признаки.
+    # Человек, написавший вопрос и не получивший ответа, — это тот,
+    # кого теряют чаще всего.
+    cases.sort(key=lambda c: bool(c["waiting"]), reverse=True)
     cases.sort(key=lambda c: bool(c["alerts"]), reverse=True)
     return jsonify(
         {
@@ -326,13 +371,39 @@ def api_note(user_id: str):
 @app.post("/api/case/<user_id>/reply")
 @login_required
 def api_reply(user_id: str):
-    text = ((request.get_json(silent=True) or {}).get("text") or "").strip()
-    if not text:
+    """Ответ оператора: текст и, если надо, вложения.
+
+    Форма приходит как multipart, когда приложены файлы, и как JSON,
+    когда это просто текст. Второе оставлено ради простых случаев —
+    их большинство.
+    """
+    if request.files:
+        text = (request.form.get("text") or "").strip()
+    else:
+        text = ((request.get_json(silent=True) or {}).get("text") or "").strip()
+
+    files = []
+    try:
+        for item in request.files.getlist("files"):
+            data = item.read()
+            if data:
+                files.append(store.save_file(user_id, item.filename or "", data))
+    except ValueError as error:
+        return jsonify({"error": str(error)}), 400
+
+    if not text and not files:
         return jsonify({"error": "Пустое сообщение"}), 400
     if len(text) > 2000:
         return jsonify({"error": "Слишком длинное сообщение"}), 400
-    message_id = store.queue_message(user_id, text, session["operator"])
-    return jsonify({"ok": True, "id": message_id})
+    if len(files) > 5:
+        return jsonify({"error": "Не больше пяти файлов за раз"}), 400
+
+    # Без текста человек получит файл без объяснения, что это и от кого
+    if not text:
+        text = "Направляю файл."
+
+    message_id = store.queue_message(user_id, text, session["operator"], files)
+    return jsonify({"ok": True, "id": message_id, "files": len(files)})
 
 
 # -------------------------------------------------------------------- страница

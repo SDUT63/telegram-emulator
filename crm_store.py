@@ -33,6 +33,15 @@ CRM_DATA = os.path.join(HERE, "crm_data.json")
 OPERATORS = os.path.join(HERE, "operators.json")
 OUTBOX_DIR = os.path.join(HERE, "outbox")
 SENT_DIR = os.path.join(OUTBOX_DIR, "sent")
+# Вложения оператора: бот берёт их отсюда по пути, поэтому лежать они
+# должны на той же машине. CRM и бот и так запускаются рядом.
+FILES_DIR = os.path.join(OUTBOX_DIR, "files")
+
+# Что оператор может отправить человеку. Список закрытый: чужой файл
+# с неизвестным расширением бот пересылать не станет.
+FILE_TYPES = {".pdf", ".docx", ".doc", ".rtf", ".txt", ".odt",
+              ".jpg", ".jpeg", ".png", ".heic", ".webp"}
+FILE_LIMIT = 10 * 1024 * 1024        # 10 МБ: памятка или фотография
 
 STATUSES = ["Новое", "В работе", "Закрыто"]
 
@@ -193,7 +202,29 @@ def add_note(user_id: str, text: str, who: str) -> dict[str, Any]:
 # ------------------------------------------------------------ исходящие
 
 
-def queue_message(user_id: str, text: str, who: str) -> str:
+def save_file(user_id: str, filename: str, data: bytes) -> dict[str, Any]:
+    """Сохранить вложение оператора рядом с очередью. Вызывает CRM.
+
+    Имя, пришедшее из браузера, для файловой системы не используем:
+    в нём может быть что угодно, вплоть до «../». Кладём под своим
+    именем, а человеческое несём отдельным полем.
+    """
+    короткое = os.path.basename(filename or "").strip() or "файл"
+    расширение = os.path.splitext(короткое)[1].lower()
+    if расширение not in FILE_TYPES:
+        raise ValueError(f"такие файлы не отправляем: {расширение or 'без расширения'}")
+    if len(data) > FILE_LIMIT:
+        raise ValueError("файл больше 10 МБ — его не примет и мессенджер")
+
+    os.makedirs(FILES_DIR, exist_ok=True)
+    path = os.path.join(FILES_DIR, uuid.uuid4().hex + расширение)
+    with open(path, "wb") as fh:
+        fh.write(data)
+    return {"path": path, "name": короткое, "size": len(data)}
+
+
+def queue_message(user_id: str, text: str, who: str,
+                  files: list[dict[str, Any]] | None = None) -> str:
     """Положить сообщение в очередь. Отправит его бот — у него есть связь."""
     os.makedirs(OUTBOX_DIR, exist_ok=True)
     message_id = uuid.uuid4().hex
@@ -202,6 +233,7 @@ def queue_message(user_id: str, text: str, who: str) -> str:
         "user_id": str(user_id),
         "text": text,
         "who": who,
+        "files": [dict(f) for f in (files or [])],
         "created": now(),
     }
     # Пишем во временный файл и переименовываем: бот не подхватит
@@ -214,7 +246,9 @@ def queue_message(user_id: str, text: str, who: str) -> str:
 
     def change(entry: dict[str, Any]) -> None:
         entry.setdefault("sent", []).append(
-            {"id": message_id, "at": now(), "who": who, "text": text}
+            {"id": message_id, "at": now(), "who": who, "text": text,
+             "files": [{"name": f.get("name", ""), "size": f.get("size", 0)}
+                       for f in (files or [])]}
         )
 
     _update(user_id, change)
