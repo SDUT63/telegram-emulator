@@ -126,54 +126,47 @@ def _columns(options: list[str], multi: bool) -> int:
     return 2 if max(_width(name) for name in options) <= limit else 1
 
 
-def keyboard_for(survey: Survey, user_id: str):
-    """Кнопки под тем вопросом, на котором человек стоит сейчас.
+def layout(survey: Survey, user_id: str) -> list[list[tuple[str, str]]]:
+    """Раскладка кнопок под текущим шагом: строки из пар (подпись, действие).
 
-    Варианты ответа приходят из анкеты как обычные данные — про кнопки она
-    ничего не знает. Ответ кнопкой идёт тем же путём, что и напечатанный
-    номер, поэтому проверки и предупреждения работают одинаково, а печатать
-    номера по-прежнему можно.
+    Чистая функция без единого объекта maxapi. Так её видит и тот, кто
+    рисует настоящую клавиатуру, и тот, кто рисует картинки для мануала —
+    и мануал не может разойтись с ботом.
+
+    Действие — это payload кнопки; «link:<адрес>» означает ссылку,
+    а не нажатие внутри бота.
 
     Держим список коротким. Варианты встают в два столбца, когда подписи
     это позволяют; служебные кнопки — «назад», «пропустить», «готово» —
     занимают одну строку внизу, а не по строке каждая.
     """
-    from maxapi.enums.intent import Intent
-    from maxapi.types.attachments.buttons import CallbackButton, LinkButton
-    from maxapi.utils.inline_keyboard import InlineKeyboardBuilder
-
-    keyboard = InlineKeyboardBuilder()
-    stage = survey.stage(user_id)
+    rows: list[list[tuple[str, str]]] = []
 
     # Ссылки, приложенные к сообщению, идут первой строкой: это не ответ
     # на вопрос, а справка, и путать их с вариантами нельзя.
     attached = survey.links(user_id)
     for label, url in attached:
-        keyboard.row(LinkButton(text=_fits(label), url=url))
+        rows.append([(_fits(label), "link:" + url)])
 
+    stage = survey.stage(user_id)
     if stage == "consent":
         # Согласие — не вопрос анкеты, а вход в неё. Кнопки равновелики:
         # отказ не спрятан и не помечен как ошибка, это законный выбор.
-        keyboard.row(
-            CallbackButton(text="Согласен, продолжим", payload="c:y",
-                           intent=Intent.POSITIVE))
-        keyboard.row(CallbackButton(text="Не согласен", payload="c:n"))
-        return keyboard.as_markup()
+        rows.append([("Согласен, продолжим", "c:y")])
+        rows.append([("Не согласен", "c:n")])
+        return rows
 
     spot = survey.current(user_id)
     if spot is None:
         # Анкета закончена: оставляем только то, что осмысленно нажать
-        keyboard.row(
-            CallbackButton(text="Мои ответы", payload="m"),
-            CallbackButton(text="Заполнить заново", payload="n"),
-        )
-        return keyboard.as_markup()
+        rows.append([("Мои ответы", "m"), ("Заполнить заново", "n")])
+        return rows
 
     step, question = spot
     if question["kind"] != "choice":
         # У вопроса без вариантов кнопок нет — но приложенная ссылка
         # остаётся: она относится к предыдущему шагу, а не к этому.
-        return keyboard.as_markup() if attached else None
+        return rows
 
     options: list[str] = question["options"]
     multi = bool(question.get("multi"))
@@ -184,57 +177,79 @@ def keyboard_for(survey: Survey, user_id: str):
     # «признаков нет». Ему место внизу, отдельно от списка
     shown = [i for i in range(len(options)) if i != nothing]
 
-    row: list = []
+    row: list[tuple[str, str]] = []
     per_row = _columns([options[i] for i in shown], multi)
     for index in shown:
         if multi:
             on = index in picked
-            button = CallbackButton(
-                text=_fits((MARK_ON if on else MARK_OFF) + options[index]),
-                payload=f"t:{step}:{index}",
-                intent=Intent.POSITIVE if on else Intent.DEFAULT,
-            )
+            row.append((_fits((MARK_ON if on else MARK_OFF) + options[index]),
+                        f"t:{step}:{index}"))
         else:
-            button = CallbackButton(text=_fits(options[index]), payload=f"a:{step}:{index}")
-        row.append(button)
+            row.append((_fits(options[index]), f"a:{step}:{index}"))
         if len(row) == per_row:
-            keyboard.row(*row)
+            rows.append(row)
             row = []
     if row:
-        keyboard.row(*row)
+        rows.append(row)
 
     # Нижняя строка: одно главное действие и, если есть куда, «назад»
-    bottom: list = []
+    bottom: list[tuple[str, str]] = []
     person = survey.state.get(user_id) or {}
     if person.get("history"):
-        bottom.append(CallbackButton(text="← Назад", payload="b"))
+        bottom.append(("← Назад", "b"))
 
     if multi and picked:
-        bottom.append(
-            CallbackButton(
-                text=f"Готово · {len(picked)}",
-                payload=f"d:{step}",
-                intent=Intent.POSITIVE,
-            )
-        )
+        bottom.append((f"Готово · {len(picked)}", f"d:{step}"))
     elif multi and nothing is not None:
-        bottom.append(
-            CallbackButton(text=options[nothing], payload=f"a:{step}:{nothing}")
-        )
+        bottom.append((options[nothing], f"a:{step}:{nothing}"))
     elif not question.get("required", True):
-        bottom.append(CallbackButton(text="Пропустить", payload=f"s:{step}"))
+        bottom.append(("Пропустить", f"s:{step}"))
     elif multi:
-        bottom.append(CallbackButton(text="Готово", payload=f"d:{step}"))
+        bottom.append(("Готово", f"d:{step}"))
 
     # Служебные кнопки просятся в одну строку — но только если обе туда
     # влезают. «Ничего не оформлено» рядом с «Назад» обрезается, а
     # обрезанная кнопка хуже лишней строки.
-    if len(bottom) == 2 and max(_width(b.text) for b in bottom) > TWO_COLUMNS_AT:
-        for button in bottom:
-            keyboard.row(button)
+    if len(bottom) == 2 and max(_width(label) for label, _ in bottom) > TWO_COLUMNS_AT:
+        rows.extend([button] for button in bottom)
     elif bottom:
-        keyboard.row(*bottom)
+        rows.append(bottom)
 
+    return rows
+
+
+# Действия, которые бот подсвечивает зелёным: согласие и «готово».
+# Зелёный здесь значит «это шаг вперёд», а не «это правильный ответ».
+def _positive(action: str, label: str) -> bool:
+    return action == "c:y" or action.startswith("d:") or label.startswith(MARK_ON)
+
+
+def keyboard_for(survey: Survey, user_id: str):
+    """Клавиатура maxapi по раскладке из :func:`layout`.
+
+    Ответ кнопкой идёт тем же путём, что и напечатанный номер, поэтому
+    проверки и предупреждения работают одинаково, а печатать номера
+    по-прежнему можно.
+    """
+    from maxapi.enums.intent import Intent
+    from maxapi.types.attachments.buttons import CallbackButton, LinkButton
+    from maxapi.utils.inline_keyboard import InlineKeyboardBuilder
+
+    rows = layout(survey, user_id)
+    if not rows:
+        return None
+
+    keyboard = InlineKeyboardBuilder()
+    for row in rows:
+        buttons = []
+        for label, action in row:
+            if action.startswith("link:"):
+                buttons.append(LinkButton(text=label, url=action[5:]))
+            else:
+                buttons.append(CallbackButton(
+                    text=label, payload=action,
+                    intent=Intent.POSITIVE if _positive(action, label) else Intent.DEFAULT))
+        keyboard.row(*buttons)
     return keyboard.as_markup()
 
 

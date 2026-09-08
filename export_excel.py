@@ -91,7 +91,11 @@ def build(path: str | None = None) -> str:
     calls_sheet = book.active
     calls_sheet.title = "Звонки"
     calls_sheet.append(
-        ["Когда звонить", "Состояние", "Имя", "Телефон", "Через сколько дней",
+        # Координатор звонит из этого листа: рядом с телефоном должно
+        # стоять всё, что нужно сказать в первую минуту — к кому едем,
+        # куда и когда человеку удобно ответить.
+        ["Когда звонить", "Состояние", "Кому звонить", "Телефон",
+         "Когда удобно", "К кому едем", "Адрес", "Через сколько дней",
          "Статус обращения", "Кто ведёт", "Признаки"]
     )
 
@@ -113,6 +117,10 @@ def build(path: str | None = None) -> str:
                     colour,
                     answers.get("name", "без имени"),
                     answers.get("phone", ""),
+                    answers.get("when_call", ""),
+                    answers.get("patient_name", ""),
+                    ", ".join(x for x in (answers.get("district"),
+                                          answers.get("address")) if x),
                     int(which),
                     operator.get("status", store.STATUSES[0]),
                     operator.get("assigned", ""),
@@ -123,9 +131,11 @@ def build(path: str | None = None) -> str:
     # Сначала просроченные и ближайшие
     rows.sort(key=lambda r: (bool(r[2] == GREEN_SOFT), r[0]))
 
-    for due, label, colour, name, phone, days, status, who, alerts in rows:
+    for (due, label, colour, name, phone, when_call, patient, where,
+         days, status, who, alerts) in rows:
         calls_sheet.append(
-            [due.strftime("%d.%m.%Y"), label, name, phone, days, status, who, alerts]
+            [due.strftime("%d.%m.%Y"), label, name, phone, when_call,
+             patient, where, days, status, who, alerts]
         )
         if colour:
             for cell in calls_sheet[calls_sheet.max_row]:
@@ -134,9 +144,9 @@ def build(path: str | None = None) -> str:
             cell.border = BORDER
             cell.alignment = Alignment(vertical="top", wrap_text=True)
 
-    style_header(calls_sheet, [15, 20, 22, 16, 12, 16, 16, 40])
+    style_header(calls_sheet, [15, 20, 22, 16, 14, 22, 34, 12, 16, 16, 40])
     if calls_sheet.max_row > 1:
-        calls_sheet.auto_filter.ref = f"A1:H{calls_sheet.max_row}"
+        calls_sheet.auto_filter.ref = f"A1:K{calls_sheet.max_row}"
 
     # ------------------------------------------------ лист «Обращения»
     sheet = book.create_sheet("Обращения")

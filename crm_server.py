@@ -197,7 +197,17 @@ def _case_view(user_id: str, person: dict, delivered: dict) -> dict:
     return {
         "user_id": user_id,
         "name": answers.get("name", ""),
+        # Имя подопечного, адрес и район — то, без чего выезд не состоится.
+        # Они лежат и в answers, но карточка не должна заставлять
+        # координатора искать их среди тридцати строк.
+        "patient_name": answers.get("patient_name", ""),
+        "relation": answers.get("relation", ""),
+        "aware": answers.get("aware", ""),
         "phone": answers.get("phone", ""),
+        "when_call": answers.get("when_call", ""),
+        "district": answers.get("district", ""),
+        "address": answers.get("address", ""),
+        "floor": answers.get("floor", ""),
         "who": answers.get("who", ""),
         "need": answers.get("need", ""),
         "mobility": answers.get("mobility", ""),

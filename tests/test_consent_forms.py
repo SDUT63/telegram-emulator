@@ -4,6 +4,7 @@
 вопроса соответствует своя форма, и все три варианта покрыты.
 """
 import consent_forms as cf
+import walk
 from survey_questions import QUESTIONS
 
 
@@ -57,7 +58,8 @@ def test_ссылка_снимается_после_следующего_отв�
     s = consented
     s.answer_by_numbers("u1", [2])
     assert s.links("u1"), "после первого вопроса ссылка есть"
-    s.handle("u1", "Мария")
+    step, q = s.current("u1")
+    walk.ответить(s, "u1", q)
     assert s.links("u1") == [], "на следующем шаге её быть не должно"
 
 

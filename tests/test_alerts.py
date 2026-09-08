@@ -1,11 +1,10 @@
 """Клинические стоп-сигналы. Здесь ошибка стоит дороже всего остального."""
+import walk
 from survey_questions import QUESTIONS
 
 
 def дойти_до_признаков(s, u="u1"):
-    s.answer_by_numbers(u, [2]); s.handle(u, "Мария")
-    s.handle(u, "89171234567"); s.handle(u, "далее")
-    return s.current(u)
+    return walk.дойти_до(s, "flags", u)
 
 
 def test_острое_состояние_отправляет_в_103(consented):

@@ -1,0 +1,172 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>Кадры полного мануала</title>
+<!-- Один кадр видеомануала. Данные подставляет сборка-видео.py вместо
+     __ДАННЫЕ__, номер кадра приходит в адресе: кадры.html?7
+     Отдельно эта страница ничего не показывает — она часть сборки. -->
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Golos+Text:wght@400;500;600;700;800&display=swap">
+<style>
+:root{
+  --ground:#F6F1E8; --surface:#FFFCF7; --ink:#16384A; --ink-soft:#33525E;
+  --muted:#6E7C81; --line:#E4DACA; --accent:#2E6E63; --accent-deep:#1F5257;
+  --sand:#C09A6B; --critical:#A93E32;
+  --bar:#15161B; --chat:#121212; --bubble:#36394D; --bubble-ink:#FAFBFF;
+  --bubble-meta:#9A9CAB; --mine:#7257CD; --key:#3B3D71; --key-ink:#EDEEFB;
+  --key-on:#4B4E8C; --open:#0075FC;
+  --f:"Golos Text","Segoe UI",Roboto,system-ui,sans-serif;
+  --fc:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;
+}
+*,*::before,*::after{box-sizing:border-box}
+body{margin:0;background:var(--ground);color:var(--ink);font:400 16px/1.5 var(--f)}
+.frame{width:540px;height:960px;overflow:hidden;background:var(--ground);
+       display:flex;flex-direction:column}
+.hd{display:flex;align-items:center;gap:11px;padding:20px 26px 0;flex:none}
+.mk{width:38px;height:38px;border-radius:10px;background:var(--accent-deep);color:#fff;
+    display:grid;place-items:center;font:800 8px/1 var(--f);flex:none;overflow:hidden}
+.hd b{display:block;font-size:13.5px;font-weight:700;line-height:1.2}
+.hd u{display:block;font-size:11.5px;color:var(--muted);text-decoration:none}
+.of{margin-left:auto;font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums}
+.stage{flex:1;display:grid;place-items:center;padding:12px 0 0;min-height:0}
+.rule{height:4px;background:var(--sand);border-radius:2px;width:52px;margin:0 26px 12px}
+.cap{flex:none;padding:0 26px 28px;display:flex;gap:16px;align-items:flex-start;min-height:96px}
+.num{font:800 15px/1.15 var(--f);color:var(--sand);letter-spacing:.1em;flex:none;
+     text-transform:uppercase;width:0}
+.cap h2{margin:0 0 5px;font:700 20px/1.22 var(--f);letter-spacing:-.02em}
+.cap p{margin:0;font-size:15.5px;line-height:1.4;color:var(--ink-soft)}
+
+.phone{width:300px;background:#2A2B33;border-radius:30px;padding:8px;
+       box-shadow:0 24px 44px -22px rgba(20,20,30,.55);transform-origin:center center}
+.scr{background:var(--chat);border-radius:23px;overflow:hidden}
+.bar{display:flex;align-items:center;gap:9px;padding:10px 12px;background:var(--bar);font-family:var(--fc)}
+.bk{color:var(--bubble-meta);font-size:15px;flex:none}
+.av{width:28px;height:28px;border-radius:50%;background:#1F5257;color:#fff;
+    display:grid;place-items:center;font:700 6.5px/1 var(--f);flex:none}
+.who{display:block;font-size:13px;font-weight:700;color:var(--bubble-ink);line-height:1.2}
+.sub{display:block;font-size:10.5px;color:var(--bubble-meta)}
+.foot{display:flex;align-items:center;gap:8px;padding:9px 11px;background:var(--bar);
+      font-family:var(--fc);font-size:11.5px;color:var(--bubble-meta)}
+.open{background:var(--open);color:#fff;border-radius:100px;padding:5px 12px;
+      font-size:11.5px;font-weight:600;flex:none}
+.chat{background:var(--chat);padding:11px 10px 13px;display:flex;flex-direction:column;
+      gap:7px;font-family:var(--fc);min-height:330px}
+.msg{background:var(--bubble);color:var(--bubble-ink);border-radius:14px 14px 14px 4px;
+     padding:9px 11px;font-size:13px;line-height:1.42;white-space:pre-wrap}
+.msg.me{background:var(--mine);border-radius:14px 14px 4px 14px;align-self:flex-end;max-width:78%}
+.msg.al{border-left:3px solid #FFC53D}
+.mt{display:block;font-size:10.5px;color:var(--bubble-meta);margin-bottom:5px}
+.pk,.mk2{display:block;margin-top:8px;color:#C9CBE8;font-weight:600}
+.keys{display:flex;flex-direction:column;gap:4px;margin-top:8px}
+.kr{display:flex;gap:4px}
+.k{flex:1 1 0;min-width:0;background:var(--key);color:var(--key-ink);border-radius:8px;
+   padding:8px 5px;font:500 11.5px/1.2 var(--fc);text-align:center;
+   white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.k.hl{background:var(--key-on);font-weight:700;box-shadow:0 0 0 3px rgba(160,140,255,.55)}
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script id="data" type="application/json">__ДАННЫЕ__</script>
+<script>
+var D = JSON.parse(document.getElementById("data").textContent);
+var F = D.frames;
+var at = parseInt((location.search.match(/\d+/) || [0])[0], 10) || 0;
+var f = F[at] || F[0];
+
+function esc(t){ return t.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); }
+function keys(rows){
+  if (!rows) return "";
+  return '<span class="keys">' + rows.map(function(r){
+    return '<span class="kr">' + r.map(function(k){
+      var hl = k.charAt(0) === "@";
+      if (hl) k = k.slice(1);
+      return '<span class="k' + (hl ? " hl" : "") + '">' + esc(k) + '</span>';
+    }).join("") + '</span>';
+  }).join("") + '</span>';
+}
+function bubble(text, cls, rows){
+  var lines = text.split("\n");
+  var meta = "";
+  if (/·\s*вопрос\s*\d+\s*из\s*\d+/.test(lines[0])) {
+    meta = '<span class="mt">' + esc(lines.shift()) + '</span>';
+    while (lines.length && !lines[0].trim()) lines.shift();
+  }
+  var body = esc(lines.join("\n"))
+    .replace(/^➤ (.*)$/m, '<span class="pk">➤ $1</span>')
+    .replace(/^Отмечено: (.*)$/m, '<span class="mk2">Отмечено: $1</span>');
+  return '<div class="msg' + (cls ? " " + cls : "") + '">' + meta + body + keys(rows) + '</div>';
+}
+
+var inner = "";
+if (f.kind === "typed") {
+  var half = f.text.split("\n@@");
+  inner = bubble(half[0], "", null) + '<div class="msg me">' + esc(half[1]) + '</div>';
+} else if (f.kind === "alert") {
+  inner = bubble(f.text, "al", null);
+} else {
+  inner = bubble(f.text, "", f.keys);
+}
+
+var sub = f.note;
+if (!sub) {
+  var ls = f.text.split("\n").filter(function(x){ return x.trim(); });
+  sub = ls.length > 1 ? ls[1] : ls[0];
+}
+
+document.getElementById("root").innerHTML =
+  '<div class="frame">' +
+    '<div class="hd"><span class="mk">СДУТ</span><span><b>Инструкция по использованию чат-бота СДУТ</b>' +
+    '<u>Бот SDUT63 в мессенджере MAX</u></span>' +
+    '<span class="of">' + (at + 1) + " / " + F.length + '</span></div>' +
+    '<div class="stage"><div class="phone" id="ph"><div class="scr">' +
+      '<div class="bar"><span class="bk">←</span><span class="av">СДУТ</span>' +
+      '<span><span class="who">SDUT63</span><span class="sub">Бот</span></span></div>' +
+      '<div class="chat">' + inner + '</div>' +
+      '<div class="foot"><span class="open">Открыть</span><span>Сообщение</span></div>' +
+    '</div></div></div>' +
+    '<div class="rule"></div>' +
+    '<div class="cap"><div><h2>' + esc(f.where || "Анкета") + '</h2><p>' + esc(sub) + '</p></div></div>' +
+  '</div>';
+
+// Если экран не помещается — уменьшаем телефон, а не режем содержимое.
+//
+// Высоту свободного места считаем от самого кадра, а не от .stage: .stage
+// растягивается под телефон, и мерить по ней — мерить по тому, что мы
+// собираемся ужать. Считаем дважды: сразу и когда доедет шрифт, потому что
+// Golos шире запасного и текст от него становится выше.
+var stage = document.querySelector(".stage");
+var ph = document.getElementById("ph");
+
+function ужать() {
+  ph.style.transform = "none";
+  stage.style.height = "auto";
+
+  var frame = document.querySelector(".frame").getBoundingClientRect().height;
+  var занято = 0;
+  ["\u002ehd", "\u002erule", "\u002ecap"].forEach(function (что) {
+    занято += document.querySelector(что).getBoundingClientRect().height;
+  });
+  var free = Math.max(200, frame - занято - 24);
+  stage.style.height = free + "px";
+  stage.style.overflow = "hidden";
+
+  // Масштабируем от верхнего края и сами отступаем на половину остатка:
+  // transform не меняет место элемента в потоке, поэтому «выровнять по
+  // центру» браузер сделал бы по неужатому размеру — и телефон наехал бы
+  // на подпись.
+  stage.style.alignItems = "start";
+  ph.style.transformOrigin = "top center";
+  var need = ph.getBoundingClientRect().height;
+  var во = Math.min(1, free / need);
+  ph.style.transform = "scale(" + во.toFixed(4) + ")";
+  ph.style.marginTop = Math.max(0, (free - need * во) / 2).toFixed(1) + "px";
+}
+ужать();
+if (document.fonts && document.fonts.ready) document.fonts.ready.then(ужать);
+window.FRAME_COUNT = F.length;
+window.HOLD = F.map(function(x){ return x.hold; });
+document.title = "f" + at;
+</script>
+</body>
+</html>

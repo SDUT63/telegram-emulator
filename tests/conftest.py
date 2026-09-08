@@ -8,7 +8,9 @@ import sys
 
 import pytest
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+ЗДЕСЬ = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, os.path.dirname(ЗДЕСЬ))   # код проекта
+sys.path.insert(0, ЗДЕСЬ)                    # walk.py — общий проход по анкете
 
 
 @pytest.fixture

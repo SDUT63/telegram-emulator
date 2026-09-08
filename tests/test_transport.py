@@ -1,6 +1,7 @@
 """Транспорт: дедупликация, ширина кнопок, отсутствие ПД в журнале."""
 import re
 
+import walk
 import max_bot
 from chatbot_survey import Survey
 from survey_questions import QUESTIONS
@@ -52,6 +53,15 @@ def test_ни_одна_подпись_не_будет_обрезана(consented
                 if max_bot._width(b.text) > 18.5:
                     беда.append((q["id"], b.text))
     assert not беда, f"в два столбца не влезает: {беда}"
+
+
+def test_раскладка_и_клавиатура_совпадают(consented):
+    """Мануал рисуется по layout, бот шлёт keyboard_for. Разойтись нельзя."""
+    s = consented
+    walk.дойти_до(s, "flags")
+    подписи = [[label for label, _ in row] for row in max_bot.layout(s, "u1")]
+    m = max_bot.keyboard_for(s, "u1")
+    assert подписи == [[b.text for b in row] for row in m.payload.buttons]
 
 
 def test_кнопки_согласия_вместо_вопросов(survey):

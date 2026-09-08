@@ -115,6 +115,17 @@ button, input, textarea, select { font-family:inherit; }
 .head__name { font-size:22px; font-weight:800; letter-spacing:-.02em; margin:0 0 4px; }
 .head__meta { font-size:13px; color:var(--muted); margin-bottom:12px; }
 .phone { font-size:19px; font-weight:700; color:var(--accent); text-decoration:none; }
+.head__when { font-size:13px; color:var(--muted); margin-left:8px; }
+/* Куда ехать — отдельной строкой: без адреса выезд не состоится */
+.where { margin-top:11px; padding:9px 11px; background:var(--sunk);
+  border-radius:10px; font-size:14.5px; line-height:1.45; }
+.where b { font-weight:700; }
+.where span { color:var(--muted); }
+.where--none { color:var(--warn); }
+/* Человек не знает об обращении — часть 3 статьи 18 ФЗ-152 */
+.aware { margin-top:9px; font-size:13.5px; color:var(--warn);
+  background:var(--warn-soft); border-radius:10px; padding:8px 11px; }
+.case__where { font-size:12.5px; color:var(--muted); margin-top:3px; }
 .actions { display:flex; gap:7px; flex-wrap:wrap; margin-top:13px; }
 
 .alerts { background:var(--danger-soft); border:1px solid var(--danger);
@@ -217,7 +228,7 @@ textarea {
   <button class="chip" data-status="Новое" type="button">Новое</button>
   <button class="chip" data-status="В работе" type="button">В работе</button>
   <button class="chip" data-status="Закрыто" type="button">Закрыто</button>
-  <input class="search" id="search" placeholder="Имя или телефон" autocomplete="off">
+  <input class="search" id="search" placeholder="Имя, телефон или адрес" autocomplete="off">
 </div>
 
 <div class="wrap">
@@ -326,7 +337,8 @@ textarea {
       if (state.filter && state.filter !== "flag" && state.filter !== "call"
           && c.status !== state.filter) return false;
       if (state.query) {
-        var hay = (c.name + " " + c.phone).toLowerCase();
+        var hay = (c.name + " " + c.patient_name + " " + c.phone + " " +
+                   c.address + " " + c.district).toLowerCase();
         if (hay.indexOf(state.query.toLowerCase()) === -1) return false;
       }
       return true;
@@ -350,14 +362,20 @@ textarea {
         '<div class="case__top"><span class="case__name"></span>' +
         '<span class="' + pillClass(c.status) + '"></span></div>' +
         '<div class="case__meta"><span class="ph"></span><span class="tm"></span></div>' +
+        (c.district || c.address ? '<div class="case__where"></div>' : "") +
         (c.need ? '<div class="case__need"></div>' : "") +
         (c.alerts.length ? '<div class="case__flags"></div>' : "") +
         (due ? '<div class="case__flags cd"></div>' : "") +
         (!c.complete ? '<div><span class="pill pill--part">не дозаполнено</span></div>' : "");
-      el.querySelector(".case__name").textContent = c.name || "без имени";
+      el.querySelector(".case__name").textContent =
+        c.patient_name || c.name || "без имени";
       el.querySelector(".pill").textContent = c.status;
       el.querySelector(".ph").textContent = c.phone || "";
       el.querySelector(".tm").textContent = when(c.started);
+      if (c.district || c.address) {
+        el.querySelector(".case__where").textContent =
+          [c.district, c.address].filter(Boolean).join(" · ");
+      }
       if (c.need) el.querySelector(".case__need").textContent = c.need;
       if (c.alerts.length) {
         el.querySelector(".case__flags").textContent = "⚠ " + c.alerts.length +
@@ -378,6 +396,32 @@ textarea {
 
   function current() {
     return state.cases.filter(function (c) { return c.user_id === state.selected; })[0];
+  }
+
+  /* Заголовок карточки — имя того, к кому едут. Кто именно обратился
+     и кем он приходится, уходит в строку под заголовком: путать этих
+     двух людей нельзя, звонить надо заявителю. */
+  function kontakt(c) {
+    if (!c.patient_name || !c.name) return "";
+    var кем = c.relation ? " (" + c.relation.toLowerCase() + ")" : "";
+    return " · обращается " + escape(c.name + кем);
+  }
+
+  function whereHtml(c) {
+    if (!c.district && !c.address) {
+      return '<div class="where where--none">Адрес не указан — уточните при звонке</div>';
+    }
+    var строки = [c.district, c.address].filter(Boolean).join(", ");
+    return '<div class="where"><b>' + escape(строки) + "</b>" +
+      (c.floor ? "<span> · " + escape(c.floor.toLowerCase()) + "</span>" : "") + "</div>";
+  }
+
+  /* Часть 3 статьи 18 ФЗ-152: если данные о человеке получены не от него,
+     его надо уведомить. Координатор делает это первым звонком. */
+  function awareHtml(c) {
+    if (!c.aware || c.aware.indexOf("Да") === 0) return "";
+    return '<div class="aware">Человек ещё не знает об обращении (' +
+      escape(c.aware.toLowerCase()) + '). При первом звонке его нужно уведомить.</div>';
   }
 
   function answersHtml(c) {
@@ -441,12 +485,15 @@ textarea {
 
     box.innerHTML =
       '<div class="card">' +
-        '<h1 class="head__name">' + escape(c.name || "без имени") + "</h1>" +
-        '<div class="head__meta">' + escape(c.who || "") +
-          (c.started ? " · обратился " + when(c.started) : "") +
+        '<h1 class="head__name">' + escape(c.patient_name || c.name || "без имени") + "</h1>" +
+        '<div class="head__meta">' + escape(c.who || "") + kontakt(c) +
+          (c.started ? " · поступило " + when(c.started) : "") +
           (c.assigned ? " · ведёт " + escape(c.assigned) : "") + "</div>" +
         (c.phone ? '<a class="phone" href="tel:' + escape(c.phone.replace(/[^\d+]/g, "")) +
           '">' + escape(c.phone) + "</a>" : "") +
+        (c.when_call ? '<span class="head__when">звонить: ' +
+          escape(c.when_call.toLowerCase()) + "</span>" : "") +
+        whereHtml(c) + awareHtml(c) +
         '<div class="actions" id="acts"></div>' +
         '<label class="notify"><input type="checkbox" id="notify" checked>' +
         "Сообщать человеку в чат о смене статуса</label>" +

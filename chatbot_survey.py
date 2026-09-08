@@ -646,6 +646,16 @@ class Survey:
                 )
             return True, text, ""
 
+        if kind == "address":
+            # Адрес без номера дома бесполезен: ехать всё равно некуда,
+            # и координатор потратит звонок на уточнение.
+            if len(text) < 6 or not re.search(r"\d", text):
+                return False, "", (
+                    "Нужен адрес с номером дома — иначе координатор "
+                    "не найдёт. Например: Ворошилова 19, кв. 5"
+                )
+            return True, text, ""
+
         if kind == "email":
             if text.lower() in NO_WORDS:
                 return True, "не указана", ""
@@ -728,9 +738,11 @@ class Survey:
         if not person:
             return ""
         a = person["answers"]
+        куда = ", ".join(x for x in (a.get("district"), a.get("address")) if x)
         bits = [
-            a.get("name", "без имени"),
+            a.get("patient_name") or a.get("name", "без имени"),
             a.get("phone", "телефон не указан"),
+            куда,
             a.get("mobility") or a.get("need", ""),
         ]
         line = " · ".join(b for b in bits if b)
