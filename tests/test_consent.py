@@ -5,13 +5,61 @@
 """
 import pytest
 
-from chatbot_survey import CONSENT, CONSENT_NO, CONSENT_VERSION
+import max_bot
+from chatbot_survey import (CONSENT_FULL, CONSENT_NO, CONSENT_SHORT,
+                            CONSENT_VERSION)
 
 
 def test_первое_сообщение_показывает_согласие(survey):
     out = survey.handle("u1", "здравствуйте")
-    assert "закон разрешает их собирать только с вашего согласия" in out
+    assert "только с вашего согласия" in out
     assert survey.stage("u1") == "consent"
+
+
+def test_первый_экран_не_длиннее_страницы(survey):
+    """Стена юридического текста на входе — потерянный человек.
+
+    Длину сторожим числом: она незаметно отрастает от правки к правке.
+    """
+    out = survey.handle("u1", "здравствуйте")
+    assert len(out) < 800, f"первый экран разросся до {len(out)} знаков"
+
+
+def test_полный_текст_приходит_в_чат_а_не_ссылкой(survey):
+    """Уводить на сайт за тем, под чем человек подпишется, нельзя."""
+    survey.handle("u1", "здравствуйте")
+    полный = survey.consent_text("u1")
+    assert полный.startswith(CONSENT_FULL[:40])
+    assert "http" not in полный, "никаких ссылок — текст читают здесь"
+    кнопки = [действие for row in max_bot.layout(survey, "u1") for _, действие in row]
+    assert "c:full" in кнопки, "полный текст должен быть в одно нажатие"
+
+
+def test_в_полном_тексте_есть_всё_обязательное(survey):
+    """Часть 4 статьи 9 ФЗ-152 перечисляет, что там должно стоять."""
+    survey.handle("u1", "здравствуйте")
+    полный = survey.consent_text("u1")
+    for обязательное in ("1266300009766",          # ОГРН оператора
+                         "6320093220",             # ИНН
+                         "Ворошилова",             # адрес оператора
+                         "телефон",                # перечень данных
+                         "координатор",            # цель
+                         "храним",                 # срок
+                         "удалить"):               # порядок отзыва
+        assert обязательное in полный, обязательное
+
+
+def test_после_согласия_видно_когда_оно_дано(consented):
+    полный = consented.consent_text("u1")
+    assert "Вы дали согласие" in полный
+    assert "года" in полный, "дату человек должен прочитать, а не расшифровать"
+
+
+def test_полный_текст_можно_попросить_словом(survey):
+    survey.handle("u1", "здравствуйте")
+    out = survey.handle("u1", "полностью")
+    assert "КТО СОБИРАЕТ" in out
+    assert survey.stage("u1") == "consent", "чтение — не согласие"
 
 
 def test_до_согласия_вопросов_нет(survey):
@@ -41,6 +89,7 @@ def test_отказ_не_оставляет_ответов(survey):
     survey.handle("u1", "2")                       # попытка ответить
     out = survey.refuse_consent("u1")
     assert out == CONSENT_NO
+    assert "горячую линию" not in CONSENT_NO, "линии пока нет — не обещаем"
     assert survey.state["u1"]["answers"] == {}
     assert survey.state["u1"]["consent"]["refused"]
 
@@ -88,3 +137,26 @@ def test_старая_кнопка_согласия_не_сбрасывает_а
     consented.grant_consent("u1")
     assert consented.consented("u1")["at"] == было
     assert consented.state["u1"]["answers"]["who"] == "О близком человеке"
+
+
+def test_документ_согласия_совпадает_с_ботом():
+    """Бумага и чат — один текст. Разойтись им нельзя.
+
+    Человек подписывает при встрече то, что читал в чате. Комплект форм
+    собирается из этих же констант (docs/сборка-согласия.py), и проверка
+    ловит случай, когда текст правили, а документ не пересобрали.
+    """
+    docx = pytest.importorskip("docx")
+    файл = "docs/Согласие-на-обработку-ПД-СДУТ.docx"
+    d = docx.Document(файл)
+    куски = [par.text for par in d.paragraphs]
+    for таблица in d.tables:
+        for строка in таблица.rows:
+            куски.extend(ячейка.text for ячейка in строка.cells)
+    документ = "\n".join(куски)
+
+    for текст in (CONSENT_SHORT, CONSENT_FULL):
+        отсутствуют = [s for s in текст.split("\n") if s.strip() and s not in документ]
+        assert not отсутствуют, (
+            "документ не пересобран: " + отсутствуют[0][:60]
+            + " — запустите python docs/сборка-согласия.py")

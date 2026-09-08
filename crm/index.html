@@ -126,6 +126,11 @@ button, input, textarea, select { font-family:inherit; }
 .aware { margin-top:9px; font-size:13.5px; color:var(--warn);
   background:var(--warn-soft); border-radius:10px; padding:8px 11px; }
 .case__where { font-size:12.5px; color:var(--muted); margin-top:3px; }
+/* Согласие — доказательство законности обработки. Оператор видит его
+   в карточке, а не ищет в файлах. */
+.consent { margin-top:9px; font-size:12.5px; color:var(--muted); }
+.consent b { color:var(--accent); font-weight:700; }
+.consent--none { color:var(--danger); }
 .actions { display:flex; gap:7px; flex-wrap:wrap; margin-top:13px; }
 
 .alerts { background:var(--danger-soft); border:1px solid var(--danger);
@@ -424,6 +429,20 @@ textarea {
       escape(c.aware.toLowerCase()) + '). При первом звонке его нужно уведомить.</div>';
   }
 
+  function consentHtml(c) {
+    var з = c.consent || {};
+    if (з.at) {
+      return '<div class="consent"><b>✓ Согласие дано</b> ' + escape(when(з.at)) +
+        (з.version ? " · редакция " + escape(з.version) : "") + "</div>";
+    }
+    if (з.refused) {
+      return '<div class="consent consent--none">Человек отказался ' +
+        escape(when(з.refused)) + " — обрабатывать данные нельзя</div>";
+    }
+    return '<div class="consent consent--none">Согласия нет — ' +
+      "обрабатывать данные нельзя</div>";
+  }
+
   function answersHtml(c) {
     var html = "", section = null;
     state.questions.forEach(function (q) {
@@ -493,7 +512,7 @@ textarea {
           '">' + escape(c.phone) + "</a>" : "") +
         (c.when_call ? '<span class="head__when">звонить: ' +
           escape(c.when_call.toLowerCase()) + "</span>" : "") +
-        whereHtml(c) + awareHtml(c) +
+        whereHtml(c) + awareHtml(c) + consentHtml(c) +
         '<div class="actions" id="acts"></div>' +
         '<label class="notify"><input type="checkbox" id="notify" checked>' +
         "Сообщать человеку в чат о смене статуса</label>" +

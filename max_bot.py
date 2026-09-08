@@ -133,8 +133,7 @@ def layout(survey: Survey, user_id: str) -> list[list[tuple[str, str]]]:
     рисует настоящую клавиатуру, и тот, кто рисует картинки для мануала —
     и мануал не может разойтись с ботом.
 
-    Действие — это payload кнопки; «link:<адрес>» означает ссылку,
-    а не нажатие внутри бота.
+    Действие — это payload кнопки.
 
     Держим список коротким. Варианты встают в два столбца, когда подписи
     это позволяют; служебные кнопки — «назад», «пропустить», «готово» —
@@ -142,17 +141,21 @@ def layout(survey: Survey, user_id: str) -> list[list[tuple[str, str]]]:
     """
     rows: list[list[tuple[str, str]]] = []
 
-    # Ссылки, приложенные к сообщению, идут первой строкой: это не ответ
-    # на вопрос, а справка, и путать их с вариантами нельзя.
-    attached = survey.links(user_id)
-    for label, url in attached:
-        rows.append([(_fits(label), "link:" + url)])
+    # Полный текст согласия приложен к сообщению, а не к вопросу: он
+    # живёт до следующего ответа и идёт первой строкой — это справка,
+    # а не вариант ответа, и путать их нельзя.
+    reading = survey.reading(user_id)
+    if reading:
+        rows.append([("Полный текст согласия", "c:full")])
 
     stage = survey.stage(user_id)
     if stage == "consent":
         # Согласие — не вопрос анкеты, а вход в неё. Кнопки равновелики:
         # отказ не спрятан и не помечен как ошибка, это законный выбор.
+        # Полный текст — между ними: чтобы прочитать его, не надо ни
+        # соглашаться, ни отказываться, и уходить из чата тоже не надо.
         rows.append([("Согласен, продолжим", "c:y")])
+        rows.append([("Прочитать полностью", "c:full")])
         rows.append([("Не согласен", "c:n")])
         return rows
 
@@ -164,8 +167,8 @@ def layout(survey: Survey, user_id: str) -> list[list[tuple[str, str]]]:
 
     step, question = spot
     if question["kind"] != "choice":
-        # У вопроса без вариантов кнопок нет — но приложенная ссылка
-        # остаётся: она относится к предыдущему шагу, а не к этому.
+        # У вопроса без вариантов кнопок нет — но приложенный полный
+        # текст остаётся: он относится к предыдущему шагу, а не к этому.
         return rows
 
     options: list[str] = question["options"]
@@ -232,7 +235,7 @@ def keyboard_for(survey: Survey, user_id: str):
     по-прежнему можно.
     """
     from maxapi.enums.intent import Intent
-    from maxapi.types.attachments.buttons import CallbackButton, LinkButton
+    from maxapi.types.attachments.buttons import CallbackButton
     from maxapi.utils.inline_keyboard import InlineKeyboardBuilder
 
     rows = layout(survey, user_id)
@@ -241,15 +244,12 @@ def keyboard_for(survey: Survey, user_id: str):
 
     keyboard = InlineKeyboardBuilder()
     for row in rows:
-        buttons = []
-        for label, action in row:
-            if action.startswith("link:"):
-                buttons.append(LinkButton(text=label, url=action[5:]))
-            else:
-                buttons.append(CallbackButton(
-                    text=label, payload=action,
-                    intent=Intent.POSITIVE if _positive(action, label) else Intent.DEFAULT))
-        keyboard.row(*buttons)
+        keyboard.row(*[
+            CallbackButton(
+                text=label, payload=action,
+                intent=Intent.POSITIVE if _positive(action, label) else Intent.DEFAULT)
+            for label, action in row
+        ])
     return keyboard.as_markup()
 
 
@@ -374,6 +374,14 @@ def build_dispatcher(survey: Survey):
             except Exception as error:  # noqa: BLE001
                 log.debug("Не удалось обновить кнопки: %s", error)
                 await event.ack()
+
+        if action == "c" and parts[1:2] == ["full"]:
+            # Полный текст — просто чтение. Состояние не меняем, кнопки
+            # под сообщением оставляем: человек читает и возвращается
+            # к тому же выбору.
+            await event.ack()
+            await say(event.bot, chat_id, who, survey.consent_text(who))
+            return
 
         if action == "c":
             # Сначала смотрим, где человек стоит, и только потом меняем
