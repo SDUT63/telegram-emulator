@@ -139,11 +139,17 @@ def keyboard_for(survey: Survey, user_id: str):
     занимают одну строку внизу, а не по строке каждая.
     """
     from maxapi.enums.intent import Intent
-    from maxapi.types.attachments.buttons import CallbackButton
+    from maxapi.types.attachments.buttons import CallbackButton, LinkButton
     from maxapi.utils.inline_keyboard import InlineKeyboardBuilder
 
     keyboard = InlineKeyboardBuilder()
     stage = survey.stage(user_id)
+
+    # Ссылки, приложенные к сообщению, идут первой строкой: это не ответ
+    # на вопрос, а справка, и путать их с вариантами нельзя.
+    attached = survey.links(user_id)
+    for label, url in attached:
+        keyboard.row(LinkButton(text=_fits(label), url=url))
 
     if stage == "consent":
         # Согласие — не вопрос анкеты, а вход в неё. Кнопки равновелики:
@@ -165,7 +171,9 @@ def keyboard_for(survey: Survey, user_id: str):
 
     step, question = spot
     if question["kind"] != "choice":
-        return None
+        # У вопроса без вариантов кнопок нет — но приложенная ссылка
+        # остаётся: она относится к предыдущему шагу, а не к этому.
+        return keyboard.as_markup() if attached else None
 
     options: list[str] = question["options"]
     multi = bool(question.get("multi"))

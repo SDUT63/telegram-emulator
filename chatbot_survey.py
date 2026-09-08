@@ -216,6 +216,9 @@ class Survey:
             # Что человек уже отметил кнопками в вопросе с несколькими
             # ответами, пока не нажал «Готово»
             "pending": None,
+            # Ссылки, приложенные к последнему сообщению: [[подпись, адрес]].
+            # Живут до следующего ответа — кнопка не должна висеть вечно.
+            "links": [],
         }
 
     # ------------------------------------------------------- ход по вопросам
@@ -465,6 +468,19 @@ class Survey:
             self.export_csv()
             return prefix + DONE_SHORT
 
+        # Что сказать сразу после этого ответа — например, какое согласие
+        # понадобится. Идёт после предупреждений: сначала здоровье,
+        # потом бумаги.
+        person["links"] = []
+        after = question.get("after")
+        if after:
+            said = after(person["answers"])
+            if isinstance(said, dict):
+                person["links"] = [list(x) for x in said.get("links", [])]
+                said = said.get("text", "")
+            if said:
+                prefix += said + "\n\n" + "—" * 20 + "\n\n"
+
         person["step"] = self._next(step + 1, person["answers"])
         if person["step"] >= len(QUESTIONS):
             person["finished"] = datetime.now().isoformat(timespec="seconds")
@@ -572,6 +588,10 @@ class Survey:
         if pending.get("step") != step:
             return []
         return list(pending.get("picked", []))
+
+    def links(self, user_id: str) -> list[list[str]]:
+        """Ссылки, приложенные к последнему сообщению: [[подпись, адрес]]."""
+        return list((self.state.get(user_id) or {}).get("links") or [])
 
     def picked_names(self, user_id: str, step: int) -> list[str]:
         """Отмеченное словами — чтобы написать его прямо в сообщении."""

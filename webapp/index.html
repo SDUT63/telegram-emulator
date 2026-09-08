@@ -51,6 +51,7 @@
   --t-family: #6D8E9B;
   --t-pall:   #557785;
   --t-rights: #2C5F63;
+  --t-docs:   #7A6A55;
   --t-media:  #6E7C81;
   --on-topic: #FFFFFF;
 
@@ -520,6 +521,7 @@ details.q[open] > summary::after { transform: rotate(-135deg); margin-top: -2px;
       <a class="chip" href="#b-family">Семье</a>
       <a class="chip" href="#b-pall">Паллиатив</a>
       <a class="chip" href="#b-rights">Права</a>
+      <a class="chip" href="#b-docs">Документы</a>
       <a class="chip" href="#b-media">Материалы</a>
     </nav>
   </div>
@@ -1550,6 +1552,88 @@ details.q[open] > summary::after { transform: rotate(-135deg); margin-top: -2px;
   </div>
 </section>
 
+
+<!-- ═══════ ДОКУМЕНТЫ ═══════ -->
+<section class="block" id="b-docs" aria-labelledby="h-docs">
+  <div class="block__head">
+    <span class="tag">#ВашиПрава</span>
+    <h2 id="h-docs">Согласие на обработку данных</h2>
+    <div class="rule"></div>
+    <p class="block__lede">Анкета спрашивает о состоянии здоровья. Такие сведения
+      закон разрешает собирать только с вашего согласия — здесь о том, что вы
+      подписываете и что можете потребовать.</p>
+  </div>
+
+  <div class="stack">
+    <div class="card">
+      <h2>Кто подписывает согласие</h2>
+      <div class="rows">
+        <div class="row"><div class="ic"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="3.4"/><path d="M5 21a7 7 0 0 1 14 0"/></svg></div><div class="row__body"><span class="row__title">Обращаетесь о себе</span><span class="row__text">Подписываете сами при встрече с координатором. Нужен паспорт, заранее готовить ничего не надо.</span></div></div>
+        <div class="row"><div class="ic"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="8" cy="9" r="2.6"/><circle cx="16" cy="9" r="2.6"/><path d="M3 19a5 5 0 0 1 10 0M11 19a5 5 0 0 1 10 0"/></svg></div><div class="row__body"><span class="row__title">Обращаетесь о близком</span><span class="row__text">Подписывает сам человек, если может, — так проще всего. Если не может, подписывает законный представитель, и нужен документ о полномочиях: решение суда, акт органа опеки или доверенность. Родство само по себе такого права не даёт.</span></div></div>
+        <div class="row"><div class="ic"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 3h10v18H7z"/><path d="M10 7h4M10 11h4M10 15h2"/></svg></div><div class="row__body"><span class="row__title">Вы специалист</span><span class="row__text">За пациента согласие дать нельзя. Его подпишет сам человек или его представитель, когда приедет координатор. От вас нужен только контакт.</span></div></div>
+      </div>
+      <div class="note">Закон обязывает нас сказать самому человеку, что обращение поступило от кого-то другого. Координатор делает это при первом звонке — это часть 3 статьи 18 закона о персональных данных.</div>
+    </div>
+
+    <div class="card">
+      <h2>Что записываем и зачем</h2>
+      <div class="rows">
+        <div class="row"><div class="ic"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="3" width="16" height="18" rx="2"/><path d="M8 8h8M8 12h8M8 16h5"/></svg></div><div class="row__body"><span class="row__title">Что</span><span class="row__text">Имя и телефон для связи, ответы на вопросы анкеты — включая сведения о состоянии здоровья, — дату обращения.</span></div></div>
+        <div class="row"><div class="ic"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l7 3v6c0 4-3 7.5-7 9-4-1.5-7-5-7-9V6z"/><path d="M9 12l2 2 4-4"/></svg></div><div class="row__body"><span class="row__title">Зачем</span><span class="row__text">Чтобы координатор перезвонил и подобрал помощь. Больше ни для чего.</span></div></div>
+        <div class="row"><div class="ic"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12h10M14 8l4 4-4 4"/><rect x="18" y="4" width="2" height="16" rx="1"/></svg></div><div class="row__body"><span class="row__title">Кому передаём</span><span class="row__text">Только сотрудникам службы. В медицинскую организацию — лишь с вашего отдельного согласия, и его можно отозвать, не отзывая основного.</span></div></div>
+      </div>
+    </div>
+
+    <div class="card card--cool">
+      <h2>Ваши права</h2>
+      <div class="rows">
+        <div class="row"><div class="ic"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M8 12h8"/></svg></div><div class="row__body"><span class="row__title">Отказаться</span><span class="row__text">Отказ не влечёт отказа в неотложной помощи. Позвонить и спросить можно, ничего о себе не сообщая.</span></div></div>
+        <div class="row"><div class="ic"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="M16 16l4.5 4.5"/></svg></div><div class="row__body"><span class="row__title">Узнать, что записано</span><span class="row__text">Напишите боту слово «ответы» — он покажет всё, что о вас есть.</span></div></div>
+        <div class="row"><div class="ic"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 7h14M9 7V5h6v2M7 7l1 13h8l1-13"/></svg></div><div class="row__body"><span class="row__title">Удалить</span><span class="row__text">Напишите боту «удалить» — сотрём и подтвердим. Или письменным заявлением по адресу организации.</span></div></div>
+      </div>
+      <p style="font-size:15px;color:var(--ink-soft)">Основание: Федеральный закон от 27.07.2006 № 152-ФЗ «О персональных данных», статьи 9, 10, 14 и 21.</p>
+    </div>
+
+    <div class="card">
+      <h2>Сколько храним</h2>
+      <div class="rows">
+        <div class="row"><div class="row__body"><span class="row__title">Незаконченная анкета — 30 дней</span><span class="row__text">Потом удаляется полностью. Человек начал и не вернулся — держать его данные не на чем.</span></div></div>
+        <div class="row"><div class="row__body"><span class="row__title">Обращение в работе — до закрытия и ещё год</span><span class="row__text">Нужно для контрольных звонков через 7 и 30 дней и на случай, если ситуация вернётся.</span></div></div>
+        <div class="row"><div class="row__body"><span class="row__title">Закрытое обращение — 3 года</span><span class="row__text">Потом имя и телефон стираются, остаётся обезличенная статистика для отчётности.</span></div></div>
+      </div>
+    </div>
+
+    <div class="faq">
+      <details class="q">
+        <summary>Почему вообще нужно согласие, если я просто прошу помощи</summary>
+        <div class="q__body">
+          <p>Восемнадцать вопросов анкеты из двадцати девяти касаются здоровья: как человек ходит, ест, спит, есть ли боль, стомы, пролежни. Закон относит такие сведения к особой категории и разрешает их собирать только по прямому согласию — это часть 1 статьи 10.</p>
+          <p>Без анкеты помощь тоже возможна: позвоните или напишите, и координатор выяснит всё в разговоре. Анкета нужна не нам для отчёта, а чтобы он приехал подготовленным.</p>
+        </div>
+      </details>
+      <details class="q">
+        <summary>Я нажал кнопку в боте — это уже согласие?</summary>
+        <div class="q__body">
+          <p>Это информированное согласие в электронной форме: мы записали дату и текст, который вы видели. Но для сведений о здоровье закон требует письменную форму, поэтому при первой встрече координатор попросит подписать бумагу.</p>
+          <p>До подписания данные хранятся ограниченно — тридцать дней. Не подтвердили за это время — удаляются сами.</p>
+        </div>
+      </details>
+      <details class="q">
+        <summary>Что будет, если я откажусь</summary>
+        <div class="q__body">
+          <p>Анкету заполнить не получится — таков закон. Но горячая линия и сообщества службы работают: там можно спросить что угодно, не сообщая о себе ничего.</p>
+          <p>Если передумаете, напишите боту «начать» — анкета откроется.</p>
+        </div>
+      </details>
+    </div>
+
+    <div class="card" id="docs-org">
+      <h2>Кто обрабатывает данные</h2>
+      <div id="docs-req"></div>
+    </div>
+  </div>
+</section>
+
 <!-- ═══════ МАТЕРИАЛЫ ═══════ -->
 <section class="block" id="b-media" aria-labelledby="h-media">
   <div class="block__head">
@@ -1642,23 +1726,26 @@ details.q[open] > summary::after { transform: rotate(-135deg); margin-top: -2px;
     // Реквизиты. Пустые поля на странице просто не показываются —
     // выдуманных данных здесь быть не должно, особенно номера счёта.
     org: {
-      full:     "",   // Полное наименование по уставу
+      full:     "Автономная некоммерческая организация «Система долговременного ухода г. Тольятти»",
       short:    "АНО «СДУТ»",
-      ogrn:     "",   // ОГРН из выписки ЕГРЮЛ
-      inn:      "",   // ИНН
-      kpp:      "",   // КПП
-      address:  "",   // Юридический адрес
-      director: "",   // Кто действует от лица организации
-      bank:     "",   // Наименование банка
-      account:  "",   // Расчётный счёт
-      corr:     "",   // Корреспондентский счёт
-      bik:      "",   // БИК
+      ogrn:     "1266300009766",
+      inn:      "6320093220",
+      kpp:      "632001001",
+      address:  "445044, Самарская область, г. Тольятти, ул. Ворошилова, д. 19, кв. 169",
+      director: "",   // Кто действует от лица организации — вписать
+      // Банковские реквизиты появляются в разделе пожертвований только
+      // заполненными: пустой счёт хуже отсутствующего.
+      bank:     "",
+      account:  "",
+      corr:     "",
+      bik:      "",
       purpose:  "Благотворительное пожертвование на уставную деятельность. НДС не облагается.",
     },
     phone:     "",                     // например: "+78482000000"
     phoneText: "",                     // как показать: "+7 (8482) 00-00-00"
     hours:     "",                     // например: "Пн–Пт, 08:00–20:00"
-    botUrl:    "",                     // ссылка на чат-бот с анкетой
+    botUrl:    "https://max.ru/id6320093220_bot",
+    appUrl:    "https://sdut.d-lemeshev88.workers.dev/",
     tgUrl:     "https://t.me/SDUT63",
     vkUrl:     "https://vk.ru/sdut63",
     email:     "",
@@ -1760,7 +1847,9 @@ details.q[open] > summary::after { transform: rotate(-135deg); margin-top: -2px;
   };
 
   function callBtn(cls, label) {
-    if (!CONFIG.phone) return el("button", "btn btn--unset", "Номер горячей линии не заполнен");
+    // Пока номера нет, человеку честнее сказать «в разработке», чем
+    // показывать служебную заметку для разработчика.
+    if (!CONFIG.phone) return el("button", "btn btn--unset", "Горячая линия — в разработке");
     var a = el("a", "btn " + cls);
     a.href = "tel:" + CONFIG.phone.replace(/[^\d+]/g, "");
     a.innerHTML = SVG.phone + "<span></span>";
@@ -1769,7 +1858,7 @@ details.q[open] > summary::after { transform: rotate(-135deg); margin-top: -2px;
     return a;
   }
   function botBtn(cls, label) {
-    if (!CONFIG.botUrl) return el("button", "btn btn--unset", "Ссылка на бот не заполнена");
+    if (!CONFIG.botUrl) return el("button", "btn btn--unset", "Анкета — скоро");
     var a = el("a", "btn " + cls);
     a.href = CONFIG.botUrl;
     a.rel = "noopener";
@@ -1932,6 +2021,23 @@ details.q[open] > summary::after { transform: rotate(-135deg); margin-top: -2px;
     if (org.full) card.appendChild(el("p", "req__name", org.full));
     if (legal) card.appendChild(legal);
     host.appendChild(card);
+
+    // Те же сведения — в разделе про обработку данных. Часть 4 статьи 9
+    // требует назвать оператора там, где человек читает про согласие,
+    // а не отсылать его в другой конец страницы.
+    var docs = $("#docs-req");
+    if (docs) {
+      if (org.full) docs.appendChild(el("p", "req__name", org.full));
+      var again = rows([
+        ["ogrn", "ОГРН", true, false],
+        ["inn", "ИНН", true, false],
+        ["address", "Адрес", false, false],
+      ]);
+      if (again) docs.appendChild(again);
+      docs.appendChild(el("div", "note",
+        "Вопросы об обработке ваших данных — по этому адресу либо через " +
+        "чат-бота: напишите «ответы» или «удалить»."));
+    }
 
     if (bank) {
       var bankCard = el("div", "card");
