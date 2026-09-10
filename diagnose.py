@@ -282,6 +282,30 @@ def check_bot() -> str:
     return "ок"
 
 
+def check_knowledge() -> None:
+    """База знаний и языковая модель. Обе необязательны — но молча
+    неработающая база хуже отсутствующей: бот будет молчать, а никто
+    не поймёт почему."""
+    try:
+        import knowledge
+        статей = len(knowledge.загрузить())
+    except Exception as беда:                                   # noqa: BLE001
+        say(f"  [!]       база знаний не читается: {беда}")
+        return
+    if статей < 20:
+        say(f"  [!]       в базе всего {статей} статей — похоже, "
+            "справочник webapp/index.html не найден")
+    else:
+        say(f"  [ок]      база знаний: {статей} статей")
+
+    try:
+        import ai
+        say("  [ок]      " + ai.assistant.status())
+    except Exception as беда:                                   # noqa: BLE001
+        say(f"  [-]       модель не подключена: {беда}")
+        say("            Это нормально: бот отвечает по базе и без неё.")
+
+
 def main() -> int:
     say()
     say(LINE)
@@ -298,6 +322,10 @@ def main() -> int:
         say(LINE)
         say()
         return 1
+
+    say()
+    say("--- база знаний и модель ---")
+    check_knowledge()
 
     say()
     say("--- библиотека ---")

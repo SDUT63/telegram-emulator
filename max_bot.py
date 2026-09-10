@@ -20,7 +20,16 @@ import logging
 import os
 import sys
 
+import knowledge
 from chatbot_survey import Survey
+
+# Модуль модели необязателен: без ключей и без папки ai/ бот работает
+# ровно так же, только без справок, составленных моделью.
+try:
+    import ai as _ии
+except Exception as _беда:                                      # noqa: BLE001
+    _ии = None
+    logging.getLogger("сдут-бот").info("модуль ИИ не подключён: %s", _беда)
 
 TOKEN_FILE = "token.txt"
 CERTS_FILE = "certs.pem"
@@ -256,6 +265,44 @@ def keyboard_for(survey: Survey, user_id: str):
 # Что бот отвечает, когда человек прислал файл или фотографию.
 FILES_TAKEN = "Файл получил, приложу к вашему обращению."
 
+# Подпись под справочным ответом. Человек должен понимать, что это
+# материалы службы, а не заключение и не совет врача.
+СПРАВКА_ПОДПИСЬ = (
+    "———\n"
+    "Это выдержка из материалов службы. Координатор ответит подробнее "
+    "при звонке, а если человеку плохо сейчас — звоните 103."
+)
+
+
+async def справка(bot, chat_id, who: str, вопрос: str) -> None:
+    """Ответить на вопрос по базе знаний. Отдельной задачей, не в обработчике.
+
+    MAX ждёт ответа на вебхук тридцать секунд и повторяет доставку, если
+    не дождался. Обращение к модели идёт секунды, иногда десятки — держать
+    ради него открытым обработчик события нельзя. Поэтому человек сразу
+    получает подтверждение, а справка приходит отдельным сообщением.
+    """
+    try:
+        текст = None
+        if _ии and _ии.assistant.on():
+            # urllib блокирующий: уводим его с цикла событий в поток
+            текст = await asyncio.to_thread(_ии.assistant.reference, вопрос)
+        if not текст:
+            текст = knowledge.ответ_без_модели(вопрос)
+        if not текст:
+            return
+        # Тот же способ адресации, что и у обычного ответа: где есть чат —
+        # шлём в чат, иначе человеку напрямую.
+        текст += "\n\n" + СПРАВКА_ПОДПИСЬ
+        if chat_id is not None:
+            await bot.send_message(chat_id=chat_id, text=текст)
+        else:
+            await bot.send_message(user_id=int(who), text=текст)
+        log.info("%s: отправлена справка по базе", who)
+    except Exception as error:                                  # noqa: BLE001
+        # Справка — приятное дополнение. Её отказ не должен ничего ломать.
+        log.warning("справка не отправилась: %s", error)
+
 
 def _files_of(body) -> list[dict]:
     """Вложения входящего сообщения: имя, вид и адрес у MAX.
@@ -364,6 +411,7 @@ def build_dispatcher(survey: Survey):
         log.info("%s: сообщение", user_id)
 
         was_done = bool(survey.state.get(str(user_id), {}).get("finished"))
+        было_сообщений = len(survey.messages(str(user_id)))
         reply = survey.handle(str(user_id), incoming)
 
         # Фотография выписки или скан направления — это ответ на вопрос
@@ -374,8 +422,16 @@ def build_dispatcher(survey: Survey):
             survey.note_message(str(user_id), incoming, files)
             reply = FILES_TAKEN + "\n\n" + reply
 
+        # Анкета отложила сообщение в переписку — значит, это не ответ
+        # на вопрос, а обращение к нам. На такое можно ответить по базе.
+        спросили = len(survey.messages(str(user_id))) > было_сообщений
+
         await say(event.bot, chat_id, str(user_id), reply)
         note_if_finished(str(user_id), was_done)
+
+        if спросили and incoming:
+            asyncio.create_task(
+                справка(event.bot, chat_id, str(user_id), incoming))
 
     @dp.message_callback()
     async def on_button(event: MessageCallback) -> None:
