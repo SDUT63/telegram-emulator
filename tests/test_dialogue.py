@@ -5,6 +5,7 @@
 Раньше всё это пропадало — бот отвечал «анкета уже заполнена» и забывал.
 Здесь проверяется, что не пропадает.
 """
+import fallback
 import max_bot
 import walk
 from chatbot_survey import ANSWERED
@@ -175,8 +176,41 @@ def test_на_невнятное_бот_предлагает_варианты(co
     бот = ФейкБот()
     asyncio.run(max_bot.справка(бот, 1, "u1", "ну как там дела вообще у вас"))
     assert бот.ушло, "молчание тут хуже подсказки"
-    assert "Не нашёл точного ответа" in бот.ушло[0]
+    assert бот.ушло[0] == fallback.фраза(1, fallback.ВОПРОС)
     assert бот.кнопки[0], "должны быть кнопки с готовыми вопросами"
+
+
+def test_лесенка_поднимается_на_каждое_непонимание(consented):
+    """Одна и та же фраза трижды подряд читается как «отстань»."""
+    import asyncio
+    сказанное = []
+    for _ in range(4):
+        бот = ФейкБот()
+        asyncio.run(max_bot.справка(бот, 1, "u1", "ааа ыыы ооо ужжж ммм",
+                                    consented, False))
+        сказанное.append(бот.ушло[0])
+    assert len(set(сказанное)) == 4, "бот повторяется вместо того, чтобы помочь"
+    assert consented.misses("u1") == 4
+
+
+def test_понятый_вопрос_обнуляет_лесенку(consented):
+    """Ответили человеку — значит, он снова с нами."""
+    import asyncio
+    asyncio.run(max_bot.справка(ФейкБот(), 1, "u1", "щщщ ыыы ааа ооо",
+                                consented, False))
+    assert consented.misses("u1") == 1
+    asyncio.run(max_bot.справка(ФейкБот(), 1, "u1", "у мамы пролежень",
+                                consented, False))
+    assert consented.misses("u1") == 0
+
+
+def test_бот_не_говорит_не_понял_дважды_за_один_ход(consented):
+    """Анкета уже ответила — справка молчит, а не повторяет то же самое."""
+    import asyncio
+    бот = ФейкБот()
+    asyncio.run(max_bot.справка(бот, 1, "u1", "щщщ ыыы ааа ооо",
+                                consented, True))
+    assert not бот.ушло
 
 
 def test_под_ответом_есть_другие_вопросы(consented):

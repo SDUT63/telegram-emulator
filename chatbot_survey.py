@@ -22,6 +22,7 @@ from datetime import datetime
 from typing import Any
 
 import consent_forms
+import fallback
 from survey_questions import CHECKPOINT_ID, QUESTIONS, STOP_OPTION
 
 МЕСЯЦЫ = ("января", "февраля", "марта", "апреля", "мая", "июня", "июля",
@@ -316,6 +317,10 @@ class Survey:
             # Живут до следующего ответа — кнопка не должна висеть вечно.
             "reading": False,
             "messages": [],
+            # Сколько раз подряд мы не поняли человека. Счётчик ведёт
+            # лесенку ответов из fallback.py и обнуляется, как только
+            # человек снова попал в понятное нам действие.
+            "missed": 0,
         }
 
     # ------------------------------------------------------- ход по вопросам
@@ -463,6 +468,32 @@ class Survey:
         """Переписка от человека, старые сверху."""
         return list((self.state.get(user_id) or {}).get("messages") or [])
 
+    # ------------------------------------------------------ когда не поняли
+    #
+    # Одна и та же фраза, повторённая трижды, читается как «отстань».
+    # Считаем непонимания подряд и на каждое следующее отвечаем иначе —
+    # сама лесенка живёт в fallback.py, здесь только счёт.
+
+    def misses(self, user_id: str) -> int:
+        """Сколько раз подряд мы не поняли этого человека."""
+        return int((self.state.get(user_id) or {}).get("missed") or 0)
+
+    def miss(self, user_id: str) -> int:
+        """Отметить непонимание и вернуть номер попытки. Считаем с единицы."""
+        person = self.state.get(user_id)
+        if person is None:
+            return 1
+        person["missed"] = self.misses(user_id) + 1
+        self.save()
+        return person["missed"]
+
+    def understood(self, user_id: str) -> None:
+        """Человек снова с нами: лесенка начинается сначала."""
+        person = self.state.get(user_id)
+        if person and person.get("missed"):
+            person["missed"] = 0
+            self.save()
+
     def erase(self, user_id: str) -> str:
         """Удалить всё об этом человеке. Право по ст. 14 и 21 ФЗ-152."""
         self.state.pop(user_id, None)
@@ -511,14 +542,31 @@ class Survey:
         # до того, как человек разрешил.
         if self.stage(user_id) == "consent":
             if low in AGREE_WORDS or low in BEGIN_WORDS or low in RESTART_WORDS:
+                self.understood(user_id)
                 return self.grant_consent(user_id)
             if low in REFUSE_WORDS or low in CANCEL_WORDS:
+                self.understood(user_id)
                 return self.refuse_consent(user_id)
             if low in HELP_WORDS:
+                self.understood(user_id)
                 return HELP
             if low in READ_WORDS:
+                self.understood(user_id)
                 return self.consent_text(user_id)
-            return CONSENT_WAIT
+            # Человек пишет своё вместо «согласен». Первый раз объясняем
+            # как есть, дальше — каждый раз иначе: до анкеты он ещё ничем
+            # нам не обязан, и надоесть здесь легче всего.
+            попытка = self.miss(user_id)
+            if попытка == 1:
+                return CONSENT_WAIT
+            return fallback.фраза(попытка, fallback.СОГЛАСИЕ)
+
+        # Любое узнанное слово значит, что человек с нами: лесенка
+        # непонимания начинается заново. Иначе она доедет до последней
+        # ступени на ровном месте.
+        if low in (RESTART_WORDS | HELP_WORDS | SUMMARY_WORDS | CANCEL_WORDS
+                   | BEGIN_WORDS | CONTINUE_WORDS | BACK_WORDS | SKIP_WORDS):
+            self.understood(user_id)
 
         if low in RESTART_WORDS:
             return self.restart_after_consent(user_id)
@@ -572,7 +620,17 @@ class Survey:
             # потерянный вопрос не вернёшь.
             if self._looks_like_speech(text):
                 self.note_message(user_id, text)
-            return problem + "\n\n" + self._ask(user_id, step)
+
+            # Что именно не так — сказано в problem. Дальше идёт выход
+            # из положения, и на каждой следующей попытке другой: кнопка,
+            # «пропустить», «своими словами», телефон и живой человек.
+            попытка = self.miss(user_id)
+            подсказка = ""
+            if попытка > 1 or question.get("options"):
+                подсказка = fallback.фраза(
+                    попытка, fallback.АНКЕТА,
+                    пропуск=not question.get("required", True)) + "\n\n"
+            return problem + "\n\n" + подсказка + self._ask(user_id, step)
 
         return self._accept(user_id, step, cleaned)
 
@@ -582,8 +640,15 @@ class Survey:
 
         «2», «12345», «дп» — промах или опечатка, их в переписку писать
         незачем. «А сколько это стоит?» — вопрос, и он должен дойти.
+
+        Номер телефона доходит тоже, где бы он ни был написан. На восьмой
+        ступени лесенки бот сам предлагает оставить номер вместо ответа,
+        и обещание должно быть настоящим: номер попадает в карточку,
+        координатор звонит.
         """
         text = (text or "").strip()
+        if len(re.sub(r"\D", "", text)) >= 10:
+            return True
         return len(text) >= 12 and " " in text
 
     @staticmethod
@@ -616,6 +681,7 @@ class Survey:
 
     def _accept(self, user_id: str, step: int, value: str) -> str:
         person = self._person(user_id)
+        self.understood(user_id)
         question = QUESTIONS[step]
         person["answers"][question["id"]] = value
         person["history"].append(step)

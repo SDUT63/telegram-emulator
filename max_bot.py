@@ -20,6 +20,7 @@ import logging
 import os
 import sys
 
+import fallback
 import knowledge
 from chatbot_survey import Survey
 
@@ -317,7 +318,8 @@ async def _отправить(bot, chat_id, who: str, текст: str, разм�
         await bot.send_message(user_id=int(who), text=текст, attachments=вложения)
 
 
-async def справка(bot, chat_id, who: str, вопрос: str) -> None:
+async def справка(bot, chat_id, who: str, вопрос: str,
+                  survey=None, уже_считали: bool = False) -> None:
     """Ответить на вопрос по базе знаний. Отдельной задачей, не в обработчике.
 
     MAX ждёт ответа на вебхук тридцать секунд и повторяет доставку, если
@@ -325,9 +327,9 @@ async def справка(bot, chat_id, who: str, вопрос: str) -> None:
     ради него открытым обработчик события нельзя. Поэтому человек сразу
     получает подтверждение, а справка приходит отдельным сообщением.
 
-    Если ответа в базе нет, это ещё не повод молчать: человек мог не знать,
-    как спросить. Тогда вместо ответа идут подсказки — готовые вопросы
-    кнопками.
+    Если ответа в базе нет, это ещё не повод молчать. Что сказать —
+    зависит от того, в какой раз подряд мы не поняли человека: лесенка
+    из десяти ступеней лежит в fallback.py, счёт ведёт анкета.
     """
     try:
         текст = None
@@ -339,24 +341,37 @@ async def справка(bot, chat_id, who: str, вопрос: str) -> None:
 
         найдено = knowledge.найти(вопрос, сколько=1)
         показано = найдено[0].заголовок if найдено else ""
+        разметка = _кнопки_подсказок(вопрос, кроме=показано)
 
         if текст:
             текст += "\n\n" + СПРАВКА_ПОДПИСЬ
+            # Ответили — значит, поняли. Лесенка начинается сначала.
+            if survey is not None and not уже_считали:
+                survey.understood(who)
+        elif уже_считали:
+            # Анкета уже ответила этому человеку и уже предложила выход.
+            # Сказать «не понял» второй раз за один ход — это перебор.
+            log.info("%s: ответа в базе нет, анкета уже ответила", who)
+            return
         else:
-            # Ответа нет. Предложим то, о чём вообще можно спросить.
-            вступление, _ = knowledge.начать()
-            текст = "Не нашёл точного ответа на это. " + вступление
+            попытка = survey.miss(who) if survey is not None else 1
+            текст = fallback.фраза(попытка, fallback.ВОПРОС)
+            if разметка is None:
+                # Предлагать нечего даже кнопками — тогда хотя бы словами
+                вступление, _ = knowledge.начать()
+                текст += "\n\n" + вступление
 
-        await _отправить(bot, chat_id, who, текст,
-                         _кнопки_подсказок(вопрос, кроме=показано))
+        await _отправить(bot, chat_id, who, текст, разметка)
         log.info("%s: отправлена справка по базе", who)
     except Exception as error:                                  # noqa: BLE001
         # Справка — приятное дополнение. Её отказ не должен ничего ломать.
         log.warning("справка не отправилась: %s", error)
 
 
-async def меню_тем(bot, chat_id, who: str) -> None:
+async def меню_тем(bot, chat_id, who: str, survey=None) -> None:
     """Показать, о чём вообще можно спросить. Для тех, кто не знает."""
+    if survey is not None:
+        survey.understood(who)
     try:
         вступление, вопросы = knowledge.начать()
         разметка = _кнопки_подсказок("")           # начальный набор
@@ -483,8 +498,18 @@ def build_dispatcher(survey: Survey):
         # Достаточно знать, что сообщение было и от кого.
         log.info("%s: сообщение", user_id)
 
+        # «Спросить» — это не ответ на вопрос анкеты и не сообщение
+        # координатору, а просьба показать темы. Через анкету его вести
+        # нельзя: она ответит придиркой к формату, а координатор получит
+        # в переписку слово «спросить».
+        хочет_темы = incoming.lower().strip(" ?!.") in ASK_WORDS
+        if хочет_темы and str(user_id) in survey.state:
+            await меню_тем(event.bot, chat_id, str(user_id), survey)
+            return
+
         was_done = bool(survey.state.get(str(user_id), {}).get("finished"))
         было_сообщений = len(survey.messages(str(user_id)))
+        было_промахов = survey.misses(str(user_id))
         reply = survey.handle(str(user_id), incoming)
 
         # Фотография выписки или скан направления — это ответ на вопрос
@@ -498,17 +523,17 @@ def build_dispatcher(survey: Survey):
         # Анкета отложила сообщение в переписку — значит, это не ответ
         # на вопрос, а обращение к нам. На такое можно ответить по базе.
         спросили = len(survey.messages(str(user_id))) > было_сообщений
+        # Анкета уже сочла это сообщение непонятым и уже ответила
+        # человеку по-своему. Второй раз считать тот же промах нельзя.
+        уже_считали = survey.misses(str(user_id)) > было_промахов
 
         await say(event.bot, chat_id, str(user_id), reply)
         note_if_finished(str(user_id), was_done)
 
-        # «Не знаю, с чего начать» — это не вопрос, а просьба показать,
-        # о чём вообще можно спросить. Отвечаем меню, а не поиском.
-        if incoming.lower().strip(" ?!.") in ASK_WORDS:
-            asyncio.create_task(меню_тем(event.bot, chat_id, str(user_id)))
-        elif спросили and incoming:
+        if спросили and incoming:
             asyncio.create_task(
-                справка(event.bot, chat_id, str(user_id), incoming))
+                справка(event.bot, chat_id, str(user_id), incoming,
+                        survey, уже_считали))
 
     @dp.message_callback()
     async def on_button(event: MessageCallback) -> None:
@@ -548,6 +573,7 @@ def build_dispatcher(survey: Survey):
             # Кнопка-подсказка: человек выбрал готовый вопрос из базы.
             # Состояние анкеты не трогаем — это чтение, а не ответ.
             await event.ack()
+            survey.understood(who)
             заголовок = (event.callback.payload or "")[2:]
             if not await статья(event.bot, chat_id, who, заголовок):
                 log.info("%s: статья не найдена: %s", who, заголовок[:40])
