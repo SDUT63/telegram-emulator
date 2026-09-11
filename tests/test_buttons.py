@@ -103,3 +103,36 @@ def test_кнопка_на_исчезнувшую_статью_не_молчит
     бот2 = ФейкБот()
     asyncio.run(max_bot.меню_тем(бот2, 1, "u1", consented))
     assert бот2.ушло and бот2.кнопки[0]
+
+
+# ------------------------------------------- слова, открывающие меню тем
+
+def test_слова_меню_не_отнимают_ответ_анкеты():
+    """«Не знаю» — законный ответ на половину вопросов, а не просьба о меню.
+
+    Слово из ASK_WORDS уводит человека в темы, минуя анкету. Если такое
+    слово окажется ещё и вариантом ответа, ответ потеряется молча.
+    """
+    import survey_questions
+    варианты = {в.lower().strip()
+                for вопрос in survey_questions.QUESTIONS
+                for в in (вопрос.get("options") or [])}
+    пересечение = варианты & {с.lower() for с in max_bot.ASK_WORDS}
+    assert not пересечение, f"слово и ответ, и команда: {пересечение}"
+
+
+def test_слова_меню_не_спорят_с_командами_анкеты():
+    import chatbot_survey as движок
+    команды = set()
+    for имя in ("RESTART_WORDS", "BEGIN_WORDS", "CANCEL_WORDS", "SUMMARY_WORDS",
+                "HELP_WORDS", "SKIP_WORDS", "BACK_WORDS", "CONTINUE_WORDS",
+                "AGREE_WORDS", "REFUSE_WORDS", "ERASE_WORDS", "READ_WORDS"):
+        команды |= {с.lower() for с in getattr(движок, имя)}
+    пересечение = команды & {с.lower() for с in max_bot.ASK_WORDS}
+    assert not пересечение, f"одно слово в двух смыслах: {пересечение}"
+
+
+def test_меню_тем_открывается_привычными_словами():
+    for слово in ("меню", "спросить", "подскажите", "что ты умеешь",
+                  "с чего начать", "/ask"):
+        assert слово in max_bot.ASK_WORDS
