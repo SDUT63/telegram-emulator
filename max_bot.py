@@ -318,6 +318,24 @@ async def _отправить(bot, chat_id, who: str, текст: str, разм�
         await bot.send_message(user_id=int(who), text=текст, attachments=вложения)
 
 
+async def подтвердить(event, подсказка: str) -> None:
+    """Погасить «часики» на нажатой кнопке.
+
+    MAX отклоняет пустое подтверждение: в запросе обязательно либо новый
+    текст сообщения, либо всплывающая подсказка. Пустой `ack()` возвращает
+    400 `proto.payload` — и, что хуже, роняет весь обработчик нажатия.
+    Человек в этот момент не получает ни статьи, ни ответа: кнопка просто
+    не работает, а почему — видно только в журнале.
+
+    Поэтому подсказка есть всегда, а её отказ ничего не роняет:
+    подтверждение — вежливость, а не работа.
+    """
+    try:
+        await event.ack(notification=подсказка)
+    except Exception as error:                                  # noqa: BLE001
+        log.debug("подтверждение кнопки не прошло: %s", error)
+
+
 async def справка(bot, chat_id, who: str, вопрос: str,
                   survey=None, уже_считали: bool = False) -> None:
     """Ответить на вопрос по базе знаний. Отдельной задачей, не в обработчике.
@@ -537,7 +555,19 @@ def build_dispatcher(survey: Survey):
 
     @dp.message_callback()
     async def on_button(event: MessageCallback) -> None:
-        """Человек нажал кнопку под вопросом."""
+        """Человек нажал кнопку. Обёртка: сбой не должен оставлять его ни с чем.
+
+        Упавший обработчик нажатия выглядит для человека как сломанная
+        кнопка: он жмёт, ничего не происходит, и почему — видно только
+        в журнале. Поэтому любой сбой здесь заканчивается хотя бы словами.
+        """
+        try:
+            await _нажатие(event)
+        except Exception as error:                              # noqa: BLE001
+            log.warning("нажатие не обработалось: %s", error)
+            await подтвердить(event, "Не сработало, напишите словами")
+
+    async def _нажатие(event: MessageCallback) -> None:
         chat_id, user_id = event.get_ids()
         who = str(user_id)
         if not seen.fresh(event.callback.callback_id):
@@ -567,23 +597,27 @@ def build_dispatcher(survey: Survey):
                 )
             except Exception as error:  # noqa: BLE001
                 log.debug("Не удалось обновить кнопки: %s", error)
-                await event.ack()
+                await подтвердить(event, "Принято")
 
         if action == "k":
             # Кнопка-подсказка: человек выбрал готовый вопрос из базы.
             # Состояние анкеты не трогаем — это чтение, а не ответ.
-            await event.ack()
+            await подтвердить(event, "Сейчас пришлю")
             survey.understood(who)
             заголовок = (event.callback.payload or "")[2:]
             if not await статья(event.bot, chat_id, who, заголовок):
                 log.info("%s: статья не найдена: %s", who, заголовок[:40])
+                # Статья могла уехать из базы вместе с правкой файла,
+                # а кнопка на неё осталась в старом сообщении. Молчать
+                # в ответ на нажатие нельзя.
+                await меню_тем(event.bot, chat_id, who, survey)
             return
 
         if action == "c" and parts[1:2] == ["full"]:
             # Полный текст — просто чтение. Состояние не меняем, кнопки
             # под сообщением оставляем: человек читает и возвращается
             # к тому же выбору.
-            await event.ack()
+            await подтвердить(event, "Присылаю полный текст")
             await say(event.bot, chat_id, who, survey.consent_text(who))
             return
 
@@ -592,7 +626,7 @@ def build_dispatcher(survey: Survey):
             # состояние: иначе старая кнопка из истории чата переписала бы
             # уже данное согласие новой датой.
             if survey.stage(who) != "consent":
-                await event.ack(notification="Это уже решено, идём дальше.")
+                await подтвердить(event, "Это уже решено, идём дальше.")
                 return
             reply = (survey.grant_consent(who) if parts[1:2] == ["y"]
                      else survey.refuse_consent(who))
@@ -603,7 +637,7 @@ def build_dispatcher(survey: Survey):
         if action == "t" and len(parts) == 3:
             step = int(parts[1])
             if not survey.toggle(who, step, int(parts[2])):
-                await event.ack(notification="Это кнопка от другого вопроса.")
+                await подтвердить(event, "Это кнопка от другого вопроса.")
                 return
             # Отмеченное пишем словами прямо в сообщении: галочка на кнопке
             # видна не всем и не всегда, а строка читается однозначно
@@ -617,7 +651,7 @@ def build_dispatcher(survey: Survey):
         was_done = bool(survey.state.get(who, {}).get("finished"))
 
         if action in {"a", "s", "d"} and len(parts) >= 2 and stale(parts[1]):
-            await event.ack(notification="Это кнопка от другого вопроса.")
+            await подтвердить(event, "Это кнопка от другого вопроса.")
             return
 
         # Заголовок вопроса запоминаем до ответа: после него survey уже
@@ -651,7 +685,7 @@ def build_dispatcher(survey: Survey):
                 chosen = "пропущено"
                 reply = survey.handle(who, "далее")
             else:
-                await event.ack(notification="Отметьте хотя бы один вариант.")
+                await подтвердить(event, "Отметьте хотя бы один вариант.")
                 return
         elif action == "b":
             reply = survey.handle(who, "назад")
@@ -660,7 +694,8 @@ def build_dispatcher(survey: Survey):
         elif action == "m":
             reply = survey.summary(who)
         else:
-            await event.ack()
+            # Payload не от нашей кнопки или от очень старой версии бота.
+            await подтвердить(event, "Эта кнопка больше не работает")
             return
 
         # Кнопки со старого сообщения убираем: иначе на один вопрос можно
