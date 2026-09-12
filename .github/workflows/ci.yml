@@ -61,6 +61,7 @@ jobs:
             tests/test_production_outbox.py \
             tests/test_production_e2e.py \
             tests/test_outbox_multiworker.py \
+            tests/test_migration_guard.py \
             tests/test_durable_outbox_worker.py \
             tests/test_webhook_config.py \
             tests/test_crm_outbox.py
