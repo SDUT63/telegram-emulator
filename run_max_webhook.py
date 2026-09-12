@@ -1,9 +1,8 @@
 #!/usr/bin/env python3
-"""MAX webhook launcher with the same durable pilot storage as long polling.
+"""MAX Webhook launcher.
 
-This is the webhook entrypoint, not a production-readiness claim. For a
-multi-instance production deployment replace SQLite with the planned shared
-PostgreSQL storage and add the production secret/backup/monitoring stack.
+Production deployments should use PostgreSQL; SQLite remains available via
+run_max.py for the single-process laptop pilot.
 """
 from __future__ import annotations
 
@@ -11,15 +10,13 @@ import asyncio
 
 import max_bot
 import max_webhook
-from storage_sqlite import PersistentSeen, SQLiteSurvey
+from storage_postgres import PersistentSeen, PostgresSurvey
 
 
 def main() -> None:
-    # max_webhook imports Survey into its module namespace, while
-    # max_bot.build_dispatcher resolves Seen from max_bot's global namespace.
-    # Replace both before constructing the dispatcher.
+    max_bot.Survey = PostgresSurvey
     max_bot.Seen = PersistentSeen
-    max_webhook.Survey = SQLiteSurvey
+    max_webhook.Survey = PostgresSurvey
     asyncio.run(max_webhook.main())
 
 
