@@ -33,7 +33,6 @@ def _keyboard_rows(survey: ProductionPostgresSurvey, user_id: str) -> list[list[
 
 def _navigation_keyboard(action: str, args: list[str], survey: ProductionPostgresSurvey,
                           user_id: str) -> list[list[list[str]]]:
-    """Build navigation keyboard without constructing maxapi objects."""
     import knowledge
     from max_bot import НАЗАД, ДАЛЬШЕ, ВСЕ_ТЕМЫ, К_АНКЕТЕ, _fits
     rows: list[list[list[str]]] = []
@@ -74,6 +73,11 @@ def _navigation_keyboard(action: str, args: list[str], survey: ProductionPostgre
         if survey.current(user_id) is not None:
             rows.append([[К_АНКЕТЕ, "q"]])
         return rows
+    if action == "q":
+        from max_bot import keyboard_for
+        # q returns the questionnaire screen; its keyboard is the canonical
+        # scenario layout, not the navigation layout.
+        return _keyboard_rows(survey, user_id)
     return rows
 
 
@@ -143,7 +147,6 @@ class DurableProductionPostgresSurvey(ProductionPostgresSurvey):
         uid = str(user_id); action = str(action or ""); args = [str(v) for v in args]
         payload = {"kind": "navigation", "action": action, "args": args}
         def mutate() -> str:
-            import knowledge
             from max_bot import экран_карты, экран_ветви, экран_статьи, КАРТА_ЗАГОЛОВОК, КАРТА_ПОДПИСЬ
             Survey.understood(self, uid)
             if action == "map":
@@ -155,11 +158,18 @@ class DurableProductionPostgresSurvey(ProductionPostgresSurvey):
             elif action == "k" and args:
                 screen = экран_статьи(args[0], self, uid)
                 text = screen[0] if screen else f"Материал не найден.\n\n{КАРТА_ЗАГОЛОВОК}\n{КАРТА_ПОДПИСЬ}"
+            elif action == "q":
+                spot = self.current(uid)
+                if not spot:
+                    text = self.summary(uid)
+                else:
+                    text = self.question_text(uid)
             elif action == "cfull":
                 text = self.consent_text(uid)
             else:
                 return ""
-            _OUTBOX_KEYBOARD.set(_navigation_keyboard(action, args, self, uid) if action != "cfull" else _keyboard_rows(self, uid))
+            _OUTBOX_KEYBOARD.set(_navigation_keyboard(action, args, self, uid)
+                                 if action not in {"cfull"} else _keyboard_rows(self, uid))
             return text
         return self._mutate(uid, "navigation", payload, mutate, "")
 
