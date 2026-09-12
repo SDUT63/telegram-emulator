@@ -1,15 +1,19 @@
 #!/usr/bin/env python3
 """PostgreSQL persistence for the SDUT survey.
 
-Use this backend for production/multi-instance deployments. It keeps the
-same Survey/PersistentSeen interface as the SQLite pilot backend, but uses
-row-level locking and transactional writes suitable for several workers.
+The adapter keeps the existing Survey interface while avoiding the dangerous
+"delete every row not present in this worker's snapshot" pattern. State is
+reconciled per user: unchanged users are never touched, and concurrent
+workers merge top-level fields under a row lock.
 
-Environment:
-    SDUT_DATABASE_URL=postgresql://user:password@host:5432/database
+This is the production storage adapter; schema creation is intentionally
+idempotent so a fresh pilot instance can start without a separate migration
+step. A dedicated migration runner should be used once the production schema
+is frozen.
 """
 from __future__ import annotations
 
+import copy
 import json
 import os
 import threading
@@ -18,9 +22,9 @@ from typing import Any
 
 import psycopg
 from psycopg.rows import tuple_row
+from psycopg.types.json import Jsonb
 
 from chatbot_survey import Survey
-
 
 DEFAULT_LIMIT = 5000
 DEFAULT_LEASE_SECONDS = 45.0
@@ -36,12 +40,17 @@ def database_url() -> str:
     return value
 
 
+def _canonical(value: Any) -> str:
+    return json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+
+
 class PostgresSurvey(Survey):
-    """Survey persisted in PostgreSQL."""
+    """Survey state persisted in PostgreSQL with per-user reconciliation."""
 
     def __init__(self, db_url: str | None = None, *, list_options: bool = False) -> None:
         self.db_url = db_url or database_url()
         self._db_lock = threading.RLock()
+        self._loaded_snapshot: dict[str, dict[str, Any]] = {}
         self._init_db()
         super().__init__(storage_path=":memory:", list_options=list_options)
 
@@ -90,46 +99,79 @@ class PostgresSurvey(Survey):
 
     def load(self) -> None:
         with self._db_lock, self._connect() as conn:
-            rows = conn.execute(
-                "SELECT user_id, state_json FROM survey_state"
-            ).fetchall()
-        self.state = {}
+            rows = conn.execute("SELECT user_id, state_json FROM survey_state").fetchall()
+        state: dict[str, dict[str, Any]] = {}
         for user_id, value in rows:
             if isinstance(value, dict):
-                self.state[str(user_id)] = value
-            elif isinstance(value, str):
-                try:
-                    parsed = json.loads(value)
-                except json.JSONDecodeError:
-                    continue
-                if isinstance(parsed, dict):
-                    self.state[str(user_id)] = parsed
+                state[str(user_id)] = value
+        self.state = state
+        self._loaded_snapshot = copy.deepcopy(state)
 
     def save(self) -> None:
-        """Reconcile the in-memory survey state in one PostgreSQL transaction."""
+        """Persist only users changed since the last load/save.
+
+        Each changed user is locked with SELECT ... FOR UPDATE, then the
+        changed top-level fields are merged into the current database row.
+        A user deleted by this worker is deleted only when the row still
+        matches the snapshot this worker originally loaded. This prevents one
+        worker from deleting unrelated users handled by another worker.
+        """
         with self._db_lock, self._connect() as conn:
             current_ids = {str(user_id) for user_id in self.state}
-            if current_ids:
-                conn.execute(
-                    "DELETE FROM survey_state WHERE NOT (user_id = ANY(%s))",
-                    (list(current_ids),),
-                )
-            else:
-                conn.execute("DELETE FROM survey_state")
-            for user_id, state in self.state.items():
-                conn.execute(
-                    """
-                    INSERT INTO survey_state(user_id, state_json, updated_at)
-                    VALUES(%s, %s::jsonb, CURRENT_TIMESTAMP)
-                    ON CONFLICT(user_id) DO UPDATE SET
-                        state_json = EXCLUDED.state_json,
-                        updated_at = CURRENT_TIMESTAMP
-                    """,
-                    (
-                        str(user_id),
-                        json.dumps(state, ensure_ascii=False, separators=(",", ":")),
-                    ),
-                )
+            loaded_ids = set(self._loaded_snapshot)
+            changed_ids = set()
+            for user_id in current_ids | loaded_ids:
+                before = self._loaded_snapshot.get(user_id)
+                after = self.state.get(user_id)
+                if _canonical(before) != _canonical(after):
+                    changed_ids.add(user_id)
+
+            for user_id in sorted(changed_ids):
+                before = self._loaded_snapshot.get(user_id)
+                after = self.state.get(user_id)
+                row = conn.execute(
+                    "SELECT state_json FROM survey_state WHERE user_id=%s FOR UPDATE",
+                    (user_id,),
+                ).fetchone()
+
+                if after is None:
+                    if row is None:
+                        continue
+                    db_state = row[0] if isinstance(row[0], dict) else {}
+                    # Do not delete a row that changed since our snapshot.
+                    if before is None or _canonical(db_state) == _canonical(before):
+                        conn.execute("DELETE FROM survey_state WHERE user_id=%s", (user_id,))
+                    else:
+                        continue
+                else:
+                    if row is None:
+                        merged = copy.deepcopy(after)
+                    else:
+                        db_state = row[0] if isinstance(row[0], dict) else {}
+                        merged = copy.deepcopy(db_state)
+                        for key, value in after.items():
+                            old_value = before.get(key) if before else None
+                            if _canonical(value) != _canonical(old_value):
+                                merged[key] = value
+                        if before:
+                            for key in before:
+                                if key not in after and key in merged:
+                                    # A nested field was deliberately removed.
+                                    if _canonical(merged[key]) == _canonical(before[key]):
+                                        merged.pop(key, None)
+                    conn.execute(
+                        """
+                        INSERT INTO survey_state(user_id, state_json, updated_at)
+                        VALUES(%s,%s,%s)
+                        ON CONFLICT(user_id) DO UPDATE SET
+                            state_json=EXCLUDED.state_json,
+                            updated_at=EXCLUDED.updated_at
+                        """,
+                        (user_id, Jsonb(merged), time.strftime("%Y-%m-%d %H:%M:%S+00")),
+                    )
+                    self.state[user_id] = merged
+
+            self._loaded_snapshot = copy.deepcopy(self.state)
 
     def mark_event_once(self, event_id: str) -> bool:
         return PersistentSeen(db_url=self.db_url).fresh(event_id)
@@ -137,12 +179,8 @@ class PostgresSurvey(Survey):
     def audit(self, user_id: str | None, event_type: str, payload: dict[str, Any]) -> None:
         with self._db_lock, self._connect() as conn:
             conn.execute(
-                "INSERT INTO audit_events(user_id, event_type, event_json) VALUES(%s,%s,%s::jsonb)",
-                (
-                    user_id,
-                    event_type,
-                    json.dumps(payload, ensure_ascii=False, separators=(",", ":")),
-                ),
+                "INSERT INTO audit_events(user_id,event_type,event_json) VALUES(%s,%s,%s)",
+                (user_id, event_type, Jsonb(payload)),
             )
 
     def health(self) -> bool:
@@ -151,7 +189,7 @@ class PostgresSurvey(Survey):
 
 
 class PersistentSeen:
-    """Multi-instance-safe persistent event leases backed by PostgreSQL."""
+    """Multi-instance-safe event leases backed by PostgreSQL."""
 
     def __init__(
         self,
@@ -194,18 +232,18 @@ class PersistentSeen:
         cutoff = now - self.lease_seconds
         with self._lock, self._connect() as conn:
             row = conn.execute(
-                "SELECT claimed_at FROM event_leases WHERE event_id = %s FOR UPDATE",
+                "SELECT claimed_at FROM event_leases WHERE event_id=%s FOR UPDATE",
                 (key,),
             ).fetchone()
             if row is None:
                 conn.execute(
-                    "INSERT INTO event_leases(event_id, claimed_at, last_seen_at) VALUES(%s,%s,%s)",
+                    "INSERT INTO event_leases(event_id,claimed_at,last_seen_at) VALUES(%s,%s,%s)",
                     (key, now, now),
                 )
                 accepted = True
             elif float(row[0]) <= cutoff:
                 conn.execute(
-                    "UPDATE event_leases SET claimed_at=%s, last_seen_at=%s WHERE event_id=%s",
+                    "UPDATE event_leases SET claimed_at=%s,last_seen_at=%s WHERE event_id=%s",
                     (now, now, key),
                 )
                 accepted = True
