@@ -1,15 +1,5 @@
 #!/usr/bin/env python3
-"""Fail-closed audit for MAX outbound delivery paths.
-
-The production bot must not accidentally regain a direct MAX send path while
-refactors are in progress. This is intentionally a static AST check rather
-than a grep: comments and strings do not count, while aliases and calls made
-through an object do.
-
-The durable worker is deliberately excluded: it is the one component whose
-job is to perform the actual external MAX delivery. The application and
-launchers must instead create durable outbound intents.
-"""
+"""Fail-closed audit for MAX outbound delivery paths."""
 from __future__ import annotations
 
 import ast
@@ -52,14 +42,31 @@ def audit(path: pathlib.Path) -> list[str]:
     return problems
 
 
-def main() -> int:
-    problems: list[str] = []
+def problems() -> list[str]:
+    found: list[str] = []
     for path in sorted(PRODUCTION_FILES):
         if path.exists():
-            problems.extend(audit(path))
-    if problems:
+            found.extend(audit(path))
+    return found
+
+
+def require_clean() -> None:
+    """Refuse a production launch while application direct-send paths exist."""
+    found = problems()
+    if found:
+        details = "\n".join(f"- {item}" for item in found)
+        raise SystemExit(
+            "Production outbound architecture gate FAILED. "
+            "The dispatcher must use the explicit durable outbound transport "
+            "before production can start.\n" + details
+        )
+
+
+def main() -> int:
+    found = problems()
+    if found:
         print("Outbound path audit: FAIL")
-        for problem in problems:
+        for problem in found:
             print(f"- {problem}")
         return 1
     print("Outbound path audit: PASS")
