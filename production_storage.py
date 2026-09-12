@@ -2,12 +2,14 @@
 """Production PostgreSQL facade for the MAX bot."""
 from __future__ import annotations
 
+import copy
 import time
 
 from chatbot_survey import ALREADY_DONE, CONSENT_NO, CONSENT_SHORT, RESUMED, Survey
 from storage_postgres import (
     _TX_CONNECTION,
     _TX_EVENT,
+    _TX_USER,
     TransactionalPersistentSeen,
     TransactionalPostgresSurvey,
 )
@@ -15,6 +17,21 @@ from storage_postgres import (
 
 class ProductionPostgresSurvey(TransactionalPostgresSurvey):
     """Production PostgreSQL survey with explicit transactional adapters."""
+
+    def user_state(self, user_id: str) -> dict:
+        """Return an isolated user snapshot from the PostgreSQL source of truth.
+
+        The legacy ``Survey.state`` object is deliberately not exposed to the
+        production UI. Inside an active event transaction the snapshot is the
+        state already loaded under PostgreSQL row/advisory locks; outside a
+        transaction a fresh read is made from PostgreSQL.
+        """
+        uid = str(user_id)
+        if _TX_CONNECTION.get() is not None and _TX_USER.get() == uid:
+            return copy.deepcopy(self.state.get(uid) or {})
+        with self._connect() as conn:
+            row = conn.execute("SELECT state_json FROM survey_state WHERE user_id=%s", (uid,)).fetchone()
+        return copy.deepcopy(row[0]) if row and isinstance(row[0], dict) else {}
 
     def handle(self, user_id: str, text: str) -> str:
         return self._mutate(str(user_id), "message", {"kind": "message"}, lambda: Survey.handle(self, str(user_id), text), "")
