@@ -91,6 +91,40 @@ def test_attachment_ack_is_durable_and_has_its_own_delivery_key():
     assert note is not None
 
 
+def test_message_with_attachment_queues_main_reply_and_ack_without_key_collision():
+    """Two outbound intents from one inbound event must have distinct keys."""
+    survey = DurableProductionPostgresSurvey()
+    user_id = f"outbox-atomic-file-{uuid.uuid4().hex}"
+    event_id = f"outbox-atomic-file-event-{uuid.uuid4().hex}"
+    token = _TX_EVENT.set(event_id)
+    try:
+        result = survey._mutate(
+            user_id,
+            "message_attachment",
+            {"kind": "message", "has_files": True},
+            lambda: "Основной ответ",
+            "",
+        )
+        assert result == "Основной ответ"
+        assert consume_direct_send_suppression() is True
+    finally:
+        _TX_EVENT.reset(token)
+
+    queue = PostgresOutbox()
+    with queue._connect(queue.db_url) as conn:
+        rows = conn.execute(
+            "SELECT delivery_key,payload,status FROM outbox_messages "
+            "WHERE delivery_key IN (%s,%s) ORDER BY delivery_key",
+            (delivery_key(event_id), delivery_key(event_id, ordinal=1)),
+        ).fetchall()
+
+    assert len(rows) == 2
+    by_key = {row["delivery_key"]: row for row in rows}
+    assert by_key[delivery_key(event_id)]["payload"]["text"] == "Основной ответ"
+    assert "Файл получил" in by_key[delivery_key(event_id, ordinal=1)]["payload"]["text"]
+    assert all(row["status"] == "pending" for row in rows)
+
+
 def test_survey_failure_rolls_back_outbox_and_state():
     survey = DurableProductionPostgresSurvey()
     user_id = f"outbox-failure-{uuid.uuid4().hex}"
