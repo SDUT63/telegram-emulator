@@ -2,8 +2,9 @@
 """MAX Webhook entrypoint for the SDUT bot.
 
 MAX-facing HTTPS/TLS is expected to terminate at a reverse proxy. This
-process listens on a private address and uses PostgreSQL transactional
-storage when SDUT_DATABASE_URL is configured.
+entrypoint is production-only: PostgreSQL transactional storage and the
+durable outbound outbox are mandatory. SQLite is intentionally restricted to
+the local pilot launcher (``run_max.py``).
 """
 from __future__ import annotations
 
@@ -18,8 +19,6 @@ from urllib.parse import urlsplit
 from aiohttp import web
 
 import max_bot
-from storage_sqlite import PersistentSeen as SQLiteSeen
-from storage_sqlite import SQLiteSurvey
 
 log = logging.getLogger("сдут-бот")
 
@@ -104,16 +103,30 @@ def validate_settings(url: str, secret: str, path: str) -> list[str]:
 
 
 def _storage_classes():
-    """Return production PostgreSQL classes when a DSN is configured."""
-    dsn = (os.getenv("SDUT_DATABASE_URL") or "").strip()
-    if dsn:
-        from production_storage import ProductionPostgresSurvey, TransactionalPersistentSeen
+    """Return the mandatory production PostgreSQL classes.
 
-        return ProductionPostgresSurvey, TransactionalPersistentSeen, "PostgreSQL"
-    return SQLiteSurvey, SQLiteSeen, "SQLite (pilot)"
+    A webhook is an externally reachable production transport. It must never
+    silently fall back to the single-process SQLite pilot storage.
+    """
+    dsn = (os.getenv("SDUT_DATABASE_URL") or "").strip()
+    if not dsn:
+        raise RuntimeError(
+            "MAX Webhook требует SDUT_DATABASE_URL; SQLite разрешён только через run_max.py"
+        )
+
+    from production_storage import ProductionPostgresSurvey, TransactionalPersistentSeen
+
+    return ProductionPostgresSurvey, TransactionalPersistentSeen, "PostgreSQL"
 
 
 async def main() -> None:
+    if not (os.getenv("SDUT_DATABASE_URL") or "").strip():
+        print(
+            "\nMAX Webhook остановлен: SDUT_DATABASE_URL не задан. "
+            "SQLite разрешён только через run_max.py.\n"
+        )
+        sys.exit(1)
+
     token = max_bot.read_token()
     public_url = (os.getenv("MAX_WEBHOOK_URL") or "").strip().rstrip("/")
     path = (os.getenv("MAX_WEBHOOK_PATH") or DEFAULT_PATH).strip() or DEFAULT_PATH
@@ -143,14 +156,13 @@ async def main() -> None:
         print("=" * 70 + "\n")
         sys.exit(1)
 
-    if (os.getenv("SDUT_DATABASE_URL") or "").strip():
-        from postgres_guard import require_migrations
+    from postgres_guard import require_migrations
 
-        try:
-            require_migrations()
-        except RuntimeError as error:
-            print(f"\n  PostgreSQL schema is not ready: {error}\n")
-            sys.exit(1)
+    try:
+        require_migrations()
+    except RuntimeError as error:
+        print(f"\n  PostgreSQL schema is not ready: {error}\n")
+        sys.exit(1)
 
     from maxapi import Bot
     from maxapi.webhook.aiohttp import AiohttpMaxWebhook
