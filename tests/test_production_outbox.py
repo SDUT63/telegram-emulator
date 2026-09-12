@@ -33,10 +33,7 @@ def test_survey_reply_and_outbox_commit_together():
             "SELECT delivery_key,user_id,payload,status FROM outbox_messages WHERE delivery_key=%s",
             (delivery_key(event_id),),
         ).fetchone()
-        state = conn.execute(
-            "SELECT state_json FROM survey_state WHERE user_id=%s",
-            (user_id,),
-        ).fetchone()
+        state = conn.execute("SELECT state_json FROM survey_state WHERE user_id=%s", (user_id,)).fetchone()
 
     assert row is not None
     assert row["user_id"] == user_id
@@ -46,46 +43,7 @@ def test_survey_reply_and_outbox_commit_together():
     assert state is not None
 
 
-def test_attachment_ack_is_durable_and_has_its_own_delivery_key():
-    """Legacy separate attachment path remains covered until dispatcher migration."""
-    survey = DurableProductionPostgresSurvey()
-    user_id = f"outbox-file-{uuid.uuid4().hex}"
-    parent_event = f"outbox-file-event-{uuid.uuid4().hex}"
-    child_event = f"{parent_event}:message-note"
-
-    token = _TX_EVENT.set(parent_event)
-    try:
-        reply = survey.handle(user_id, "hello")
-        assert reply
-        survey.note_message(
-            user_id,
-            "hello",
-            [{"kind": "file", "name": "referral.pdf", "url": "https://max.invalid/file"}],
-        )
-    finally:
-        _TX_EVENT.reset(token)
-
-    queue = PostgresOutbox()
-    child_key = delivery_key(child_event, ordinal=1)
-    with queue._connect(queue.db_url) as conn:
-        row = conn.execute(
-            "SELECT delivery_key,payload,status FROM outbox_messages WHERE delivery_key=%s",
-            (child_key,),
-        ).fetchone()
-        note = conn.execute(
-            "SELECT event_id FROM processed_events WHERE event_id=%s",
-            (child_event,),
-        ).fetchone()
-
-    assert row is not None
-    assert row["payload"]["kind"] == "max_text"
-    assert "Файл получил" in row["payload"]["text"]
-    assert row["status"] == "pending"
-    assert note is not None
-
-
 def test_message_with_attachment_is_atomic_and_queues_two_intents():
-    """One inbound event commits state, metadata and both outbound intents."""
     survey = DurableProductionPostgresSurvey()
     user_id = f"outbox-atomic-file-{uuid.uuid4().hex}"
     event_id = f"outbox-atomic-file-event-{uuid.uuid4().hex}"
@@ -106,13 +64,9 @@ def test_message_with_attachment_is_atomic_and_queues_two_intents():
             (delivery_key(event_id), delivery_key(event_id, ordinal=1)),
         ).fetchall()
         processed = conn.execute(
-            "SELECT event_type,event_hash FROM processed_events WHERE event_id=%s",
-            (event_id,),
+            "SELECT event_type,event_hash FROM processed_events WHERE event_id=%s", (event_id,)
         ).fetchone()
-        state = conn.execute(
-            "SELECT state_json FROM survey_state WHERE user_id=%s",
-            (user_id,),
-        ).fetchone()
+        state = conn.execute("SELECT state_json FROM survey_state WHERE user_id=%s", (user_id,)).fetchone()
 
     assert len(rows) == 2
     by_key = {row["delivery_key"]: row for row in rows}
@@ -126,8 +80,7 @@ def test_message_with_attachment_is_atomic_and_queues_two_intents():
 
     with queue._connect(queue.db_url) as conn:
         audit = conn.execute(
-            "SELECT event_json FROM audit_events WHERE user_id=%s ORDER BY id DESC LIMIT 1",
-            (user_id,),
+            "SELECT event_json FROM audit_events WHERE user_id=%s ORDER BY id DESC LIMIT 1", (user_id,)
         ).fetchone()
     assert audit is not None
     assert "fingerprint" not in audit["event_json"]
@@ -151,6 +104,79 @@ def test_message_event_collision_detects_changed_attachment():
     assert first
 
 
+def test_callback_transition_and_reply_are_one_event():
+    survey = DurableProductionPostgresSurvey()
+    user_id = f"outbox-callback-{uuid.uuid4().hex}"
+    start_event = f"outbox-callback-start-{uuid.uuid4().hex}"
+    callback_event = f"outbox-callback-event-{uuid.uuid4().hex}"
+
+    token = _TX_EVENT.set(start_event)
+    try:
+        start_reply = survey.start_event(user_id)
+    finally:
+        _TX_EVENT.reset(token)
+    assert start_reply
+
+    token = _TX_EVENT.set(callback_event)
+    try:
+        reply = survey.handle_callback_event(user_id, "c", ["y"])
+    finally:
+        _TX_EVENT.reset(token)
+
+    assert reply
+    queue = PostgresOutbox()
+    with queue._connect(queue.db_url) as conn:
+        processed = conn.execute(
+            "SELECT event_type FROM processed_events WHERE event_id=%s", (callback_event,)
+        ).fetchone()
+        row = conn.execute(
+            "SELECT payload,status FROM outbox_messages WHERE delivery_key=%s",
+            (delivery_key(callback_event),),
+        ).fetchone()
+        state = conn.execute("SELECT state_json FROM survey_state WHERE user_id=%s", (user_id,)).fetchone()
+
+    assert processed["event_type"] == "callback"
+    assert row["status"] == "pending"
+    assert row["payload"]["text"] == reply
+    assert state["state_json"]["consent"]["at"]
+
+
+def test_navigation_event_is_durable_and_does_not_change_answers():
+    survey = DurableProductionPostgresSurvey()
+    user_id = f"outbox-navigation-{uuid.uuid4().hex}"
+    start_event = f"outbox-navigation-start-{uuid.uuid4().hex}"
+    nav_event = f"outbox-navigation-event-{uuid.uuid4().hex}"
+
+    token = _TX_EVENT.set(start_event)
+    try:
+        survey.start_event(user_id)
+    finally:
+        _TX_EVENT.reset(token)
+
+    before = dict((survey.state.get(user_id) or {}).get("answers") or {})
+    token = _TX_EVENT.set(nav_event)
+    try:
+        reply = survey.handle_navigation_event(user_id, "map", [])
+    finally:
+        _TX_EVENT.reset(token)
+
+    assert reply
+    queue = PostgresOutbox()
+    with queue._connect(queue.db_url) as conn:
+        row = conn.execute(
+            "SELECT payload,status FROM outbox_messages WHERE delivery_key=%s", (delivery_key(nav_event),)
+        ).fetchone()
+        processed = conn.execute(
+            "SELECT event_type FROM processed_events WHERE event_id=%s", (nav_event,)
+        ).fetchone()
+        state = conn.execute("SELECT state_json FROM survey_state WHERE user_id=%s", (user_id,)).fetchone()
+
+    assert row["status"] == "pending"
+    assert row["payload"]["text"] == reply
+    assert processed["event_type"] == "navigation"
+    assert state["state_json"]["answers"] == before
+
+
 def test_survey_failure_rolls_back_outbox_and_state():
     survey = DurableProductionPostgresSurvey()
     user_id = f"outbox-failure-{uuid.uuid4().hex}"
@@ -170,14 +196,8 @@ def test_survey_failure_rolls_back_outbox_and_state():
 
     queue = PostgresOutbox()
     with queue._connect(queue.db_url) as conn:
-        outbox = conn.execute(
-            "SELECT 1 FROM outbox_messages WHERE delivery_key=%s",
-            (delivery_key(event_id),),
-        ).fetchone()
-        state = conn.execute(
-            "SELECT 1 FROM survey_state WHERE user_id=%s",
-            (user_id,),
-        ).fetchone()
+        outbox = conn.execute("SELECT 1 FROM outbox_messages WHERE delivery_key=%s", (delivery_key(event_id),)).fetchone()
+        state = conn.execute("SELECT 1 FROM survey_state WHERE user_id=%s", (user_id,)).fetchone()
 
     assert outbox is None
     assert state is None
@@ -200,8 +220,5 @@ def test_duplicate_event_does_not_create_second_reply():
 
     queue = PostgresOutbox()
     with queue._connect(queue.db_url) as conn:
-        rows = conn.execute(
-            "SELECT COUNT(*) AS n FROM outbox_messages WHERE delivery_key=%s",
-            (delivery_key(event_id),),
-        ).fetchone()
+        rows = conn.execute("SELECT COUNT(*) AS n FROM outbox_messages WHERE delivery_key=%s", (delivery_key(event_id),)).fetchone()
     assert rows["n"] == 1
