@@ -35,7 +35,7 @@ def _navigation_keyboard(action: str, args: list[str], survey: ProductionPostgre
                           user_id: str) -> list[list[list[str]]]:
     """Build navigation keyboard without constructing maxapi objects."""
     import knowledge
-    from max_bot import BUTTON_LIMIT, NАЗАД, ДАЛЬШЕ, ВСЕ_ТЕМЫ, К_АНКЕТЕ, _fits
+    from max_bot import НАЗАД, ДАЛЬШЕ, ВСЕ_ТЕМЫ, К_АНКЕТЕ, _fits
     rows: list[list[list[str]]] = []
     if action == "map":
         for branch in knowledge.карта():
@@ -52,7 +52,7 @@ def _navigation_keyboard(action: str, args: list[str], survey: ProductionPostgre
             rows.append([[_fits(knowledge.подпись(title)), "k:" + title[:60]]])
         nav: list[list[str]] = []
         if page["номер"] > 1:
-            nav.append([NАЗАД, f"v:{page['id']}:{page['номер'] - 1}"])
+            nav.append([НАЗАД, f"v:{page['id']}:{page['номер'] - 1}"])
         if page["номер"] < page["всего"]:
             nav.append([ДАЛЬШЕ, f"v:{page['id']}:{page['номер'] + 1}"])
         if nav:
