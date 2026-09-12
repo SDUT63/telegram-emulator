@@ -1,13 +1,12 @@
 #!/usr/bin/env python3
 """Transactional outbound bridge for the production MAX bot.
 
-Survey state, audit record, processed-event marker and outbound reply intents
-are committed in one PostgreSQL transaction. The actual MAX request is
-performed later by the durable worker.
+The PostgreSQL transaction contains the inbound event claim, questionnaire
+state transition, audit record and every outbound message intent. Network
+requests are performed later by the durable worker.
 
-External delivery remains at-least-once: MAX ordinary bot messages do not
-provide a provider-side idempotency key that lets us prove exactly-once
-network delivery.
+External delivery remains at-least-once because ordinary MAX messages do not
+provide a provider-side idempotency key that can prove exactly-once delivery.
 """
 from __future__ import annotations
 
@@ -21,22 +20,13 @@ from typing import Any, Callable, TypeVar
 from chatbot_survey import Survey
 from outbox_postgres import PostgresOutbox, delivery_key
 from production_storage import ProductionPostgresSurvey
-from storage_postgres import (
-    _TX_CONNECTION,
-    _TX_EVENT,
-    _TX_USER,
-    _TX_ACCEPTED,
-)
+from storage_postgres import _TX_CONNECTION, _TX_EVENT, _TX_USER, _TX_ACCEPTED
 
 T = TypeVar("T")
-
-_OUTBOX_RESULT: contextvars.ContextVar[Any] = contextvars.ContextVar(
-    "sdut_outbox_result", default=None
-)
+_OUTBOX_RESULT: contextvars.ContextVar[Any] = contextvars.ContextVar("sdut_outbox_result", default=None)
 
 
 def _message_fingerprint(text: str, files: list[dict[str, Any]]) -> str:
-    """Build a collision fingerprint without storing the incoming text."""
     canonical = json.dumps(
         {"text": text, "files": files},
         ensure_ascii=False,
@@ -48,24 +38,15 @@ def _message_fingerprint(text: str, files: list[dict[str, Any]]) -> str:
 
 
 def _keyboard_rows(survey: ProductionPostgresSurvey, user_id: str) -> list[list[list[str]]]:
-    """Serialize the transport-independent keyboard layout into JSON."""
     from max_bot import layout
-
     return [
         [[str(label), str(action)] for label, action in row]
         for row in layout(survey, str(user_id))
     ]
 
 
-def _enqueue_text(
-    outbox: PostgresOutbox,
-    conn,
-    survey: ProductionPostgresSurvey,
-    user_id: str,
-    event_id: str,
-    text: str,
-    ordinal: int = 0,
-) -> None:
+def _enqueue_text(outbox: PostgresOutbox, conn, survey: ProductionPostgresSurvey,
+                  user_id: str, event_id: str, text: str, ordinal: int = 0) -> None:
     if not text:
         return
     outbox.enqueue(
@@ -81,7 +62,7 @@ def _enqueue_text(
 
 
 class DurableProductionPostgresSurvey(ProductionPostgresSurvey):
-    """Production survey with atomic state + audit + outbound intents."""
+    """Production survey with one durable transaction boundary per MAX event."""
 
     _lock_registry_guard = threading.RLock()
     _mutation_locks: weakref.WeakValueDictionary[str, threading.RLock] = weakref.WeakValueDictionary()
@@ -109,35 +90,22 @@ class DurableProductionPostgresSurvey(ProductionPostgresSurvey):
         except Exception:
             return False
 
-    def _mutate(
-        self,
-        user_id: str,
-        event_type: str,
-        payload: dict[str, Any],
-        fn: Callable[[], T],
-        duplicate: T,
-    ) -> T:
+    def _mutate(self, user_id: str, event_type: str, payload: dict[str, Any],
+                fn: Callable[[], T], duplicate: T) -> T:
         lock = self._mutation_lock_for(str(user_id))
         with lock:
             token = _OUTBOX_RESULT.set(None)
-
             def wrapped() -> T:
                 result = fn()
                 _OUTBOX_RESULT.set(result)
                 return result
-
             try:
                 return super()._mutate(user_id, event_type, payload, wrapped, duplicate)
             finally:
                 _OUTBOX_RESULT.reset(token)
 
-    def handle_message_event(
-        self,
-        user_id: str,
-        text: str,
-        files: list[dict[str, Any]] | None = None,
-    ) -> str:
-        """Atomically process one inbound MAX message and queue its reply."""
+    def handle_message_event(self, user_id: str, text: str,
+                             files: list[dict[str, Any]] | None = None) -> str:
         uid = str(user_id)
         normalized_text = str(text or "")
         normalized_files = list(files or [])
@@ -146,23 +114,42 @@ class DurableProductionPostgresSurvey(ProductionPostgresSurvey):
             "has_files": bool(normalized_files),
             "fingerprint": _message_fingerprint(normalized_text, normalized_files),
         }
-
         def mutate() -> str:
             result = Survey.handle(self, uid, normalized_text)
             if normalized_files:
                 Survey.note_message(self, uid, normalized_text, normalized_files)
             return result
-
         return self._mutate(uid, "message", payload, mutate, "")
 
-    def handle_callback_event(self, user_id: str, action: str, args: list[str]) -> str:
-        """Atomically apply one callback and enqueue its textual reply.
+    def handle_navigation_event(self, user_id: str, action: str,
+                                args: list[str]) -> str:
+        """Handle read-only map/article navigation and queue its screen."""
+        uid = str(user_id)
+        action = str(action or "")
+        args = [str(value) for value in args]
+        payload = {"kind": "navigation", "action": action, "args": args}
 
-        Callback identifiers are supplied by ``TransactionalPersistentSeen``
-        through ``_TX_EVENT``. State transition, audit and outbound intent are
-        therefore one database transaction. Invalid/stale callbacks are
-        harmless no-ops and never create a reply.
-        """
+        def mutate() -> str:
+            import knowledge
+            from max_bot import К_АНКЕТЕ, КАРТА_ЗАГОЛОВОК, КАРТА_ПОДПИСЬ, СПРАВКА_ПОДПИСЬ
+            Survey.understood(self, uid)
+            if action == "map":
+                text, _ = __import__("max_bot").экран_карты(self, uid)
+                return text
+            if action == "v" and args:
+                number = int(args[1]) if len(args) > 1 and args[1].isdigit() else 1
+                screen = __import__("max_bot").экран_ветви(args[0], number, self, uid)
+                return screen[0] if screen else f"Тема не найдена.\n\n{КАРТА_ЗАГОЛОВОК}\n{КАРТА_ПОДПИСЬ}"
+            if action == "k" and args:
+                screen = __import__("max_bot").экран_статьи(args[0], self, uid)
+                return screen[0] if screen else f"Материал не найден.\n\n{КАРТА_ЗАГОЛОВОК}\n{КАРТА_ПОДПИСЬ}"
+            if action == "cfull":
+                return self.consent_text(uid)
+            return ""
+
+        return self._mutate(uid, "navigation", payload, mutate, "")
+
+    def handle_callback_event(self, user_id: str, action: str, args: list[str]) -> str:
         uid = str(user_id)
         action = str(action or "")
         args = [str(value) for value in args]
@@ -173,14 +160,10 @@ class DurableProductionPostgresSurvey(ProductionPostgresSurvey):
             if action in {"a", "s", "d"} and args:
                 if not spot or str(spot[0]) != args[0]:
                     return ""
-
             if action == "c":
-                if args[:1] == ["full"]:
-                    return self.consent_text(uid)
                 if self.stage(uid) != "consent":
                     return ""
                 return self.grant_consent(uid) if args[:1] == ["y"] else self.refuse_consent(uid)
-
             if action == "a" and len(args) == 2:
                 if not spot:
                     return ""
@@ -188,10 +171,8 @@ class DurableProductionPostgresSurvey(ProductionPostgresSurvey):
                 if index < 0 or index >= len(spot[1].get("options", [])):
                     return ""
                 return self.answer_by_numbers(uid, [index + 1])
-
             if action == "s" and args:
                 return self.handle(uid, "далее")
-
             if action == "d" and args:
                 step = int(args[0])
                 picked = self.picked(uid, step)
@@ -201,7 +182,6 @@ class DurableProductionPostgresSurvey(ProductionPostgresSurvey):
                         return ""
                     return self.handle(uid, "далее")
                 return self.answer_by_numbers(uid, [index + 1 for index in picked])
-
             if action == "b":
                 return self.handle(uid, "назад")
             if action == "n":
@@ -213,7 +193,6 @@ class DurableProductionPostgresSurvey(ProductionPostgresSurvey):
         return self._mutate(uid, "callback", payload, mutate, "")
 
     def start_event(self, user_id: str) -> str:
-        """Start/resume using the current event id, with durable reply intent."""
         uid = str(user_id)
         token = None
         if _TX_EVENT.get() is None:
@@ -239,39 +218,28 @@ class DurableProductionPostgresSurvey(ProductionPostgresSurvey):
             return RESUMED + "\n\n" + self.question_text(uid)
         return CONSENT_SHORT
 
-    def _finish_event(
-        self,
-        ctx,
-        user_id: str,
-        event_type: str,
-        payload: dict[str, Any] | None,
-        error: BaseException | None,
-    ) -> None:
+    def _finish_event(self, ctx, user_id: str, event_type: str,
+                      payload: dict[str, Any] | None,
+                      error: BaseException | None) -> None:
         if not ctx:
             return
-
         conn, token_conn, token_user, token_accepted = ctx
         try:
             if error is not None:
                 conn.rollback()
                 return
-
             self._save_user(conn, str(user_id))
             audit_payload = dict(payload or {})
             audit_payload.pop("fingerprint", None)
             self.audit(str(user_id), event_type, audit_payload)
-
             result = _OUTBOX_RESULT.get()
             event_id = _TX_EVENT.get()
             outbox = PostgresOutbox(db_url=self.db_url)
-
             if isinstance(result, str) and result and event_id:
                 _enqueue_text(outbox, conn, self, str(user_id), event_id, result, ordinal=0)
-
             if payload and payload.get("has_files") and event_id:
                 from max_bot import FILES_TAKEN
                 _enqueue_text(outbox, conn, self, str(user_id), event_id, FILES_TAKEN, ordinal=1)
-
             conn.commit()
         except BaseException:
             conn.rollback()
