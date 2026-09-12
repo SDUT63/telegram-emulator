@@ -4,7 +4,7 @@ on:
   push:
     branches: [ master, main, develop, max-bot-complete-2026 ]
   pull_request:
-    branches: [ master, main, develop, max-bot-complete-2026 ]
+    branches: [ master, main, develop, max-bot-complete-2026, claude/chat-bot-survey-publik-nq2w1s ]
 
 jobs:
   # MAX bot: Python syntax/import checks plus durable-storage and webhook tests.
