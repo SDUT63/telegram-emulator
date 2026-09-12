@@ -11,7 +11,6 @@ from __future__ import annotations
 import json
 import os
 import socket
-import time
 import uuid
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -61,7 +60,15 @@ class OutboxMessage:
 
 
 class PostgresOutbox:
-    """Insert, claim, acknowledge and retry outbound messages."""
+    """Insert, claim, acknowledge and retry outbound messages.
+
+    ``enqueue(..., conn=...)`` is intentionally transaction-aware: callers
+    processing an inbound event can put the outbound intent into the same
+    PostgreSQL transaction as state/audit/processed-event records. The row is
+    therefore either committed together with the state transition or rolled
+    back with it; it can never become a detached "reply" to a rolled-back
+    survey transition.
+    """
 
     def __init__(
         self,
@@ -89,10 +96,18 @@ class PostgresOutbox:
         chat_id: str | None = None,
         conn=None,
     ) -> int:
-        if not delivery_key.strip():
+        """Persist one outbound intent, idempotently.
+
+        When ``conn`` is supplied this method never commits or rolls back it;
+        transaction ownership remains with the event processor.
+        """
+        if not str(delivery_key).strip():
             raise ValueError("delivery_key must not be empty")
         if not str(user_id).strip():
             raise ValueError("user_id must not be empty")
+        if not isinstance(payload, dict):
+            raise TypeError("payload must be a dict")
+
         own = conn is None
         connection = conn or _connect(self.db_url)
         try:
@@ -103,19 +118,21 @@ class PostgresOutbox:
                 ON CONFLICT(delivery_key) DO NOTHING
                 RETURNING id
                 """,
-                (delivery_key, str(user_id), chat_id, Jsonb(payload)),
+                (str(delivery_key).strip(), str(user_id).strip(), chat_id, Jsonb(payload)),
             ).fetchone()
+            if row:
+                message_id = int(row["id"])
+            else:
+                existing = connection.execute(
+                    "SELECT id FROM outbox_messages WHERE delivery_key=%s",
+                    (str(delivery_key).strip(),),
+                ).fetchone()
+                if existing is None:
+                    raise RuntimeError("outbox insert disappeared unexpectedly")
+                message_id = int(existing["id"])
             if own:
                 connection.commit()
-            if row:
-                return int(row["id"])
-            existing = connection.execute(
-                "SELECT id FROM outbox_messages WHERE delivery_key=%s",
-                (delivery_key,),
-            ).fetchone()
-            if existing is None:
-                raise RuntimeError("outbox insert disappeared unexpectedly")
-            return int(existing["id"])
+            return message_id
         except Exception:
             if own:
                 connection.rollback()
@@ -125,10 +142,13 @@ class PostgresOutbox:
                 connection.close()
 
     def claim(self, *, limit: int = DEFAULT_BATCH_SIZE) -> list[OutboxMessage]:
+        """Atomically claim ready rows, allowing multiple workers safely."""
         if limit < 1:
             raise ValueError("limit must be >= 1")
         now = datetime.now(timezone.utc)
         with _connect(self.db_url) as conn:
+            # A dead worker may leave a row in `sending`. Once its lease has
+            # expired it is safe to return the row to the pending pool.
             conn.execute(
                 """
                 UPDATE outbox_messages
@@ -175,6 +195,7 @@ class PostgresOutbox:
                 raise RuntimeError(f"outbox message {message_id} is not owned by this worker")
 
     def mark_failed(self, message_id: int, error: str) -> None:
+        """Return a failed message for retry or quarantine it as dead."""
         safe_error = str(error)[:4000]
         with _connect(self.db_url) as conn:
             row = conn.execute(
@@ -183,28 +204,33 @@ class PostgresOutbox:
             ).fetchone()
             if row is None:
                 raise RuntimeError(f"outbox message {message_id} is not owned by this worker")
+
             attempts = int(row["attempts"])
             if attempts >= self.max_attempts:
-                status = "dead"
-                available_sql = "available_at"
-                params = (safe_error, message_id, self.worker_id)
                 conn.execute(
-                    f"""UPDATE outbox_messages SET status=%s,last_error=%s,locked_at=NULL,locked_by=NULL WHERE id=%s AND locked_by=%s""",
-                    (status, safe_error, message_id, self.worker_id),
+                    """
+                    UPDATE outbox_messages
+                       SET status='dead', last_error=%s,
+                           locked_at=NULL, locked_by=NULL
+                     WHERE id=%s AND status='sending' AND locked_by=%s
+                    """,
+                    (safe_error, message_id, self.worker_id),
                 )
             else:
                 delay = min(3600, 2 ** min(attempts, 10))
                 conn.execute(
                     """
                     UPDATE outbox_messages
-                       SET status='pending', available_at=CURRENT_TIMESTAMP + (%s * INTERVAL '1 second'),
+                       SET status='pending',
+                           available_at=CURRENT_TIMESTAMP + (%s * INTERVAL '1 second'),
                            last_error=%s, locked_at=NULL, locked_by=NULL
-                     WHERE id=%s AND locked_by=%s
+                     WHERE id=%s AND status='sending' AND locked_by=%s
                     """,
                     (delay, safe_error, message_id, self.worker_id),
                 )
 
     def recover_stale(self) -> int:
+        """Release expired leases without claiming the rows."""
         with _connect(self.db_url) as conn:
             result = conn.execute(
                 """
