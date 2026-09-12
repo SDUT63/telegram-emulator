@@ -11,12 +11,12 @@ import asyncio
 
 import max_bot
 from postgres_guard import require_migrations
-from storage_postgres import TransactionalPersistentSeen, TransactionalPostgresSurvey
+from production_storage import ProductionPostgresSurvey, TransactionalPersistentSeen
 
 
 def main() -> None:
     require_migrations()
-    max_bot.Survey = TransactionalPostgresSurvey
+    max_bot.Survey = ProductionPostgresSurvey
     max_bot.Seen = TransactionalPersistentSeen
     asyncio.run(max_bot.main())
 
