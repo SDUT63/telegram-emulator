@@ -1,7 +1,7 @@
-# SDUT MAX-бот СДУТ — мастер-аудит и план развития
+# SDUT MAX-бот — мастер-аудит и план развития
 
-Дата: 2026-09-12
-Рабочая ветка: `max-bot-complete-2026`
+Дата: 2026-09-12  
+Рабочая ветка: `max-bot-complete-2026`  
 Контрольная ветка: `claude/chat-bot-survey-publik-nq2w1s`
 
 ## 1. Граница проекта
@@ -10,46 +10,53 @@
 
 Контрольная ветка не изменяется. Все изменения MAX-бота выполняются только в `max-bot-complete-2026`.
 
-## 2. Что уже сделано
+## 2. Реализовано на текущем техническом этапе
 
 - MAX transport через long polling для ноутбука.
 - Отдельный webhook entrypoint для серверного режима.
-- Существующая анкета `chatbot_survey.py` не переписана.
+- Существующая анкета `chatbot_survey.py` сохранена как основной сценарный движок.
 - `max_bot.py` сохранён без изменений.
 - SQLite сохраняет состояние анкеты между перезапусками для локального пилота.
 - SQLite хранит идемпотентность событий между перезапусками.
-- Для duplicate suppression используется lease: сбой между claim события и сохранением состояния не приводит к его бессрочной потере.
-- PostgreSQL-адаптер добавлен для серверного durable storage.
-- Production webhook launcher автоматически выбирает PostgreSQL при заданном `SDUT_DATABASE_URL`.
-- Есть audit table как технический фундамент.
-- `launcher.py` создаёт `.venv`, устанавливает `requirements.txt`, запрашивает токен и запускает durable entrypoint.
-- Секреты и локальные базы исключены из Git.
-- Python-тесты проверяют SQLite persistence, duplicate suppression, crash recovery lease, PostgreSQL smoke persistence/lease и Webhook configuration.
-- CI запускает PostgreSQL service для MAX storage tests.
-- Webhook configuration разделяет публичный HTTPS endpoint и внутренний listener.
-- Регистрация Webhook не требует предварительного удаления старой подписки.
+- PostgreSQL durable storage.
+- PostgreSQL production launchers используют `TransactionalPostgresSurvey` + `TransactionalPersistentSeen`.
+- Для каждого события production PostgreSQL выполняется одна транзакция: `user advisory lock → state row lock → processed_events claim → Survey mutation → state save → audit → COMMIT`.
+- Повторная доставка после успешного commit не выполняет мутацию повторно.
+- Падение до commit откатывает claim/state/audit; событие может быть обработано повторно.
+- Конкурентные события одного пользователя сериализуются PostgreSQL transaction-level advisory lock.
+- Аудит не содержит текст сообщения и медицинские ответы: в техническом audit payload пишется тип события и служебные параметры.
+- Добавлена миграция `003_processed_events.sql`.
+- Production startup может fail-closed через `SDUT_REQUIRE_MIGRATIONS=1` и проверку `postgres_guard.py`.
+- SQLite остаётся отдельным ноутбучным пилотом и не выдаётся за multi-instance production storage.
+- Webhook валидирует HTTPS/443/public path/secret до регистрации.
+- `/health` и `/ready` проверяют доступность storage.
+- Документация явно отделяет laptop pilot от server production.
+- Контрольная ветка не изменяется.
 
-## 3. Что всё ещё нельзя выдавать за production readiness
+## 3. Важная граница семантики exactly-once
 
-PostgreSQL уже реализован, но production ещё не считается полностью принятым: в текущей архитектуре обработчик события, изменение состояния анкеты и audit не объединены одной транзакцией. Для этого требуется изменение границы обработки события в диспетчере или очередь/worker.
+Для PostgreSQL теперь обеспечивается exactly-once **транзакция изменения состояния БД** по `event_id`: claim, состояние и audit коммитятся вместе.
 
-До полноценного production необходимы:
+Это не означает exactly-once для внешнего побочного эффекта MAX. Например, если ответ MAX уже ушёл в сеть, а процесс погиб до завершения следующего шага, повторная доставка может привести к повторной отправке ответа. Для строгой идемпотентности внешних отправок нужен отдельный transactional outbox с устойчивым message key и подтверждением доставки.
 
-1. Миграции PostgreSQL вместо `CREATE TABLE IF NOT EXISTS` при старте.
-2. Атомарная транзакция `event claim + state + audit` в одном хранилище.
-3. RBAC и разделение ролей операторов.
-4. Формальная политика хранения/удаления/резервного копирования ПДн.
-5. Шифрование и управление секретами.
-6. Полноценный audit trail без записи лишних медицинских данных.
-7. E2E-тесты реальных MAX-событий, duplicate delivery и stale callbacks.
-8. Disaster recovery и проверка восстановления из backup.
-9. Юридическая финализация текста согласия и политики обработки ПДн.
-10. Нагрузочное тестирование и проверка многопроцессной схемы.
-11. Очередь/worker для тяжёлой обработки Webhook, чтобы HTTP endpoint стабильно укладывался в лимит MAX.
-12. Реальная проверка reverse proxy, доверенного TLS-сертификата и доставки через MAX на :443.
-13. Отдельный production monitoring/readiness слой.
+## 4. Что всё ещё нельзя выдавать за production readiness
 
-## 4. Критические сценарии приёмки
+Следующие контуры ещё требуют реальной инфраструктурной или организационной проверки:
+
+1. Transactional outbox для исходящих MAX-сообщений, если требуется exactly-once семантика внешней отправки.
+2. RBAC для CRM: роли оператор/старший оператор/администратор и ограничения административных действий.
+3. Формальная политика хранения/удаления/резервного копирования ПДн и её реализация в инфраструктуре.
+4. Шифрование резервных копий и управление секретами вне файловой системы.
+5. Юридическая финализация текста согласия, политики ПДн и сроков хранения юристом организации.
+6. E2E через реального тестового MAX-бота: доставка, duplicate delivery, stale callback, webhook secret.
+7. Нагрузочное тестирование webhook и outbox.
+8. Disaster recovery: backup → restore → контроль целостности → документированный RTO/RPO.
+9. Реальный reverse proxy/TLS/443 с доверенным сертификатом и проверкой из внешней сети.
+10. Наблюдаемость: structured logs, метрики latency/error rate, alerting, storage saturation.
+11. Проверка GitHub Actions на актуальном commit после изменений.
+12. Регламент безопасного обновления зависимостей и регулярного security scan.
+
+## 5. Критические сценарии приёмки
 
 1. Новый пользователь.
 2. Согласие: да / отказ / полный текст.
@@ -62,36 +69,41 @@ PostgreSQL уже реализован, но production ещё не считае
 9. Устаревшая кнопка.
 10. Повторная доставка одного события.
 11. Повторная доставка после перезапуска процесса.
-12. Вложение.
-13. Свободный вопрос по базе знаний.
-14. Завершение анкеты.
-15. Удаление данных.
-16. Работа очереди сообщений оператора.
-17. Webhook path и secret.
-18. MAX API outage.
-19. Реальный запуск через reverse proxy на HTTPS :443.
-20. Восстановление из резервной копии.
+12. Два одновременных события одного пользователя.
+13. Вложение.
+14. Свободный вопрос по базе знаний.
+15. Завершение анкеты.
+16. Удаление данных.
+17. Работа очереди сообщений оператора.
+18. Webhook path и secret.
+19. PostgreSQL schema migration gate.
+20. MAX API outage.
+21. Реальный запуск через reverse proxy на HTTPS :443.
+22. Восстановление из резервной копии.
 
-## 5. Правило изменений
+## 6. Правило изменений
 
-Не переписывать рабочий `max_bot.py` ради хранения. Сценарий и транспорт остаются в исходной реализации; долговременное хранение подключается адаптером. Любое изменение анкеты должно сопровождаться тестом соответствующего сценария.
+`max_bot.py` остаётся неизменным. Транзакционная граница добавлена через storage adapter и ContextVar, поэтому сценарный код не переписывался ради хранения.
 
-## 6. Definition of Done для текущего технического этапа
+Любое изменение анкеты сопровождается тестом соответствующего сценария. Любое изменение persistence сопровождается тестом restart/duplicate/rollback/concurrency.
 
-- `python launcher.py` на чистом ноутбуке создаёт окружение и устанавливает зависимости.
-- Токен не хранится в Git.
-- После остановки/перезапуска состояние пользователя не теряется.
-- Duplicate event не меняет состояние дважды, а незавершённый claim может быть повторно обработан после lease timeout.
-- PostgreSQL storage и production launcher добавлены.
-- `pytest` включён в CI вместе с PostgreSQL service.
+## 7. Definition of Done текущего технического этапа
+
+- Laptop launcher использует SQLite и не требует PostgreSQL.
+- PostgreSQL launcher использует transactional storage.
+- Production webhook с PostgreSQL fail-closed на отсутствующей миграции при `SDUT_REQUIRE_MIGRATIONS=1`.
+- Duplicate event после commit не меняет state повторно.
+- Crash/exception до commit не оставляет `processed_events` claim.
+- Состояние пользователя сериализуется на уровне PostgreSQL transaction lock.
+- Audit пишется в той же транзакции, что state и event claim.
 - Контрольная ветка остаётся неизменной.
-- README/инструкция не обещают production-функции, которые ещё не проверены.
-- Webhook configuration rejects non-HTTPS/non-443 public endpoints before subscription.
+- Тесты добавлены в репозиторий и включены в CI.
+- README/инструкция не обещают то, что не проверено фактическим запуском.
 
-## 7. Что считается подтверждённым, а что нет
+## 8. Что подтверждено кодом, а что фактически выполнено
 
-**Подтверждено кодом:** структура SQLite/PostgreSQL storage, lease-based deduplication, webhook configuration validation, отдельные launchers, CI-конфигурация.
+**Подтверждено просмотром кода:** transactional PostgreSQL path, migration gate, webhook validation, launchers, tests, documentation.
 
-**Не подтверждено исполнением в этой сессии:** локальный `pytest`, GitHub Actions run на последнем commit, реальный MAX webhook через HTTPS :443, восстановление PostgreSQL backup и нагрузочный тест.
+**Фактически не подтверждено в этой сессии:** локальный runtime/pytest, реальный PostgreSQL service run, GitHub Actions run на новом head, реальный MAX webhook, reverse proxy/TLS :443, backup/restore и load test.
 
-Это разделение обязательное: наличие теста в репозитории не является доказательством того, что тест реально прошёл.
+Это разделение обязательное. Наличие теста в репозитории не является доказательством его успешного исполнения.
