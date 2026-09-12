@@ -148,15 +148,22 @@ class PostgresOutbox:
         now = datetime.now(timezone.utc)
         with _connect(self.db_url) as conn:
             # A dead worker may leave a row in `sending`. Once its lease has
-            # expired it is safe to return the row to the pending pool.
+            # expired, it counts as another delivery attempt. Do not allow
+            # repeated worker crashes to bypass max_attempts forever.
             conn.execute(
                 """
                 UPDATE outbox_messages
-                   SET status='pending', locked_at=NULL, locked_by=NULL
+                   SET status=CASE WHEN attempts >= %s THEN 'dead' ELSE 'pending' END,
+                       locked_at=NULL,
+                       locked_by=NULL,
+                       last_error=CASE
+                           WHEN attempts >= %s THEN COALESCE(last_error, 'worker lease expired')
+                           ELSE last_error
+                       END
                  WHERE status='sending'
                    AND locked_at < CURRENT_TIMESTAMP - (%s * INTERVAL '1 second')
                 """,
-                (self.lease_seconds,),
+                (self.max_attempts, self.max_attempts, self.lease_seconds),
             )
             rows = conn.execute(
                 """
@@ -230,16 +237,22 @@ class PostgresOutbox:
                 )
 
     def recover_stale(self) -> int:
-        """Release expired leases without claiming the rows."""
+        """Release expired leases, enforcing the retry budget."""
         with _connect(self.db_url) as conn:
             result = conn.execute(
                 """
                 UPDATE outbox_messages
-                   SET status='pending', locked_at=NULL, locked_by=NULL
+                   SET status=CASE WHEN attempts >= %s THEN 'dead' ELSE 'pending' END,
+                       locked_at=NULL,
+                       locked_by=NULL,
+                       last_error=CASE
+                           WHEN attempts >= %s THEN COALESCE(last_error, 'worker lease expired')
+                           ELSE last_error
+                       END
                  WHERE status='sending'
                    AND locked_at < CURRENT_TIMESTAMP - (%s * INTERVAL '1 second')
                 """,
-                (self.lease_seconds,),
+                (self.max_attempts, self.max_attempts, self.lease_seconds),
             )
             return result.rowcount
 
