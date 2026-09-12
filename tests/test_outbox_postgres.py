@@ -138,3 +138,33 @@ def test_outbox_claim_uses_worker_ownership():
         other.mark_sent(message_id)
 
     queue.mark_sent(message_id)
+
+
+def test_stale_worker_lease_counts_toward_retry_budget():
+    queue = PostgresOutbox(lease_seconds=1, max_attempts=1)
+    key = _key("test-outbox-stale-dead")
+    message_id = queue.enqueue(
+        delivery_key=key,
+        user_id="test-user",
+        payload={"text": "crash"},
+    )
+    assert any(item.id == message_id for item in queue.claim(limit=10))
+
+    with queue._connect(queue.db_url) as conn:
+        conn.execute(
+            "UPDATE outbox_messages SET locked_at=CURRENT_TIMESTAMP - INTERVAL '10 seconds' WHERE id=%s",
+            (message_id,),
+        )
+
+    recovered = queue.recover_stale()
+    assert recovered >= 1
+
+    with queue._connect(queue.db_url) as conn:
+        row = conn.execute(
+            "SELECT status,attempts,last_error,locked_by FROM outbox_messages WHERE id=%s",
+            (message_id,),
+        ).fetchone()
+    assert row["status"] == "dead"
+    assert row["attempts"] == 1
+    assert row["locked_by"] is None
+    assert row["last_error"] == "worker lease expired"
