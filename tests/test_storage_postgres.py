@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import uuid
 
 import pytest
 
@@ -16,8 +17,9 @@ def postgres_dsn():
 
 
 def test_postgres_survey_round_trip(postgres_dsn):
+    user_id = f"pytest-user-{uuid.uuid4()}"
     survey = PostgresSurvey(db_url=postgres_dsn, list_options=False)
-    survey.state["pytest-user"] = {
+    survey.state[user_id] = {
         "step": 2,
         "answers": {"name": "pytest"},
         "finished": None,
@@ -25,12 +27,16 @@ def test_postgres_survey_round_trip(postgres_dsn):
     survey.save()
 
     restored = PostgresSurvey(db_url=postgres_dsn, list_options=False)
-    assert restored.state["pytest-user"]["step"] == 2
-    assert restored.state["pytest-user"]["answers"]["name"] == "pytest"
+    assert restored.state[user_id]["step"] == 2
+    assert restored.state[user_id]["answers"]["name"] == "pytest"
+
+    del restored.state[user_id]
+    restored.save()
+    assert user_id not in PostgresSurvey(db_url=postgres_dsn, list_options=False).state
 
 
 def test_postgres_event_lease(postgres_dsn):
     seen = PersistentSeen(db_url=postgres_dsn, lease_seconds=60)
-    key = "pytest-event-lease"
+    key = f"pytest-event-lease-{uuid.uuid4()}"
     assert seen.fresh(key) is True
     assert seen.fresh(key) is False
