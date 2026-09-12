@@ -5,6 +5,7 @@ import threading
 import uuid
 
 import pytest
+from psycopg.types.json import Jsonb
 
 from outbox_postgres import PostgresOutbox, delivery_key
 
@@ -27,7 +28,7 @@ def test_two_workers_claim_distinct_rows(postgres_dsn):
         for key in keys:
             conn.execute(
                 "INSERT INTO outbox_messages(delivery_key,user_id,payload) VALUES(%s,%s,%s)",
-                (key, user_id, '{"kind":"max_text","text":"worker test"}'),
+                (key, user_id, Jsonb({"kind": "max_text", "text": "worker test"})),
             )
 
     barrier = threading.Barrier(2)
