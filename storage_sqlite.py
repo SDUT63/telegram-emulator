@@ -13,13 +13,15 @@ from chatbot_survey import Survey
 
 
 class SQLiteSurvey(Survey):
-    """Survey with transactional SQLite persistence."""
+    """Survey with transactional SQLite persistence for the single-process pilot."""
 
     def __init__(self, db_path: str | None = None, *, list_options: bool = False) -> None:
         self.db_path = db_path or os.getenv("SDUT_DB_PATH", "data/sdut_bot.sqlite3")
         Path(self.db_path).parent.mkdir(parents=True, exist_ok=True)
         self._db_lock = threading.RLock()
         self._init_db()
+        # Survey.__init__ calls self.load(); dynamic dispatch therefore restores
+        # the SQLite state before the transport starts receiving events.
         super().__init__(storage_path=":memory:", list_options=list_options)
 
     def _connect(self) -> sqlite3.Connection:
@@ -49,6 +51,7 @@ class SQLiteSurvey(Survey):
                 self.state[str(user_id)] = value
 
     def save(self) -> None:
+        """Atomically reconcile the in-memory survey with SQLite."""
         with self._db_lock, self._connect() as conn:
             conn.execute("BEGIN IMMEDIATE")
             try:
@@ -57,11 +60,13 @@ class SQLiteSurvey(Survey):
                 for user_id in existing - current:
                     conn.execute("DELETE FROM survey_state WHERE user_id = ?", (user_id,))
                 for user_id, state in self.state.items():
-                    conn.execute("""INSERT INTO survey_state(user_id, state_json, updated_at)
+                    conn.execute(
+                        """INSERT INTO survey_state(user_id, state_json, updated_at)
                         VALUES(?, ?, CURRENT_TIMESTAMP)
                         ON CONFLICT(user_id) DO UPDATE SET state_json=excluded.state_json,
                         updated_at=CURRENT_TIMESTAMP""",
-                        (str(user_id), json.dumps(state, ensure_ascii=False, separators=(",", ":"))))
+                        (str(user_id), json.dumps(state, ensure_ascii=False, separators=(",", ":"))),
+                    )
                 conn.execute("COMMIT")
             except Exception:
                 conn.execute("ROLLBACK")
@@ -80,8 +85,10 @@ class SQLiteSurvey(Survey):
 
     def audit(self, user_id: str | None, event_type: str, payload: dict[str, Any]) -> None:
         with self._db_lock, self._connect() as conn:
-            conn.execute("INSERT INTO audit_events(user_id, event_type, event_json) VALUES(?,?,?)",
-                         (user_id, event_type, json.dumps(payload, ensure_ascii=False, separators=(",", ":"))))
+            conn.execute(
+                "INSERT INTO audit_events(user_id, event_type, event_json) VALUES(?,?,?)",
+                (user_id, event_type, json.dumps(payload, ensure_ascii=False, separators=(",", ":"))),
+            )
 
     def health(self) -> bool:
         with self._db_lock, self._connect() as conn:
@@ -92,11 +99,13 @@ class PersistentSeen:
     """Drop-in replacement for max_bot.Seen, surviving process restarts."""
 
     def __init__(self, limit: int = 5000, db_path: str | None = None) -> None:
+        if limit < 1:
+            raise ValueError("limit must be >= 1")
         self.limit = limit
         self.db_path = db_path or os.getenv("SDUT_DB_PATH", "data/sdut_bot.sqlite3")
         Path(self.db_path).parent.mkdir(parents=True, exist_ok=True)
         self._lock = threading.RLock()
-        with sqlite3.connect(self.db_path) as conn:
+        with sqlite3.connect(self.db_path, timeout=30) as conn:
             conn.execute("CREATE TABLE IF NOT EXISTS processed_events (event_id TEXT PRIMARY KEY, processed_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)")
 
     def fresh(self, key: str | None) -> bool:
@@ -105,9 +114,16 @@ class PersistentSeen:
         with self._lock, sqlite3.connect(self.db_path, timeout=30) as conn:
             try:
                 conn.execute("INSERT INTO processed_events(event_id) VALUES(?)", (key,))
-                conn.commit()
             except sqlite3.IntegrityError:
                 return False
-            conn.execute("DELETE FROM processed_events WHERE event_id IN (SELECT event_id FROM processed_events ORDER BY processed_at ASC LIMIT MAX((SELECT COUNT(*) FROM processed_events) - ?, 0))", (self.limit,))
-            conn.commit()
+            # Keep the newest N rows. rowid breaks timestamp ties deterministically.
+            conn.execute(
+                """DELETE FROM processed_events
+                   WHERE event_id NOT IN (
+                       SELECT event_id FROM processed_events
+                       ORDER BY processed_at DESC, rowid DESC
+                       LIMIT ?
+                   )""",
+                (self.limit,),
+            )
         return True
