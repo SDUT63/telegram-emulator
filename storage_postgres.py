@@ -1,31 +1,9 @@
 #!/usr/bin/env python3
 """Durable PostgreSQL storage for the SDUT MAX bot.
 
-Two storage modes are intentionally kept:
-
-* :class:`PostgresSurvey` preserves the original Survey interface and is used
-  by generic callers/tests.
-* :class:`TransactionalPostgresSurvey` adds request-level atomicity for the
-  MAX dispatcher without requiring the legacy dispatcher to be rewritten.
-
-The transactional path is the production path. One incoming event is handled
-under a PostgreSQL transaction which:
-
-1. serializes the affected user with ``pg_advisory_xact_lock``;
-2. loads the current user state while holding the row lock;
-3. claims the event in ``processed_events``;
-4. runs the existing Survey mutation code;
-5. persists the changed user state;
-6. writes an audit record;
-7. commits all of the above together.
-
-If the process dies before commit, both the event claim and state mutation are
-rolled back and MAX can safely redeliver the event. If commit succeeds, a
-redelivery sees ``processed_events`` and is ignored.
-
-This gives exactly-once *database state transition* semantics. External side
-effects such as an already-sent MAX response are deliberately not described as
-exactly-once; those require an outbox/idempotency key at the transport layer.
+The production path provides exactly-once database state transitions for a
+known incoming event id. External MAX delivery still requires a durable
+outbound outbox/idempotency layer.
 """
 from __future__ import annotations
 
@@ -36,6 +14,7 @@ import json
 import os
 import threading
 import time
+import uuid
 from contextlib import contextmanager
 from typing import Any, Callable, Iterator, TypeVar
 
@@ -72,8 +51,6 @@ def _event_hash(event_type: str, payload: dict[str, Any] | None) -> str:
 
 
 class PostgresSurvey(Survey):
-    """Survey state persisted in PostgreSQL with safe per-user reconciliation."""
-
     def __init__(self, db_url: str | None = None, *, list_options: bool = False) -> None:
         self.db_url = db_url or database_url()
         self._db_lock = threading.RLock()
@@ -86,10 +63,10 @@ class PostgresSurvey(Survey):
 
     def _init_db(self) -> None:
         with self._connect() as conn:
-            conn.execute("""CREATE TABLE IF NOT EXISTS survey_state (user_id TEXT PRIMARY KEY, state_json JSONB NOT NULL, updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP)""")
-            conn.execute("""CREATE TABLE IF NOT EXISTS event_leases (event_id TEXT PRIMARY KEY, claimed_at DOUBLE PRECISION NOT NULL, last_seen_at DOUBLE PRECISION NOT NULL)""")
-            conn.execute("""CREATE TABLE IF NOT EXISTS processed_events (event_id TEXT PRIMARY KEY, user_id TEXT, event_type TEXT NOT NULL, event_hash TEXT NOT NULL, processed_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP)""")
-            conn.execute("""CREATE TABLE IF NOT EXISTS audit_events (id BIGSERIAL PRIMARY KEY, user_id TEXT, event_type TEXT NOT NULL, event_json JSONB NOT NULL, created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP)""")
+            conn.execute("CREATE TABLE IF NOT EXISTS survey_state (user_id TEXT PRIMARY KEY, state_json JSONB NOT NULL, updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP)")
+            conn.execute("CREATE TABLE IF NOT EXISTS event_leases (event_id TEXT PRIMARY KEY, claimed_at DOUBLE PRECISION NOT NULL, last_seen_at DOUBLE PRECISION NOT NULL)")
+            conn.execute("CREATE TABLE IF NOT EXISTS processed_events (event_id TEXT PRIMARY KEY, user_id TEXT, event_type TEXT NOT NULL, event_hash TEXT NOT NULL, processed_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP)")
+            conn.execute("CREATE TABLE IF NOT EXISTS audit_events (id BIGSERIAL PRIMARY KEY, user_id TEXT, event_type TEXT NOT NULL, event_json JSONB NOT NULL, created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP)")
             conn.execute("CREATE INDEX IF NOT EXISTS idx_audit_user_created ON audit_events(user_id, created_at)")
             conn.execute("CREATE INDEX IF NOT EXISTS idx_event_leases_seen ON event_leases(last_seen_at)")
             conn.execute("CREATE INDEX IF NOT EXISTS idx_processed_events_user_time ON processed_events(user_id, processed_at)")
@@ -97,12 +74,8 @@ class PostgresSurvey(Survey):
     def load(self) -> None:
         with self._db_lock, self._connect() as conn:
             rows = conn.execute("SELECT user_id, state_json FROM survey_state").fetchall()
-        state: dict[str, dict[str, Any]] = {}
-        for user_id, value in rows:
-            if isinstance(value, dict):
-                state[str(user_id)] = value
-        self.state = state
-        self._loaded_snapshot = copy.deepcopy(state)
+        self.state = {str(uid): value for uid, value in rows if isinstance(value, dict)}
+        self._loaded_snapshot = copy.deepcopy(self.state)
 
     def save(self) -> None:
         active = _TX_CONNECTION.get()
@@ -111,16 +84,10 @@ class PostgresSurvey(Survey):
             self._save_user(active, active_user)
             return
         with self._db_lock, self._connect() as conn:
-            current_ids = {str(user_id) for user_id in self.state}
-            loaded_ids = set(self._loaded_snapshot)
-            changed_ids = set()
-            for user_id in current_ids | loaded_ids:
-                before = self._loaded_snapshot.get(user_id)
-                after = self.state.get(user_id)
-                if _canonical(before) != _canonical(after):
-                    changed_ids.add(user_id)
-            for user_id in sorted(changed_ids):
-                self._save_user(conn, user_id)
+            ids = set(self.state) | set(self._loaded_snapshot)
+            for user_id in sorted(ids):
+                if _canonical(self._loaded_snapshot.get(user_id)) != _canonical(self.state.get(user_id)):
+                    self._save_user(conn, user_id)
             self._loaded_snapshot = copy.deepcopy(self.state)
 
     def _save_user(self, conn, user_id: str) -> None:
@@ -128,11 +95,10 @@ class PostgresSurvey(Survey):
         before = self._loaded_snapshot.get(user_id)
         row = conn.execute("SELECT state_json FROM survey_state WHERE user_id=%s FOR UPDATE", (user_id,)).fetchone()
         if after is None:
-            if row is None:
-                return
-            db_state = row[0] if isinstance(row[0], dict) else {}
-            if before is None or _canonical(db_state) == _canonical(before):
-                conn.execute("DELETE FROM survey_state WHERE user_id=%s", (user_id,))
+            if row is not None:
+                db_state = row[0] if isinstance(row[0], dict) else {}
+                if before is None or _canonical(db_state) == _canonical(before):
+                    conn.execute("DELETE FROM survey_state WHERE user_id=%s", (user_id,))
             return
         if row is None:
             merged = copy.deepcopy(after)
@@ -147,7 +113,7 @@ class PostgresSurvey(Survey):
                 for key in before:
                     if key not in after and key in merged and _canonical(merged[key]) == _canonical(before[key]):
                         merged.pop(key, None)
-        conn.execute("""INSERT INTO survey_state(user_id,state_json,updated_at) VALUES(%s,%s,CURRENT_TIMESTAMP) ON CONFLICT(user_id) DO UPDATE SET state_json=EXCLUDED.state_json, updated_at=EXCLUDED.updated_at""", (user_id, Jsonb(merged)))
+        conn.execute("INSERT INTO survey_state(user_id,state_json,updated_at) VALUES(%s,%s,CURRENT_TIMESTAMP) ON CONFLICT(user_id) DO UPDATE SET state_json=EXCLUDED.state_json, updated_at=EXCLUDED.updated_at", (user_id, Jsonb(merged)))
         self.state[user_id] = merged
         self._loaded_snapshot[user_id] = copy.deepcopy(merged)
 
@@ -168,12 +134,10 @@ class PostgresSurvey(Survey):
 
 
 class TransactionalPostgresSurvey(PostgresSurvey):
-    """PostgresSurvey with atomic event/state/audit handling for MAX."""
+    """Atomic event/state/audit handling for MAX."""
 
     def _begin_event(self, user_id: str, event_type: str, payload: dict[str, Any] | None = None):
-        event_id = _TX_EVENT.get()
-        if not event_id:
-            return None, False
+        event_id = _TX_EVENT.get() or f"synthetic:{uuid.uuid4().hex}"
         conn = self._connect()
         try:
             conn.execute("SELECT pg_advisory_xact_lock(hashtextextended(%s, 0))", (str(user_id),))
@@ -182,44 +146,63 @@ class TransactionalPostgresSurvey(PostgresSurvey):
             self.state[str(user_id)] = copy.deepcopy(current)
             self._loaded_snapshot[str(user_id)] = copy.deepcopy(current)
             event_hash = _event_hash(event_type, payload)
-            inserted = conn.execute("""INSERT INTO processed_events(event_id,user_id,event_type,event_hash) VALUES(%s,%s,%s,%s) ON CONFLICT(event_id) DO NOTHING RETURNING event_id""", (event_id, str(user_id), event_type, event_hash)).fetchone()
-            if inserted is None:
-                conn.rollback(); conn.close(); _TX_ACCEPTED.set(False); return None, False
+            existing = conn.execute("SELECT user_id,event_type,event_hash FROM processed_events WHERE event_id=%s FOR UPDATE", (event_id,)).fetchone()
+            if existing is not None:
+                old_user, old_type, old_hash = existing
+                if str(old_user or "") != str(user_id) or str(old_type) != event_type or str(old_hash) != event_hash:
+                    raise RuntimeError(f"event_id collision: {event_id!r} уже связан с другим событием")
+                conn.rollback()
+                conn.close()
+                _TX_ACCEPTED.set(False)
+                return None, False
+            conn.execute("INSERT INTO processed_events(event_id,user_id,event_type,event_hash) VALUES(%s,%s,%s,%s)", (event_id, str(user_id), event_type, event_hash))
             token_conn = _TX_CONNECTION.set(conn)
             token_user = _TX_USER.set(str(user_id))
             token_accepted = _TX_ACCEPTED.set(True)
-            return (conn, token_conn, token_user, token_accepted, event_type, payload or {}), True
+            return (conn, token_conn, token_user, token_accepted), True
         except Exception:
-            conn.rollback(); conn.close(); raise
+            conn.rollback()
+            conn.close()
+            raise
 
     def _finish_event(self, ctx, user_id: str, event_type: str, payload: dict[str, Any] | None, error: BaseException | None) -> None:
-        if not ctx: return
-        conn, token_conn, token_user, token_accepted, _, _ = ctx
+        if not ctx:
+            return
+        conn, token_conn, token_user, token_accepted = ctx
         try:
             if error is None:
-                self._save_user(conn, str(user_id)); self.audit(str(user_id), event_type, payload or {}); conn.commit()
+                self._save_user(conn, str(user_id))
+                self.audit(str(user_id), event_type, payload or {})
+                conn.commit()
             else:
                 conn.rollback()
         finally:
-            _TX_CONNECTION.reset(token_conn); _TX_USER.reset(token_user); _TX_ACCEPTED.reset(token_accepted); conn.close()
+            _TX_CONNECTION.reset(token_conn)
+            _TX_USER.reset(token_user)
+            _TX_ACCEPTED.reset(token_accepted)
+            conn.close()
 
     @contextmanager
     def _atomic(self, user_id: str, event_type: str, payload: dict[str, Any] | None = None) -> Iterator[bool]:
         ctx, accepted = self._begin_event(user_id, event_type, payload)
         if not accepted:
-            yield False; return
+            yield False
+            return
         error: BaseException | None = None
         try:
             yield True
         except BaseException as exc:
-            error = exc; raise
+            error = exc
+            raise
         finally:
             self._finish_event(ctx, user_id, event_type, payload, error)
 
     def _mutate(self, user_id: str, event_type: str, payload: dict[str, Any], fn: Callable[[], T], duplicate: T) -> T:
-        if _TX_CONNECTION.get() is not None and _TX_USER.get() == str(user_id): return fn()
+        if _TX_CONNECTION.get() is not None and _TX_USER.get() == str(user_id):
+            return fn()
         with self._atomic(str(user_id), event_type, payload) as accepted:
-            if not accepted: return duplicate
+            if not accepted:
+                return duplicate
             return fn()
 
     def handle(self, user_id: str, text: str) -> str:
@@ -241,9 +224,9 @@ class TransactionalPostgresSurvey(PostgresSurvey):
         return self._mutate(user_id, "callback", {"action": "restart"}, lambda: Survey.restart_after_consent(self, user_id), "")
 
     def start(self, user_id: str) -> str:
-        if _TX_CONNECTION.get() is not None: return Survey.start(self, user_id)
-        event_id = f"start:{user_id}:{time.time_ns()}"
-        token = _TX_EVENT.set(event_id)
+        if _TX_CONNECTION.get() is not None:
+            return Survey.start(self, user_id)
+        token = _TX_EVENT.set(f"start:{user_id}:{time.time_ns()}")
         try:
             return self._mutate(user_id, "bot_started", {"kind": "bot_started"}, lambda: Survey.start(self, user_id), "")
         finally:
@@ -251,7 +234,8 @@ class TransactionalPostgresSurvey(PostgresSurvey):
 
     def note_message(self, user_id: str, text: str, files: list | None = None) -> None:
         if _TX_CONNECTION.get() is not None:
-            Survey.note_message(self, user_id, text, files); return
+            Survey.note_message(self, user_id, text, files)
+            return
         event_id = _TX_EVENT.get()
         if event_id:
             token = _TX_EVENT.set(f"{event_id}:message-note")
@@ -260,39 +244,67 @@ class TransactionalPostgresSurvey(PostgresSurvey):
             finally:
                 _TX_EVENT.reset(token)
             return
-        Survey.note_message(self, user_id, text, files)
+        self._mutate(user_id, "message_attachment", {"kind": "message_attachment", "has_files": bool(files)}, lambda: Survey.note_message(self, user_id, text, files), None)
+
+    def understood(self, user_id: str) -> None:
+        if _TX_CONNECTION.get() is not None:
+            Survey.understood(self, user_id)
+            return
+        event_id = _TX_EVENT.get()
+        if event_id:
+            token = _TX_EVENT.set(f"{event_id}:understood")
+            try:
+                self._mutate(user_id, "navigation", {"action": "understood"}, lambda: Survey.understood(self, user_id), None)
+            finally:
+                _TX_EVENT.reset(token)
+            return
+        self._mutate(user_id, "navigation", {"action": "understood"}, lambda: Survey.understood(self, user_id), None)
 
 
 class TransactionalPersistentSeen:
-    """Dispatcher-compatible Seen that delegates the atomic claim to Survey."""
+    """Dispatcher adapter; durable event claim happens in the same transaction."""
     def fresh(self, key: str | None) -> bool:
-        _TX_EVENT.set((key or "").strip() or None)
+        # MAX should normally supply an id. When it does not, use a unique
+        # synthetic id so the state mutation is still transactional instead of
+        # silently changing only the in-memory object.
+        _TX_EVENT.set((key or "").strip() or f"synthetic:{uuid.uuid4().hex}")
         return True
 
 
 class PersistentSeen:
     """Legacy persistent event leases backed by PostgreSQL."""
     def __init__(self, limit: int = DEFAULT_LIMIT, db_url: str | None = None, *, lease_seconds: float = DEFAULT_LEASE_SECONDS) -> None:
-        if limit < 1: raise ValueError("limit must be >= 1")
-        if lease_seconds <= 0: raise ValueError("lease_seconds must be > 0")
-        self.limit = limit; self.lease_seconds = float(lease_seconds); self.db_url = db_url or database_url(); self._lock = threading.RLock()
+        if limit < 1:
+            raise ValueError("limit must be >= 1")
+        if lease_seconds <= 0:
+            raise ValueError("lease_seconds must be > 0")
+        self.limit = limit
+        self.lease_seconds = float(lease_seconds)
+        self.db_url = db_url or database_url()
+        self._lock = threading.RLock()
         with self._connect() as conn:
-            conn.execute("""CREATE TABLE IF NOT EXISTS event_leases (event_id TEXT PRIMARY KEY, claimed_at DOUBLE PRECISION NOT NULL, last_seen_at DOUBLE PRECISION NOT NULL)""")
+            conn.execute("CREATE TABLE IF NOT EXISTS event_leases (event_id TEXT PRIMARY KEY, claimed_at DOUBLE PRECISION NOT NULL, last_seen_at DOUBLE PRECISION NOT NULL)")
             conn.execute("CREATE INDEX IF NOT EXISTS idx_event_leases_seen ON event_leases(last_seen_at)")
 
-    def _connect(self): return psycopg.connect(self.db_url, row_factory=tuple_row)
+    def _connect(self):
+        return psycopg.connect(self.db_url, row_factory=tuple_row)
 
     def fresh(self, key: str | None) -> bool:
         key = (key or "").strip()
-        if not key: return True
-        now = time.time(); cutoff = now - self.lease_seconds
+        if not key:
+            return True
+        now = time.time()
+        cutoff = now - self.lease_seconds
         with self._lock, self._connect() as conn:
             row = conn.execute("SELECT claimed_at FROM event_leases WHERE event_id=%s FOR UPDATE", (key,)).fetchone()
             if row is None:
-                conn.execute("INSERT INTO event_leases(event_id,claimed_at,last_seen_at) VALUES(%s,%s,%s)", (key, now, now)); accepted = True
+                conn.execute("INSERT INTO event_leases(event_id,claimed_at,last_seen_at) VALUES(%s,%s,%s)", (key, now, now))
+                accepted = True
             elif float(row[0]) <= cutoff:
-                conn.execute("UPDATE event_leases SET claimed_at=%s,last_seen_at=%s WHERE event_id=%s", (now, now, key)); accepted = True
+                conn.execute("UPDATE event_leases SET claimed_at=%s,last_seen_at=%s WHERE event_id=%s", (now, now, key))
+                accepted = True
             else:
-                conn.execute("UPDATE event_leases SET last_seen_at=%s WHERE event_id=%s", (now, key)); accepted = False
+                conn.execute("UPDATE event_leases SET last_seen_at=%s WHERE event_id=%s", (now, key))
+                accepted = False
             conn.execute("DELETE FROM event_leases WHERE event_id IN (SELECT event_id FROM event_leases ORDER BY last_seen_at DESC OFFSET %s)", (self.limit,))
         return accepted
