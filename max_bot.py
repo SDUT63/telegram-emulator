@@ -492,14 +492,47 @@ def _кнопки_статьи(заголовок: str, survey=None, who: str = 
     return keyboard.as_markup()
 
 
+# Экран — это пара «текст и кнопки». Отдельно от отправки он нужен затем,
+# что один и тот же экран бот то присылает новым сообщением, то переписывает
+# поверх старого: листать карту, засыпая человека сообщениями, нельзя.
+
+def экран_карты(survey=None, who: str = "") -> tuple[str, object]:
+    return (КАРТА_ЗАГОЛОВОК + "\n\n" + КАРТА_ПОДПИСЬ,
+            _кнопки_карты(survey, who))
+
+
+def экран_ветви(id: str, номер: int = 1, survey=None,
+                who: str = "") -> tuple[str, object] | None:
+    стр = knowledge.страница(id, номер)
+    if not стр:
+        return None
+    последняя = стр["первая"] + len(стр["статьи"]) - 1
+    шапка = стр["название"]
+    if стр["всего"] > 1:
+        шапка += f"\n\nТемы {стр['первая']}–{последняя} из {стр['статей']}"
+    return шапка, _кнопки_ветви(стр, survey, who)
+
+
+def экран_статьи(заголовок: str, survey=None,
+                 who: str = "") -> tuple[str, object] | None:
+    текст = knowledge.статья_целиком(заголовок)
+    if not текст:
+        return None
+    # Путь первой строкой. Без него человек через три нажатия не помнит,
+    # откуда пришёл, и любое следующее сообщение читается как случайное.
+    крошки = knowledge.путь(заголовок)
+    if крошки:
+        текст = крошки.rstrip(" ·") + "\n\n" + текст
+    return текст + "\n\n" + СПРАВКА_ПОДПИСЬ, _кнопки_статьи(заголовок, survey, who)
+
+
 async def меню_тем(bot, chat_id, who: str, survey=None) -> None:
     """Карта тем: с чего человек начинает, когда не знает, что спрашивать."""
     if survey is not None:
         survey.understood(who)
     try:
-        await _отправить(bot, chat_id, who,
-                         КАРТА_ЗАГОЛОВОК + "\n\n" + КАРТА_ПОДПИСЬ,
-                         _кнопки_карты(survey, who))
+        текст, разметка = экран_карты(survey, who)
+        await _отправить(bot, chat_id, who, текст, разметка)
         log.info("%s: показана карта тем", who)
     except Exception as error:                                  # noqa: BLE001
         log.warning("карта тем не отправилась: %s", error)
@@ -508,32 +541,22 @@ async def меню_тем(bot, chat_id, who: str, survey=None) -> None:
 async def ветвь(bot, chat_id, who: str, id: str, номер: int = 1,
                 survey=None) -> bool:
     """Одна ветвь карты. Человек должен видеть, где он и сколько ещё."""
-    стр = knowledge.страница(id, номер)
-    if not стр:
+    экран = экран_ветви(id, номер, survey, who)
+    if not экран:
         return False
     if survey is not None:
         survey.understood(who)
-    последняя = стр["первая"] + len(стр["статьи"]) - 1
-    шапка = стр["название"]
-    if стр["всего"] > 1:
-        шапка += f"\n\nТемы {стр['первая']}–{последняя} из {стр['статей']}"
-    await _отправить(bot, chat_id, who, шапка, _кнопки_ветви(стр, survey, who))
-    log.info("%s: показана ветвь %s, страница %s", who, id, стр["номер"])
+    await _отправить(bot, chat_id, who, *экран)
+    log.info("%s: показана ветвь %s, страница %s", who, id, номер)
     return True
 
 
 async def статья(bot, chat_id, who: str, заголовок: str, survey=None) -> bool:
     """Статья, выбранная кнопкой: где мы находимся, текст и куда дальше."""
-    текст = knowledge.статья_целиком(заголовок)
-    if not текст:
+    экран = экран_статьи(заголовок, survey, who)
+    if not экран:
         return False
-    # Путь первой строкой. Без него человек через три нажатия не помнит,
-    # откуда пришёл, и любое следующее сообщение читается как случайное.
-    крошки = knowledge.путь(заголовок)
-    if крошки:
-        текст = крошки.rstrip(" ·") + "\n\n" + текст
-    await _отправить(bot, chat_id, who, текст + "\n\n" + СПРАВКА_ПОДПИСЬ,
-                     _кнопки_статьи(заголовок, survey, who))
+    await _отправить(bot, chat_id, who, *экран)
     log.info("%s: отправлена статья по кнопке", who)
     return True
 
@@ -664,7 +687,9 @@ def build_dispatcher(survey: Survey):
         files = _files_of(body)
         if files:
             survey.note_message(str(user_id), incoming, files)
-            reply = FILES_TAKEN + "\n\n" + reply
+            # Получение файла подтверждаем всегда: человек должен знать,
+            # что фотография выписки дошла, а не улетела в пустоту.
+            reply = "\n\n".join(х for х in (FILES_TAKEN, reply) if х)
 
         # Анкета отложила сообщение в переписку — значит, это не ответ
         # на вопрос, а обращение к нам. На такое можно ответить по базе.
@@ -673,7 +698,10 @@ def build_dispatcher(survey: Survey):
         # человеку по-своему. Второй раз считать тот же промах нельзя.
         уже_считали = survey.misses(str(user_id)) > было_промахов
 
-        await say(event.bot, chat_id, str(user_id), reply)
+        # Пустой ответ — это не сбой, а намеренное молчание анкеты:
+        # сообщение записано, а по существу ответит справка из базы.
+        if reply:
+            await say(event.bot, chat_id, str(user_id), reply)
         note_if_finished(str(user_id), was_done)
 
         if спросили and incoming:
@@ -736,10 +764,33 @@ def build_dispatcher(survey: Survey):
                 await say(event.bot, chat_id, who, survey.summary(who))
             return
 
+        async def листать(экран, чего_нет: str) -> None:
+            """Показать экран карты на месте нажатой кнопки.
+
+            Листать карту новыми сообщениями — значит завалить чат: человек
+            прокручивает десять одинаковых меню и не понимает, какое живое.
+            Поэтому экран переписывается поверх того, где нажали, и карта
+            ведёт себя как вкладки внутри одного сообщения.
+
+            Если переписать не вышло — сообщение удалили, оно слишком
+            старое, — отправляем новым. Молчания быть не должно.
+            """
+            survey.understood(who)
+            if экран is None:
+                log.info("%s: %s", who, чего_нет)
+                экран = экран_карты(survey, who)
+            текст, разметка = экран
+            try:
+                await event.edit(text=текст, attachments=[разметка],
+                                 raise_if_not_exists=False)
+            except Exception as error:                          # noqa: BLE001
+                log.debug("экран не переписался, шлём новым: %s", error)
+                await _отправить(event.bot, chat_id, who, текст, разметка)
+
         if action == "map":
             # «Все темы» — карта. Работает из любого места разговора.
             await подтвердить(event, "Открываю")
-            await меню_тем(event.bot, chat_id, who, survey)
+            await листать(экран_карты(survey, who), "")
             return
 
         if action == "v" and len(parts) >= 2:
@@ -748,23 +799,17 @@ def build_dispatcher(survey: Survey):
             # туда же, куда вела вчера.
             await подтвердить(event, "Открываю")
             номер = int(parts[2]) if len(parts) > 2 and parts[2].isdigit() else 1
-            if not await ветвь(event.bot, chat_id, who, parts[1], номер, survey):
-                log.info("%s: ветвь не найдена: %s", who, parts[1][:20])
-                await меню_тем(event.bot, chat_id, who, survey)
+            await листать(экран_ветви(parts[1], номер, survey, who),
+                          f"ветвь не найдена: {parts[1][:20]}")
             return
 
         if action == "k":
             # Кнопка-подсказка: человек выбрал готовый вопрос из базы.
             # Состояние анкеты не трогаем — это чтение, а не ответ.
-            await подтвердить(event, "Сейчас пришлю")
-            survey.understood(who)
+            await подтвердить(event, "Открываю")
             заголовок = (event.callback.payload or "")[2:]
-            if not await статья(event.bot, chat_id, who, заголовок, survey):
-                log.info("%s: статья не найдена: %s", who, заголовок[:40])
-                # Статья могла уехать из базы вместе с правкой файла,
-                # а кнопка на неё осталась в старом сообщении. Молчать
-                # в ответ на нажатие нельзя.
-                await меню_тем(event.bot, chat_id, who, survey)
+            await листать(экран_статьи(заголовок, survey, who),
+                          f"статья не найдена: {заголовок[:40]}")
             return
 
         if action == "c" and parts[1:2] == ["full"]:
