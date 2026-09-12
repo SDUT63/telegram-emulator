@@ -5,9 +5,14 @@ The queue deliberately provides at-least-once external delivery. A process
 crash after MAX accepts a message but before the local `sent` commit can still
 produce a duplicate on retry because MAX does not expose a provider-side
 idempotency key for ordinary bot messages.
+
+Successful deliveries are redacted after acknowledgement. A permanent
+`tombstone` keeps the delivery key and payload digest, so retention cleanup
+cannot make an old event capable of creating a new outbound delivery.
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import socket
@@ -23,6 +28,9 @@ from psycopg.types.json import Jsonb
 DEFAULT_LEASE_SECONDS = 60
 DEFAULT_MAX_ATTEMPTS = 12
 DEFAULT_BATCH_SIZE = 20
+DEFAULT_SENT_RETENTION_SECONDS = 30 * 24 * 60 * 60
+
+_REDACTED_PAYLOAD = {"kind": "redacted"}
 
 
 def database_url() -> str:
@@ -45,6 +53,17 @@ def delivery_key(event_id: str, ordinal: int = 0) -> str:
     return f"{str(event_id).strip()}:out:{ordinal}"
 
 
+def payload_sha256(payload: dict[str, Any]) -> str:
+    """Hash canonical JSON without storing another copy of its contents."""
+    if not isinstance(payload, dict):
+        raise TypeError("payload must be a dict")
+    canonical = json.dumps(
+        payload, ensure_ascii=False, sort_keys=True,
+        separators=(",", ":"), default=str,
+    ).encode("utf-8")
+    return hashlib.sha256(canonical).hexdigest()
+
+
 @dataclass(frozen=True)
 class OutboxMessage:
     id: int
@@ -59,7 +78,7 @@ class OutboxMessage:
 
 
 class PostgresOutbox:
-    """Insert, claim, acknowledge and retry outbound messages."""
+    """Insert, claim, acknowledge, retry and retain outbound messages."""
 
     def __init__(self, db_url: str | None = None, *, lease_seconds: int = DEFAULT_LEASE_SECONDS, max_attempts: int = DEFAULT_MAX_ATTEMPTS, worker_id: str | None = None) -> None:
         if lease_seconds <= 0:
@@ -75,7 +94,8 @@ class PostgresOutbox:
         """Persist one outbound intent, idempotently and collision-safely.
 
         Reusing a delivery key for a different logical message is a programming
-        error and fails loudly instead of silently preserving the first row.
+        error and fails loudly. A matching retained tombstone is a historical
+        duplicate and is deliberately treated as a no-op.
         """
         key = str(delivery_key).strip()
         uid = str(user_id).strip()
@@ -85,24 +105,36 @@ class PostgresOutbox:
             raise ValueError("user_id must not be empty")
         if not isinstance(payload, dict):
             raise TypeError("payload must be a dict")
+        digest = payload_sha256(payload)
 
         own = conn is None
         connection = conn or _connect(self.db_url)
         try:
+            tombstone = connection.execute(
+                "SELECT payload_sha256 FROM outbox_delivery_tombstones WHERE delivery_key=%s",
+                (key,),
+            ).fetchone()
+            if tombstone is not None:
+                if str(tombstone["payload_sha256"]) != digest:
+                    raise ValueError(f"delivery_key collision for {key!r}: retained outbound intent differs")
+                if own:
+                    connection.commit()
+                return 0
+
             row = connection.execute(
                 """
-                INSERT INTO outbox_messages(delivery_key,user_id,chat_id,payload)
-                VALUES(%s,%s,%s,%s)
+                INSERT INTO outbox_messages(delivery_key,user_id,chat_id,payload,payload_sha256)
+                VALUES(%s,%s,%s,%s,%s)
                 ON CONFLICT(delivery_key) DO NOTHING
                 RETURNING id
                 """,
-                (key, uid, chat_id, Jsonb(payload)),
+                (key, uid, chat_id, Jsonb(payload), digest),
             ).fetchone()
             if row:
                 message_id = int(row["id"])
             else:
                 existing = connection.execute(
-                    "SELECT id,user_id,chat_id,payload FROM outbox_messages WHERE delivery_key=%s",
+                    "SELECT id,user_id,chat_id,payload,payload_sha256 FROM outbox_messages WHERE delivery_key=%s",
                     (key,),
                 ).fetchone()
                 if existing is None:
@@ -111,7 +143,13 @@ class PostgresOutbox:
                 if isinstance(existing_payload, str):
                     existing_payload = json.loads(existing_payload)
                 existing_chat = str(existing["chat_id"]) if existing["chat_id"] is not None else None
-                if str(existing["user_id"]) != uid or existing_chat != chat_id or dict(existing_payload) != payload:
+                existing_digest = existing["payload_sha256"]
+                same_payload = (
+                    str(existing["user_id"]) == uid
+                    and existing_chat == chat_id
+                    and (str(existing_digest) == digest if existing_digest else dict(existing_payload) == payload)
+                )
+                if not same_payload:
                     raise ValueError(f"delivery_key collision for {key!r}: existing outbound intent differs")
                 message_id = int(existing["id"])
             if own:
@@ -163,14 +201,24 @@ class PostgresOutbox:
             return [self._row(row) for row in rows]
 
     def mark_sent(self, message_id: int) -> None:
+        """Acknowledge a delivery and immediately redact its payload."""
         with _connect(self.db_url) as conn:
+            row = conn.execute(
+                "SELECT payload,payload_sha256 FROM outbox_messages WHERE id=%s AND status='sending' AND locked_by=%s FOR UPDATE",
+                (message_id, self.worker_id),
+            ).fetchone()
+            if row is None:
+                raise RuntimeError(f"outbox message {message_id} is not owned by this worker")
+            digest = str(row["payload_sha256"] or payload_sha256(dict(row["payload"])))
             updated = conn.execute(
                 """
                 UPDATE outbox_messages
-                   SET status='sent', sent_at=CURRENT_TIMESTAMP, locked_at=NULL, locked_by=NULL, last_error=NULL
+                   SET status='sent', sent_at=CURRENT_TIMESTAMP,
+                       locked_at=NULL, locked_by=NULL, last_error=NULL,
+                       payload=%s, payload_sha256=%s
                  WHERE id=%s AND status='sending' AND locked_by=%s
                 """,
-                (message_id, self.worker_id),
+                (Jsonb(_REDACTED_PAYLOAD), digest, message_id, self.worker_id),
             ).rowcount
             if updated != 1:
                 raise RuntimeError(f"outbox message {message_id} is not owned by this worker")
@@ -213,11 +261,56 @@ class PostgresOutbox:
             )
             return result.rowcount
 
+    def prune_sent(self, *, retention_seconds: int = DEFAULT_SENT_RETENTION_SECONDS, limit: int = 500) -> int:
+        """Redact-and-tombstone old sent rows without reopening delivery keys.
+
+        Tombstones are intentionally retained indefinitely: deleting them would
+        re-enable an old MAX event to create a new outbound delivery after a
+        long-retention cleanup. Their footprint is only the delivery key and
+        a 64-character digest.
+        """
+        if retention_seconds < 0:
+            raise ValueError("retention_seconds must be >= 0")
+        if limit < 1:
+            raise ValueError("limit must be >= 1")
+        with _connect(self.db_url) as conn:
+            rows = conn.execute(
+                """
+                SELECT id,delivery_key,payload,payload_sha256
+                  FROM outbox_messages
+                 WHERE status='sent'
+                   AND sent_at IS NOT NULL
+                   AND sent_at < CURRENT_TIMESTAMP - (%s * INTERVAL '1 second')
+                 ORDER BY id
+                 FOR UPDATE SKIP LOCKED
+                 LIMIT %s
+                """,
+                (retention_seconds, limit),
+            ).fetchall()
+            if not rows:
+                return 0
+            ids: list[int] = []
+            for row in rows:
+                digest = str(row["payload_sha256"] or payload_sha256(dict(row["payload"])))
+                conn.execute(
+                    """
+                    INSERT INTO outbox_delivery_tombstones(delivery_key,payload_sha256)
+                    VALUES(%s,%s)
+                    ON CONFLICT(delivery_key) DO UPDATE SET payload_sha256=EXCLUDED.payload_sha256
+                    """,
+                    (str(row["delivery_key"]), digest),
+                )
+                ids.append(int(row["id"]))
+            conn.execute("DELETE FROM outbox_messages WHERE id = ANY(%s)", (ids,))
+            return len(ids)
+
     def stats(self) -> dict[str, int]:
         with _connect(self.db_url) as conn:
             rows = conn.execute("SELECT status, COUNT(*) AS n FROM outbox_messages GROUP BY status").fetchall()
-        result = {"pending": 0, "sending": 0, "sent": 0, "dead": 0}
+            tombstones = conn.execute("SELECT COUNT(*) AS n FROM outbox_delivery_tombstones").fetchone()
+        result = {"pending": 0, "sending": 0, "sent": 0, "dead": 0, "tombstones": 0}
         result.update({str(row["status"]): int(row["n"]) for row in rows})
+        result["tombstones"] = int(tombstones["n"])
         return result
 
     @staticmethod
