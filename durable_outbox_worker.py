@@ -12,19 +12,28 @@ POLL_SECONDS = 0.5
 
 
 def _markup(rows):
-    if not rows:
+    if rows is None:
         return None
+    if not isinstance(rows, list):
+        raise ValueError("keyboard_rows должен быть списком")
+
     from maxapi.enums.intent import Intent
     from maxapi.types.attachments.buttons import CallbackButton
     from maxapi.utils.inline_keyboard import InlineKeyboardBuilder
 
     keyboard = InlineKeyboardBuilder()
     for row in rows:
+        if not isinstance(row, list):
+            raise ValueError("строка keyboard_rows должна быть списком")
         buttons = []
         for item in row:
             if not isinstance(item, (list, tuple)) or len(item) != 2:
                 raise ValueError("некорректная строка кнопки в outbox payload")
-            label, action = str(item[0]), str(item[1])
+            label, action = item
+            if not isinstance(label, str) or not isinstance(action, str):
+                raise ValueError("label/action кнопки должны быть строками")
+            if not label or not action:
+                raise ValueError("label/action кнопки не могут быть пустыми")
             positive = action == "c:y" or action.startswith("d:") or label.startswith("✅ ")
             buttons.append(
                 CallbackButton(
@@ -35,51 +44,78 @@ def _markup(rows):
             )
         if buttons:
             keyboard.row(*buttons)
-    return keyboard.as_markup()
+    return keyboard.as_markup() if rows else None
 
 
 async def _send(bot, message: OutboxMessage) -> None:
     payload = message.payload
+    if not isinstance(payload, dict):
+        raise ValueError("outbox payload должен быть JSON-объектом")
     if payload.get("kind") != "max_text":
         raise ValueError(f"неизвестный тип outbox payload: {payload.get('kind')!r}")
 
     text = payload.get("text")
     if not isinstance(text, str) or not text:
         raise ValueError("outbox payload должен содержать непустой text")
+    if len(text) > 32000:
+        raise ValueError("outbox text слишком длинный")
 
     attachments = _markup(payload.get("keyboard_rows"))
     kwargs = {"text": text, "attachments": [attachments] if attachments else None}
     if message.chat_id is not None:
         kwargs["chat_id"] = message.chat_id
     else:
-        kwargs["user_id"] = int(message.user_id)
+        try:
+            kwargs["user_id"] = int(message.user_id)
+        except (TypeError, ValueError) as exc:
+            raise ValueError("outbox user_id должен быть числовым, если chat_id отсутствует") from exc
     await bot.send_message(**kwargs)
+
+
+async def deliver_once(bot, *, queue: PostgresOutbox | None = None) -> int:
+    """Claim and process one batch; returns the number of claimed messages.
+
+    Kept separate from the forever-loop so integration/crash-injection tests
+    can exercise the exact claim -> send -> sent/failure boundary without
+    running an unbounded background task.
+    """
+    queue = queue or PostgresOutbox()
+    claimed = queue.claim()
+    for message in claimed:
+        try:
+            await _send(bot, message)
+        except Exception as error:  # noqa: BLE001
+            log.warning(
+                "MAX outbox #%s не отправился (попытка %s): %s",
+                message.id,
+                message.attempts,
+                error,
+            )
+            try:
+                queue.mark_failed(message.id, str(error))
+            except Exception:
+                log.exception("MAX outbox #%s: не удалось зафиксировать failure", message.id)
+        else:
+            try:
+                queue.mark_sent(message.id)
+            except Exception:
+                # The network request may already have succeeded. Do not send
+                # the message a second time merely because the acknowledgement
+                # transaction failed; the row remains recoverable as sending.
+                log.exception("MAX outbox #%s: не удалось зафиксировать sent", message.id)
+    return len(claimed)
 
 
 async def run(bot, *, poll_seconds: float = POLL_SECONDS) -> None:
     """Run forever; failures stay in PostgreSQL and are retried with backoff."""
+    if poll_seconds <= 0:
+        raise ValueError("poll_seconds must be > 0")
     queue = PostgresOutbox()
     while True:
         try:
-            claimed = queue.claim()
+            claimed = await deliver_once(bot, queue=queue)
             if not claimed:
                 await asyncio.sleep(poll_seconds)
-                continue
-
-            for message in claimed:
-                try:
-                    await _send(bot, message)
-                except Exception as error:  # noqa: BLE001
-                    log.warning(
-                        "MAX outbox #%s не отправился (попытка %s): %s",
-                        message.id,
-                        message.attempts,
-                        error,
-                    )
-                    queue.mark_failed(message.id, str(error))
-                else:
-                    queue.mark_sent(message.id)
-                    log.info("MAX outbox #%s доставлен пользователю %s", message.id, message.user_id)
         except asyncio.CancelledError:
             raise
         except Exception as error:  # noqa: BLE001
