@@ -21,7 +21,6 @@ def test_production_survey_serializes_shared_state_mutations():
     survey = DurableProductionPostgresSurvey()
     users = [f"pytest-concurrent-{uuid.uuid4().hex}" for _ in range(2)]
     events = [f"pytest-concurrent-event-{uuid.uuid4().hex}" for _ in range(2)]
-    barrier = threading.Barrier(2)
     lock = threading.Lock()
     active = 0
     max_active = 0
@@ -33,7 +32,6 @@ def test_production_survey_serializes_shared_state_mutations():
         try:
             def mutate() -> None:
                 nonlocal active, max_active
-                barrier.wait(timeout=5)
                 with lock:
                     active += 1
                     max_active = max(max_active, active)
@@ -47,7 +45,7 @@ def test_production_survey_serializes_shared_state_mutations():
             survey._mutate(
                 user_id,
                 "concurrency_test",
-                {"kind": "concurrency_test"},
+                {"kind": "concurrency_test", "event_id": event_id},
                 mutate,
                 None,
             )
@@ -70,17 +68,17 @@ def test_production_survey_serializes_shared_state_mutations():
         assert max_active == 1
         with survey._connect() as conn:
             rows = conn.execute(
-                "SELECT user_id,event_id FROM ("
-                "SELECT user_id, event_json->>'kind' AS event_id "
-                "FROM audit_events WHERE user_id = ANY(%s) AND event_type='concurrency_test'"
-                ") AS events",
+                "SELECT user_id,event_json->>'event_id' "
+                "FROM audit_events WHERE user_id = ANY(%s) AND event_type='concurrency_test'",
                 (users,),
             ).fetchall()
             state_rows = conn.execute(
-                "SELECT user_id,state_json->>'concurrency_marker' FROM survey_state WHERE user_id = ANY(%s)",
+                "SELECT user_id,state_json->>'concurrency_marker' "
+                "FROM survey_state WHERE user_id = ANY(%s)",
                 (users,),
             ).fetchall()
         assert {row[0] for row in rows} == set(users)
+        assert {row[1] for row in rows} == set(events)
         assert {row[0] for row in state_rows} == set(users)
         assert {row[1] for row in state_rows} == set(events)
     finally:
