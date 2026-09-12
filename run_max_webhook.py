@@ -7,6 +7,7 @@ SQLite remains available only through the local pilot launcher.
 from __future__ import annotations
 
 import asyncio
+import os
 
 import max_bot
 import max_webhook
@@ -64,6 +65,15 @@ def _install_combined_outbox_worker() -> None:
 
 
 def main() -> None:
+    # A public webhook is a production transport. Running it against the
+    # laptop SQLite pilot would make delivery durability depend on one process
+    # and could silently bypass the transactional outbox.
+    if not (os.getenv("SDUT_DATABASE_URL") or "").strip():
+        raise SystemExit(
+            "run_max_webhook.py требует SDUT_DATABASE_URL; "
+            "для SQLite-пилота используйте run_max.py"
+        )
+
     _install_durable_send_guard()
     _install_production_storage()
     _install_combined_outbox_worker()
