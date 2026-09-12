@@ -2,13 +2,13 @@
 """Fail-closed audit for MAX outbound delivery paths.
 
 The production bot must not accidentally regain a direct MAX send path while
-refactors are in progress.  This is intentionally a static AST check rather
+refactors are in progress. This is intentionally a static AST check rather
 than a grep: comments and strings do not count, while aliases and calls made
 through an object do.
 
-The current repository still contains known legacy paths.  The script can be
-run manually while the transport refactor is in progress; CI should enable it
-only after the remaining legacy paths have been migrated.
+The durable worker is deliberately excluded: it is the one component whose
+job is to perform the actual external MAX delivery. The application and
+launchers must instead create durable outbound intents.
 """
 from __future__ import annotations
 
@@ -23,7 +23,6 @@ PRODUCTION_FILES = {
     ROOT / "run_max_postgres.py",
     ROOT / "run_max_webhook.py",
     ROOT / "production_outbox.py",
-    ROOT / "durable_outbox_worker.py",
 }
 
 
