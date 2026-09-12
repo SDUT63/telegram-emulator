@@ -1,4 +1,6 @@
-from max_webhook import validate_public_url, validate_secret, validate_settings
+import pytest
+
+from max_webhook import _storage_classes, validate_public_url, validate_secret, validate_settings
 
 
 def test_valid_production_webhook_config():
@@ -31,3 +33,17 @@ def test_webhook_secret_validation():
 def test_settings_require_secret():
     errors = validate_settings("https://bot.example.ru/max", "", "/max")
     assert any("секрет" in error for error in errors)
+
+
+def test_webhook_storage_fails_closed_without_postgres(monkeypatch):
+    monkeypatch.delenv("SDUT_DATABASE_URL", raising=False)
+    with pytest.raises(RuntimeError, match="требует SDUT_DATABASE_URL"):
+        _storage_classes()
+
+
+def test_webhook_storage_uses_postgres_when_configured(monkeypatch):
+    monkeypatch.setenv("SDUT_DATABASE_URL", "postgresql://example")
+    survey_cls, seen_cls, storage_name = _storage_classes()
+    assert survey_cls.__name__ == "ProductionPostgresSurvey"
+    assert seen_cls.__name__ == "TransactionalPersistentSeen"
+    assert storage_name == "PostgreSQL"
