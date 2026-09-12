@@ -36,6 +36,20 @@ def _columns(options: list[str], multi: bool) -> int:
 def _in_questionnaire(survey: Survey | None, user_id: str) -> bool:
     return survey is not None and survey.current(user_id) is not None
 
+def _user_state(survey: Any, user_id: str) -> dict[str, Any]:
+    """Read production state through its explicit user-scoped API.
+
+    ``Survey.state`` is intentionally not a production UI data source: it is
+    an in-process compatibility cache and is neither worker-safe nor a source
+    of truth. The production PostgreSQL facade provides ``user_state``.
+    """
+    reader = getattr(survey, "user_state", None)
+    if reader is None:
+        # This path is retained only for the legacy/unit-test Survey contract.
+        # Production surveys always expose user_state().
+        return (getattr(survey, "state", {}) or {}).get(str(user_id), {})
+    return reader(str(user_id))
+
 def layout(survey: Survey, user_id: str) -> list[list[tuple[str, str]]]:
     rows: list[list[tuple[str, str]]] = []
     if survey.reading(user_id): rows.append([("Полный текст согласия", "c:full")])
@@ -55,7 +69,7 @@ def layout(survey: Survey, user_id: str) -> list[list[tuple[str, str]]]:
         if len(row) == per_row: rows.append(row); row = []
     if row: rows.append(row)
     bottom: list[tuple[str, str]] = []
-    if (survey.state.get(user_id) or {}).get("history"): bottom.append(("← Назад", "b"))
+    if (_user_state(survey, user_id).get("history") or []): bottom.append(("← Назад", "b"))
     if multi and picked: bottom.append((f"Готово · {len(picked)}", f"d:{step}"))
     elif multi and nothing is not None: bottom.append((options[nothing], f"a:{step}:{nothing}"))
     elif not question.get("required", True): bottom.append(("Пропустить", f"s:{step}"))
@@ -96,7 +110,7 @@ def navigation_keyboard(action: str, args: list[str], survey: Survey | None, use
     return rows
 
 def map_screen(survey: Survey | None = None, user_id: str = "") -> tuple[str, list[list[list[str]]]]:
-    return KАРТА_ЗАГОЛОВОК + "\n\n" + КАРТА_ПОДПИСЬ, navigation_keyboard("map", [], survey, user_id)
+    return КАРТА_ЗАГОЛОВОК + "\n\n" + КАРТА_ПОДПИСЬ, navigation_keyboard("map", [], survey, user_id)
 
 def branch_screen(branch_id: str, page_number: int = 1, survey: Survey | None = None, user_id: str = "") -> tuple[str, list[list[list[str]]]] | None:
     page = knowledge.страница(branch_id, page_number)
