@@ -6,7 +6,7 @@ recommended deployment TLS terminates at a reverse proxy and this process
 listens on 127.0.0.1:8080.
 
 The survey/scenario remains in max_bot.py; this module only supplies HTTP
-transport and durable storage.
+transport and selects durable storage.
 """
 from __future__ import annotations
 
@@ -21,7 +21,8 @@ from urllib.parse import urlsplit
 from aiohttp import web
 
 import max_bot
-from storage_sqlite import PersistentSeen, SQLiteSurvey
+from storage_sqlite import PersistentSeen as SQLiteSeen
+from storage_sqlite import SQLiteSurvey
 
 log = logging.getLogger("сдут-бот")
 
@@ -105,6 +106,16 @@ def validate_settings(url: str, secret: str, path: str) -> list[str]:
     return problems
 
 
+def _storage_classes():
+    """Return production PostgreSQL classes when a DSN is configured."""
+    dsn = (os.getenv("SDUT_DATABASE_URL") or "").strip()
+    if dsn:
+        from storage_postgres import PersistentSeen, PostgresSurvey
+
+        return PostgresSurvey, PersistentSeen, "PostgreSQL"
+    return SQLiteSurvey, SQLiteSeen, "SQLite (pilot)"
+
+
 async def main() -> None:
     token = max_bot.read_token()
     public_url = (os.getenv("MAX_WEBHOOK_URL") or "").strip().rstrip("/")
@@ -131,16 +142,18 @@ async def main() -> None:
         print("      MAX_WEBHOOK_PATH=/max")
         print("      MAX_WEBHOOK_HOST=127.0.0.1")
         print("      MAX_WEBHOOK_PORT=8080")
+        print("      SDUT_DATABASE_URL=postgresql://...")
         print("=" * 70 + "\n")
         sys.exit(1)
 
     from maxapi import Bot
     from maxapi.webhook.aiohttp import AiohttpMaxWebhook
 
-    survey = SQLiteSurvey(list_options=False)
+    survey_cls, seen_cls, storage_name = _storage_classes()
+    survey = survey_cls(list_options=False)
     bot = Bot(token)
-    max_bot.Survey = SQLiteSurvey
-    max_bot.Seen = PersistentSeen
+    max_bot.Survey = survey_cls
+    max_bot.Seen = seen_cls
     dp = max_bot.build_dispatcher(survey)
 
     try:
@@ -150,8 +163,6 @@ async def main() -> None:
         await bot.close_session()
         sys.exit(1)
 
-    # POST /subscriptions обновляет подписку. Старую подписку заранее НЕ
-    # удаляем: при ошибке новой настройки это не создаёт окно потери событий.
     try:
         await bot.subscribe_webhook(url=public_url, secret=secret)
     except Exception:
@@ -171,7 +182,7 @@ async def main() -> None:
     app = webhook.create_app(path=path)
 
     async def health(_: web.Request) -> web.Response:
-        return web.json_response({"status": "ok"})
+        return web.json_response({"status": "ok", "storage": storage_name})
 
     app.router.add_get("/health", health)
     queue = asyncio.create_task(max_bot.outbox_worker(bot))
@@ -181,6 +192,7 @@ async def main() -> None:
     print(f"  Бот запущен через MAX Webhook: {name}")
     print(f"  Внешний endpoint: {public_url}")
     print(f"  Внутренний listener: {host}:{port}{path}")
+    print(f"  Хранилище: {storage_name}")
     print("  TLS: reverse proxy / сервер с доверенным сертификатом")
     print("  Остановить: Ctrl+C")
     print("=" * 70 + "\n")
