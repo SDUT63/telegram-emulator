@@ -31,29 +31,13 @@ from storage_postgres import (
 
 T = TypeVar("T")
 
-_OUTBOX_REPLY_QUEUED: contextvars.ContextVar[bool] = contextvars.ContextVar(
-    "sdut_outbox_reply_queued", default=False
-)
 _OUTBOX_RESULT: contextvars.ContextVar[Any] = contextvars.ContextVar(
     "sdut_outbox_result", default=None
 )
 
 
-def consume_direct_send_suppression() -> bool:
-    """Return-and-clear the one direct-send suppression for this task."""
-    if not _OUTBOX_REPLY_QUEUED.get():
-        return False
-    _OUTBOX_REPLY_QUEUED.set(False)
-    return True
-
-
 def _message_fingerprint(text: str, files: list[dict[str, Any]]) -> str:
-    """Build a collision fingerprint without storing the incoming text.
-
-    The raw message can contain health data, names and phone numbers. Only the
-    deterministic digest crosses into the event payload; `_finish_event()`
-    removes it again before writing the audit record.
-    """
+    """Build a collision fingerprint without storing the incoming text."""
     canonical = json.dumps(
         {"text": text, "files": files},
         ensure_ascii=False,
@@ -144,11 +128,9 @@ class DurableProductionPostgresSurvey(ProductionPostgresSurvey):
     ) -> str:
         """Atomically process one inbound MAX message including attachments.
 
-        This is the production dispatcher boundary: questionnaire state,
-        inbound event identity, attachment metadata and every outbound intent
-        are committed together. The dispatcher can fall back to the legacy
-        `handle()` + `note_message()` sequence for non-production Survey
-        implementations.
+        Questionnaire state, inbound event identity, attachment metadata and
+        outbound intents are committed together. The dispatcher must use this
+        boundary for production message-created events.
         """
         uid = str(user_id)
         normalized_text = str(text or "")
@@ -179,7 +161,6 @@ class DurableProductionPostgresSurvey(ProductionPostgresSurvey):
             return
 
         conn, token_conn, token_user, token_accepted = ctx
-        queued = False
         try:
             if error is not None:
                 conn.rollback()
@@ -209,7 +190,6 @@ class DurableProductionPostgresSurvey(ProductionPostgresSurvey):
                     },
                     conn=conn,
                 )
-                queued = True
 
             # Attachment acknowledgement is a second logical outbound intent
             # of the SAME inbound event. Ordinal 1 makes it deterministic and
@@ -227,11 +207,8 @@ class DurableProductionPostgresSurvey(ProductionPostgresSurvey):
                     },
                     conn=conn,
                 )
-                queued = True
 
             conn.commit()
-            if queued:
-                _OUTBOX_REPLY_QUEUED.set(True)
         except BaseException:
             conn.rollback()
             raise
@@ -242,4 +219,4 @@ class DurableProductionPostgresSurvey(ProductionPostgresSurvey):
             conn.close()
 
 
-__all__ = ["DurableProductionPostgresSurvey", "consume_direct_send_suppression"]
+__all__ = ["DurableProductionPostgresSurvey"]
