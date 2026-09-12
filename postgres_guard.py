@@ -8,7 +8,7 @@ from pathlib import Path
 
 import psycopg
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parent
 MIGRATIONS = ROOT / "migrations" / "postgres"
 REQUIRED_MIGRATIONS = {
     "001_initial.sql",
