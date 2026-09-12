@@ -1,12 +1,9 @@
 #!/usr/bin/env python3
 """MAX Webhook entrypoint for the SDUT bot.
 
-MAX requires the public webhook endpoint to be HTTPS on port 443. In the
-recommended deployment TLS terminates at a reverse proxy and this process
-listens on 127.0.0.1:8080.
-
-The survey/scenario remains in max_bot.py; this module only supplies HTTP
-transport and selects durable storage.
+MAX-facing HTTPS/TLS is expected to terminate at a reverse proxy. This
+process listens on a private address and uses PostgreSQL transactional
+storage when SDUT_DATABASE_URL is configured.
 """
 from __future__ import annotations
 
@@ -107,12 +104,15 @@ def validate_settings(url: str, secret: str, path: str) -> list[str]:
 
 
 def _storage_classes():
-    """Return PostgreSQL classes when a DSN is configured; SQLite otherwise."""
+    """Return transactional PostgreSQL classes when a DSN is configured."""
     dsn = (os.getenv("SDUT_DATABASE_URL") or "").strip()
     if dsn:
-        from storage_postgres import PersistentSeen, PostgresSurvey
+        from storage_postgres import (
+            TransactionalPersistentSeen,
+            TransactionalPostgresSurvey,
+        )
 
-        return PostgresSurvey, PersistentSeen, "PostgreSQL"
+        return TransactionalPostgresSurvey, TransactionalPersistentSeen, "PostgreSQL"
     return SQLiteSurvey, SQLiteSeen, "SQLite (pilot)"
 
 
