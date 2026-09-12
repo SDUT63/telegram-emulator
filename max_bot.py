@@ -107,7 +107,7 @@ ASK_WORDS = {
 
 COMMANDS = [
     ("start", "Начать анкету"),
-    ("ask", "Спросить об уходе, документах, помощи"),
+    ("ask", "Все темы: уход, документы, помощь"),
     ("answers", "Показать, что уже заполнено"),
     ("help", "Что можно написать боту"),
     ("cancel", "Прервать анкету"),
@@ -303,20 +303,20 @@ FILES_TAKEN = "Файл получил, приложу к вашему обра�
 
 
 def _кнопки_подсказок(вопрос: str, кроме: str = ""):
-    """Кнопки с готовыми вопросами. None — если предлагать нечего."""
+    """Кнопки с готовыми вопросами и выход на карту тем."""
     from maxapi.types.attachments.buttons import CallbackButton
     from maxapi.utils.inline_keyboard import InlineKeyboardBuilder
 
-    варианты = knowledge.подсказки(вопрос, сколько=ПОДСКАЗОК, кроме=кроме)
-    if not варианты:
-        return None
     keyboard = InlineKeyboardBuilder()
-    for заголовок in варианты:
+    for заголовок in knowledge.подсказки(вопрос, сколько=ПОДСКАЗОК, кроме=кроме):
         # В payload кладём сам заголовок: он же ключ статьи. Кнопки
         # из старых сообщений от этого продолжают работать — статья
         # никуда не делась, а номера шагов anketы к ней отношения не имеют.
         keyboard.row(CallbackButton(text=_fits(knowledge.подпись(заголовок)),
                                     payload="k:" + заголовок[:60]))
+    # Поиск мог не понять вопроса, а человек — не знать нужного слова.
+    # Карта здесь не украшение, а второй способ добраться до ответа.
+    keyboard.row(CallbackButton(text=ВСЕ_ТЕМЫ, payload="m"))
     return keyboard.as_markup()
 
 
@@ -397,26 +397,139 @@ async def справка(bot, chat_id, who: str, вопрос: str,
         log.warning("справка не отправилась: %s", error)
 
 
+# Навигация по базе. Двести с лишним статей нельзя вывалить списком:
+# человек, у которого дома беда, не читает оглавление — он уходит.
+# Поэтому три уровня и ни одним больше: карта → ветвь → статья, и на каждом
+# видно, где он находится и как вернуться.
+КАРТА_ЗАГОЛОВОК = "О чём рассказать?"
+КАРТА_ПОДПИСЬ = ("Выберите, что ближе. Или просто напишите вопрос "
+                 "своими словами — я поищу по всем материалам.")
+ВСЕ_ТЕМЫ = "Все темы"
+НАЗАД = "‹ Назад"
+ДАЛЬШЕ = "Ещё ›"
+К_АНКЕТЕ = "Вернуться к анкете"
+
+
+def _в_анкете(survey, who: str) -> bool:
+    """Человек читает материалы, не дозаполнив анкету.
+
+    Тогда из любого места чтения нужна дорога обратно к вопросу: иначе
+    человек уходит в базу знаний и не возвращается, а координатору
+    остаётся карточка с тремя ответами.
+    """
+    try:
+        return survey is not None and survey.current(who) is not None
+    except Exception:                                           # noqa: BLE001
+        return False
+
+
+def _строка_возврата(keyboard, survey, who: str) -> None:
+    from maxapi.types.attachments.buttons import CallbackButton
+
+    if _в_анкете(survey, who):
+        keyboard.row(CallbackButton(text=К_АНКЕТЕ, payload="q"))
+
+
+def _кнопки_карты(survey=None, who: str = ""):
+    """Корень: одиннадцать ветвей и ничего кроме них."""
+    from maxapi.types.attachments.buttons import CallbackButton
+    from maxapi.utils.inline_keyboard import InlineKeyboardBuilder
+
+    keyboard = InlineKeyboardBuilder()
+    for ветвь in knowledge.карта():
+        keyboard.row(CallbackButton(text=_fits(ветвь["название"]),
+                                    payload="v:" + ветвь["id"] + ":1"))
+    _строка_возврата(keyboard, survey, who)
+    return keyboard.as_markup()
+
+
+def _кнопки_ветви(стр: dict, survey=None, who: str = ""):
+    """Страница ветви: темы, перелистывание и путь наверх."""
+    from maxapi.types.attachments.buttons import CallbackButton
+    from maxapi.utils.inline_keyboard import InlineKeyboardBuilder
+
+    keyboard = InlineKeyboardBuilder()
+    for заголовок in стр["статьи"]:
+        keyboard.row(CallbackButton(text=_fits(knowledge.подпись(заголовок)),
+                                    payload="k:" + заголовок[:60]))
+
+    листалка = []
+    if стр["номер"] > 1:
+        листалка.append(CallbackButton(
+            text=НАЗАД, payload=f"v:{стр['id']}:{стр['номер'] - 1}"))
+    if стр["номер"] < стр["всего"]:
+        листалка.append(CallbackButton(
+            text=ДАЛЬШЕ, payload=f"v:{стр['id']}:{стр['номер'] + 1}"))
+    if листалка:
+        keyboard.row(*листалка)
+    keyboard.row(CallbackButton(text=ВСЕ_ТЕМЫ, payload="m"))
+    _строка_возврата(keyboard, survey, who)
+    return keyboard.as_markup()
+
+
+def _кнопки_статьи(заголовок: str, survey=None, who: str = ""):
+    """Под статьёй: соседи по ветви и дорога назад. Тупика быть не должно."""
+    from maxapi.types.attachments.buttons import CallbackButton
+    from maxapi.utils.inline_keyboard import InlineKeyboardBuilder
+
+    keyboard = InlineKeyboardBuilder()
+    for сосед in knowledge.соседи(заголовок, сколько=3):
+        keyboard.row(CallbackButton(text=_fits(knowledge.подпись(сосед)),
+                                    payload="k:" + сосед[:60]))
+
+    низ = []
+    ветвь = knowledge.ветвь(knowledge.где(заголовок) or "")
+    if ветвь:
+        низ.append(CallbackButton(text="‹ " + ветвь["кратко"],
+                                  payload=f"v:{ветвь['id']}:1"))
+    низ.append(CallbackButton(text=ВСЕ_ТЕМЫ, payload="m"))
+    keyboard.row(*низ)
+    _строка_возврата(keyboard, survey, who)
+    return keyboard.as_markup()
+
+
 async def меню_тем(bot, chat_id, who: str, survey=None) -> None:
-    """Показать, о чём вообще можно спросить. Для тех, кто не знает."""
+    """Карта тем: с чего человек начинает, когда не знает, что спрашивать."""
     if survey is not None:
         survey.understood(who)
     try:
-        вступление, вопросы = knowledge.начать()
-        разметка = _кнопки_подсказок("")           # начальный набор
-        await _отправить(bot, chat_id, who, вступление, разметка)
-        log.info("%s: показано меню тем", who)
+        await _отправить(bot, chat_id, who,
+                         КАРТА_ЗАГОЛОВОК + "\n\n" + КАРТА_ПОДПИСЬ,
+                         _кнопки_карты(survey, who))
+        log.info("%s: показана карта тем", who)
     except Exception as error:                                  # noqa: BLE001
-        log.warning("меню тем не отправилось: %s", error)
+        log.warning("карта тем не отправилась: %s", error)
 
 
-async def статья(bot, chat_id, who: str, заголовок: str) -> bool:
-    """Прислать статью, которую человек выбрал кнопкой, и подсказки к ней."""
+async def ветвь(bot, chat_id, who: str, id: str, номер: int = 1,
+                survey=None) -> bool:
+    """Одна ветвь карты. Человек должен видеть, где он и сколько ещё."""
+    стр = knowledge.страница(id, номер)
+    if not стр:
+        return False
+    if survey is not None:
+        survey.understood(who)
+    последняя = стр["первая"] + len(стр["статьи"]) - 1
+    шапка = стр["название"]
+    if стр["всего"] > 1:
+        шапка += f"\n\nТемы {стр['первая']}–{последняя} из {стр['статей']}"
+    await _отправить(bot, chat_id, who, шапка, _кнопки_ветви(стр, survey, who))
+    log.info("%s: показана ветвь %s, страница %s", who, id, стр["номер"])
+    return True
+
+
+async def статья(bot, chat_id, who: str, заголовок: str, survey=None) -> bool:
+    """Статья, выбранная кнопкой: где мы находимся, текст и куда дальше."""
     текст = knowledge.статья_целиком(заголовок)
     if not текст:
         return False
+    # Путь первой строкой. Без него человек через три нажатия не помнит,
+    # откуда пришёл, и любое следующее сообщение читается как случайное.
+    крошки = knowledge.путь(заголовок)
+    if крошки:
+        текст = крошки.rstrip(" ·") + "\n\n" + текст
     await _отправить(bot, chat_id, who, текст + "\n\n" + СПРАВКА_ПОДПИСЬ,
-                     _кнопки_подсказок(заголовок, кроме=заголовок))
+                     _кнопки_статьи(заголовок, survey, who))
     log.info("%s: отправлена статья по кнопке", who)
     return True
 
@@ -610,13 +723,39 @@ def build_dispatcher(survey: Survey):
                 log.debug("Не удалось обновить кнопки: %s", error)
                 await подтвердить(event, "Принято")
 
+        if action == "q":
+            # «Вернуться к анкете»: повторяем текущий вопрос с его кнопками.
+            await подтвердить(event, "Возвращаемся")
+            if survey.current(who):
+                await say(event.bot, chat_id, who, survey.question_text(who))
+            else:
+                await say(event.bot, chat_id, who, survey.summary(who))
+            return
+
+        if action == "m":
+            # «Все темы» — карта. Работает из любого места разговора.
+            await подтвердить(event, "Открываю")
+            await меню_тем(event.bot, chat_id, who, survey)
+            return
+
+        if action == "v" and len(parts) >= 2:
+            # Ветвь карты: v:<ветвь>:<страница>. Номер страницы в payload,
+            # а не в состоянии, — тогда кнопка из старого сообщения ведёт
+            # туда же, куда вела вчера.
+            await подтвердить(event, "Открываю")
+            номер = int(parts[2]) if len(parts) > 2 and parts[2].isdigit() else 1
+            if not await ветвь(event.bot, chat_id, who, parts[1], номер, survey):
+                log.info("%s: ветвь не найдена: %s", who, parts[1][:20])
+                await меню_тем(event.bot, chat_id, who, survey)
+            return
+
         if action == "k":
             # Кнопка-подсказка: человек выбрал готовый вопрос из базы.
             # Состояние анкеты не трогаем — это чтение, а не ответ.
             await подтвердить(event, "Сейчас пришлю")
             survey.understood(who)
             заголовок = (event.callback.payload or "")[2:]
-            if not await статья(event.bot, chat_id, who, заголовок):
+            if not await статья(event.bot, chat_id, who, заголовок, survey):
                 log.info("%s: статья не найдена: %s", who, заголовок[:40])
                 # Статья могла уехать из базы вместе с правкой файла,
                 # а кнопка на неё осталась в старом сообщении. Молчать
