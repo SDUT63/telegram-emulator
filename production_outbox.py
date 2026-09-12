@@ -9,7 +9,7 @@ import weakref
 from typing import Any, Callable, TypeVar
 import fallback
 import knowledge
-from chatbot_survey import Survey
+from chatbot_survey import CONSENT_SHORT, Survey
 from outbox_postgres import PostgresOutbox, delivery_key
 from production_storage import ProductionPostgresSurvey
 from storage_postgres import _TX_CONNECTION, _TX_EVENT, _TX_USER, _TX_ACCEPTED
@@ -106,7 +106,7 @@ class DurableProductionPostgresSurvey(ProductionPostgresSurvey):
                 if args[:1] == ["back"]:
                     if self.stage(uid) != "consent": return ""
                     _OUTBOX_KEYBOARD.set(consent_keyboard(full=False))
-                    return self.consent_short_text(uid) if hasattr(self, "consent_short_text") else __import__("chatbot_survey").CONSENT_SHORT
+                    return CONSENT_SHORT
                 if self.stage(uid) != "consent": return ""
                 return self.grant_consent(uid) if args[:1] == ["y"] else self.refuse_consent(uid)
             if action == "a" and len(args) == 2:
