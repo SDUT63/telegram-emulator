@@ -4,6 +4,7 @@ from __future__ import annotations
 from typing import Any
 import knowledge
 from chatbot_survey import Survey
+ASK_WORDS = {"спросить", "хочу спросить", "у меня вопрос", "вопрос", "задать вопрос", "что спросить", "что можно спросить", "о чём можно спросить", "о чем можно спросить", "не знаю что спросить", "не знаю, что спросить", "темы", "покажи темы", "список тем", "меню", "подсказки", "подскажи", "подскажите", "справка", "справочник", "информация", "инфо", "что ты умеешь", "что умеешь", "чем поможешь", "чем ты поможешь", "не знаю с чего начать", "с чего начать", "с чего начинать", "/ask", "/faq", "/menu", "/topics"}
 BUTTON_LIMIT = 64
 TWO_COLUMNS_AT = 17.5
 TWO_COLUMNS_AT_MULTI = 15.0
@@ -46,16 +47,11 @@ def layout(survey: Survey, user_id: str) -> list[list[tuple[str, str]]]:
         rows.append([("Мои ответы", "m"), ("Заполнить заново", "n")]); return rows
     step, question = spot
     if question["kind"] != "choice": return rows
-    options: list[str] = question["options"]
-    multi = bool(question.get("multi"))
-    picked = survey.picked(user_id, step) if multi else []
-    nothing = Survey.none_index(question) if multi else None
-    shown = [i for i in range(len(options)) if i != nothing]
-    row: list[tuple[str, str]] = []
-    per_row = _columns([options[i] for i in shown], multi)
+    options: list[str] = question["options"]; multi = bool(question.get("multi"))
+    picked = survey.picked(user_id, step) if multi else []; nothing = Survey.none_index(question) if multi else None
+    shown = [i for i in range(len(options)) if i != nothing]; row: list[tuple[str, str]] = []; per_row = _columns([options[i] for i in shown], multi)
     for index in shown:
-        label = fits((MARK_ON if multi and index in picked else "") + options[index])
-        row.append((label, f"t:{step}:{index}" if multi else f"a:{step}:{index}"))
+        row.append((fits((MARK_ON if multi and index in picked else "") + options[index]), f"t:{step}:{index}" if multi else f"a:{step}:{index}"))
         if len(row) == per_row: rows.append(row); row = []
     if row: rows.append(row)
     bottom: list[tuple[str, str]] = []
@@ -78,8 +74,7 @@ def navigation_keyboard(action: str, args: list[str], survey: Survey | None, use
         if _in_questionnaire(survey, user_id): rows.append([[К_АНКЕТЕ, "q"]])
         return rows
     if action == "v" and args:
-        number = int(args[1]) if len(args) > 1 and args[1].isdigit() else 1
-        page = knowledge.страница(args[0], number)
+        number = int(args[1]) if len(args) > 1 and args[1].isdigit() else 1; page = knowledge.страница(args[0], number)
         if not page: return [[[ВСЕ_ТЕМЫ, "map"]]]
         for title in page["статьи"]: rows.append([[fits(knowledge.подпись(title)), "k:" + title[:60]]])
         nav: list[list[str]] = []
@@ -92,8 +87,7 @@ def navigation_keyboard(action: str, args: list[str], survey: Survey | None, use
     if action == "k" and args:
         title = args[0]
         for neighbor in knowledge.соседи(title, сколько=3): rows.append([[fits(knowledge.подпись(neighbor)), "k:" + neighbor[:60]]])
-        branch = knowledge.ветвь(knowledge.где(title) or "")
-        bottom: list[list[str]] = []
+        branch = knowledge.ветвь(knowledge.где(title) or ""); bottom: list[list[str]] = []
         if branch: bottom.append(["‹ " + branch["кратко"], f"v:{branch['id']}:1"])
         bottom.append([ВСЕ_ТЕМЫ, "map"]); rows.append(bottom)
         if _in_questionnaire(survey, user_id): rows.append([[К_АНКЕТЕ, "q"]])
@@ -102,13 +96,13 @@ def navigation_keyboard(action: str, args: list[str], survey: Survey | None, use
     return rows
 
 def map_screen(survey: Survey | None = None, user_id: str = "") -> tuple[str, list[list[list[str]]]]:
-    return KАРТА_ЗАГОЛОВОК + "\n\n" + KАРТА_ПОДПИСЬ, navigation_keyboard("map", [], survey, user_id)
+    return KАРТА_ЗАГОЛОВОК + "\n\n" + КАРТА_ПОДПИСЬ, navigation_keyboard("map", [], survey, user_id)
 
 def branch_screen(branch_id: str, page_number: int = 1, survey: Survey | None = None, user_id: str = "") -> tuple[str, list[list[list[str]]]] | None:
     page = knowledge.страница(branch_id, page_number)
     if not page: return None
-    last = page["первая"] + len(page["статьи"]) - 1
-    header = page["название"] + (f"\n\nТемы {page['первая']}–{last} из {page['статей']}" if page["всего"] > 1 else "")
+    last = page["первая"] + len(page["статьи"]) - 1; header = page["название"]
+    if page["всего"] > 1: header += f"\n\nТемы {page['первая']}–{last} из {page['статей']}"
     return header, navigation_keyboard("v", [branch_id, str(page_number)], survey, user_id)
 
 def article_screen(title: str, survey: Survey | None = None, user_id: str = "") -> tuple[str, list[list[list[str]]]] | None:
