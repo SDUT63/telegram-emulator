@@ -48,6 +48,9 @@ jobs:
       - name: Compile Python sources
         run: python -m compileall -q .
 
+      - name: Apply PostgreSQL migrations
+        run: python scripts/migrate_postgres.py
+
       - name: Run MAX bot tests
         run: |
           python -m pytest -q \
@@ -56,6 +59,8 @@ jobs:
             tests/test_storage_postgres.py \
             tests/test_outbox_postgres.py \
             tests/test_production_outbox.py \
+            tests/test_production_e2e.py \
+            tests/test_outbox_multiworker.py \
             tests/test_durable_outbox_worker.py \
             tests/test_webhook_config.py \
             tests/test_crm_outbox.py
