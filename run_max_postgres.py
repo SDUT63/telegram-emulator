@@ -10,8 +10,8 @@ from __future__ import annotations
 import asyncio
 import os
 
-import max_bot
 from durable_outbox_worker import run as run_durable_outbox
+from max_config import COMMANDS, read_token
 from max_production_dispatcher import build_dispatcher
 from postgres_guard import require_migrations
 from production_outbox import DurableProductionPostgresSurvey
@@ -23,7 +23,7 @@ async def _run() -> None:
     from maxapi import Bot
     from maxapi.types import BotCommand
 
-    token = max_bot.read_token()
+    token = read_token()
     survey = DurableProductionPostgresSurvey(list_options=False)
     seen = TransactionalPersistentSeen()
     bot = Bot(token)
@@ -34,7 +34,7 @@ async def _run() -> None:
         await bot.delete_webhook()
         try:
             await bot.set_commands(
-                *(BotCommand(name=name, description=text) for name, text in max_bot.COMMANDS)
+                *(BotCommand(name=name, description=text) for name, text in COMMANDS)
             )
         except Exception as error:  # noqa: BLE001
             print(f"Предупреждение: меню MAX не обновилось: {error}")
@@ -59,8 +59,6 @@ def main() -> None:
         )
     os.environ.setdefault("SDUT_REQUIRE_MIGRATIONS", "1")
     require_migrations()
-    # Fail closed if any production file still contains an application-level
-    # MAX send outside the explicit transport boundary.
     require_clean()
     asyncio.run(_run())
 
