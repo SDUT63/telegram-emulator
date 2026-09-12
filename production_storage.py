@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import time
 
-from chatbot_survey import ALREADY_DONE, CONSENT_NO, RESUMED, Survey
+from chatbot_survey import ALREADY_DONE, CONSENT_NO, CONSENT_SHORT, RESUMED, Survey
 from storage_postgres import (
     _TX_CONNECTION,
     _TX_EVENT,
@@ -20,7 +20,7 @@ class ProductionPostgresSurvey(TransactionalPostgresSurvey):
         return self._mutate(str(user_id), "message", {"kind": "message"}, lambda: Survey.handle(self, str(user_id), text), "")
 
     def grant_consent(self, user_id: str) -> str:
-        return self._mutate(str(user_id), "callback", {"action": "grant_consent"}, lambda: Survey.grant_consent(self, str(user_id),), "")
+        return self._mutate(str(user_id), "callback", {"action": "grant_consent"}, lambda: Survey.grant_consent(self, str(user_id)), "")
 
     def refuse_consent(self, user_id: str) -> str:
         return self._mutate(str(user_id), "callback", {"action": "refuse_consent"}, lambda: Survey.refuse_consent(self, str(user_id)), "")
@@ -35,17 +35,17 @@ class ProductionPostgresSurvey(TransactionalPostgresSurvey):
         return self._mutate(str(user_id), "callback", {"action": "restart"}, lambda: Survey.restart_after_consent(self, str(user_id)), "")
 
     def start(self, user_id: str) -> str:
-        """Start/resume atomically using the state loaded under the row lock."""
+        """Start/resume atomically using the state loaded under the row lock.
+
+        An existing row is never passed to Survey.start(): the legacy method
+        intentionally creates a fresh case and would be destructive here.
+        """
         user_id = str(user_id)
         token = None
         if _TX_CONNECTION.get() is None:
             token = _TX_EVENT.set(f"start:{user_id}:{time.time_ns()}")
         try:
             def start_loaded() -> str:
-                # _begin_event() has just loaded the authoritative row while
-                # holding its FOR UPDATE lock. Never call Survey.start() on
-                # an existing row: the legacy implementation intentionally
-                # resets state and is correct only for a genuinely new user.
                 person = self.state.get(user_id)
                 if person is not None:
                     if person.get("finished"):
@@ -55,6 +55,9 @@ class ProductionPostgresSurvey(TransactionalPostgresSurvey):
                         return CONSENT_NO
                     if consent.get("at"):
                         return RESUMED + "\n\n" + self.question_text(user_id)
+                    # A pre-consent/legacy row must not be reset. Keep the
+                    # existing record and ask for the missing legal decision.
+                    return CONSENT_SHORT
                 return Survey.start(self, user_id)
 
             return self._mutate(
