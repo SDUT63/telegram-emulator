@@ -7,11 +7,14 @@ import pathlib
 import sys
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
+# max_bot.py remains the SQLite/pilot compatibility module. It is deliberately
+# not a production entrypoint anymore. Production starts only through the
+# explicit PostgreSQL launchers and max_production_dispatcher.py.
 PRODUCTION_FILES = {
-    ROOT / "max_bot.py",
     ROOT / "max_webhook.py",
     ROOT / "run_max_postgres.py",
     ROOT / "run_max_webhook.py",
+    ROOT / "max_production_dispatcher.py",
     ROOT / "production_outbox.py",
     ROOT / "durable_outbox_worker.py",
     ROOT / "max_outbound_transport.py",
@@ -35,14 +38,9 @@ def audit(path: pathlib.Path) -> list[str]:
         if isinstance(node, ast.Assign):
             for target in node.targets:
                 if isinstance(target, ast.Attribute) and target.attr == "send_message":
-                    problems.append(
-                        f"{path.relative_to(ROOT)}:{node.lineno}: assignment to send_message"
-                    )
-        if isinstance(node, ast.Call) and _call_name(node) == "send_message":
-            if path != EXPLICIT_TRANSPORT:
-                problems.append(
-                    f"{path.relative_to(ROOT)}:{node.lineno}: direct send_message call outside explicit transport"
-                )
+                    problems.append(f"{path.relative_to(ROOT)}:{node.lineno}: assignment to send_message")
+        if isinstance(node, ast.Call) and _call_name(node) == "send_message" and path != EXPLICIT_TRANSPORT:
+            problems.append(f"{path.relative_to(ROOT)}:{node.lineno}: direct send_message call outside explicit transport")
     return problems
 
 
@@ -51,32 +49,20 @@ def problems() -> list[str]:
     for path in sorted(PRODUCTION_FILES):
         if path.exists():
             found.extend(audit(path))
-
-    transport_tree = ast.parse(
-        EXPLICIT_TRANSPORT.read_text(encoding="utf-8"),
-        filename=str(EXPLICIT_TRANSPORT),
-    )
-    transport_calls = [
-        node for node in ast.walk(transport_tree)
-        if isinstance(node, ast.Call) and _call_name(node) == "send_message"
-    ]
+    transport_tree = ast.parse(EXPLICIT_TRANSPORT.read_text(encoding="utf-8"), filename=str(EXPLICIT_TRANSPORT))
+    transport_calls = [node for node in ast.walk(transport_tree)
+                       if isinstance(node, ast.Call) and _call_name(node) == "send_message"]
     if len(transport_calls) != 1:
-        found.append(
-            f"{EXPLICIT_TRANSPORT.relative_to(ROOT)}: expected exactly one MAX send_message call, found {len(transport_calls)}"
-        )
+        found.append(f"{EXPLICIT_TRANSPORT.relative_to(ROOT)}: expected exactly one MAX send_message call, found {len(transport_calls)}")
     return found
 
 
 def require_clean() -> None:
-    """Refuse a production launch while outbound paths bypass the transport."""
+    """Refuse production launch while application delivery bypasses transport."""
     found = problems()
     if found:
         details = "\n".join(f"- {item}" for item in found)
-        raise SystemExit(
-            "Production outbound architecture gate FAILED. "
-            "All MAX message delivery must pass through max_outbound_transport.py.\n"
-            + details
-        )
+        raise SystemExit("Production outbound architecture gate FAILED. All MAX message delivery must pass through max_outbound_transport.py.\n" + details)
 
 
 def main() -> int:
