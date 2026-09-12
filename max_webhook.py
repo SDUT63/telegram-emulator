@@ -107,7 +107,7 @@ def validate_settings(url: str, secret: str, path: str) -> list[str]:
 
 
 def _storage_classes():
-    """Return production PostgreSQL classes when a DSN is configured."""
+    """Return PostgreSQL classes when a DSN is configured; SQLite otherwise."""
     dsn = (os.getenv("SDUT_DATABASE_URL") or "").strip()
     if dsn:
         from storage_postgres import PersistentSeen, PostgresSurvey
@@ -182,9 +182,28 @@ async def main() -> None:
     app = webhook.create_app(path=path)
 
     async def health(_: web.Request) -> web.Response:
-        return web.json_response({"status": "ok", "storage": storage_name})
+        try:
+            storage_ok = bool(survey.health()) if hasattr(survey, "health") else True
+        except Exception:
+            storage_ok = False
+        status = "ok" if storage_ok else "degraded"
+        return web.json_response(
+            {"status": status, "storage": storage_name},
+            status=200 if storage_ok else 503,
+        )
+
+    async def ready(_: web.Request) -> web.Response:
+        try:
+            storage_ok = bool(survey.health()) if hasattr(survey, "health") else True
+        except Exception:
+            storage_ok = False
+        return web.json_response(
+            {"ready": storage_ok, "storage": storage_name},
+            status=200 if storage_ok else 503,
+        )
 
     app.router.add_get("/health", health)
+    app.router.add_get("/ready", ready)
     queue = asyncio.create_task(max_bot.outbox_worker(bot))
 
     name = getattr(me, "name", None) or "бот"
