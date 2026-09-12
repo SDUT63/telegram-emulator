@@ -36,7 +36,7 @@ def test_questionnaire_keyboard_is_serialized_without_transport_objects():
     import max_ui
 
     class SurveyStub:
-        state = {"u": {"history": []}}
+        def user_state(self, user_id): return {"history": []}
         def reading(self, user_id): return False
         def stage(self, user_id): return "consent"
         def current(self, user_id): return None
@@ -45,3 +45,19 @@ def test_questionnaire_keyboard_is_serialized_without_transport_objects():
     assert rows
     assert all(isinstance(cell, tuple) and len(cell) == 2 for row in rows for cell in row)
     assert rows[0][0][1] == "c:y"
+
+
+def test_production_ui_rejects_legacy_state_only_surveys():
+    import pytest
+    import max_ui
+
+    class LegacyOnlySurvey:
+        state = {"u": {"history": []}}
+        def reading(self, user_id): return False
+        def stage(self, user_id): return "survey"
+        def current(self, user_id):
+            return 0, {"kind": "choice", "options": ["Да"], "required": True}
+        def picked(self, user_id, step): return []
+
+    with pytest.raises(TypeError, match="user_state"):
+        max_ui.layout(LegacyOnlySurvey(), "u")
