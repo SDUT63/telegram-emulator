@@ -77,13 +77,14 @@ def test_attachment_ack_is_durable_and_has_its_own_delivery_key():
     with queue._connect(queue.db_url) as conn:
         row = conn.execute(
             "SELECT delivery_key,payload,status FROM outbox_messages WHERE delivery_key=%s",
-            (child_key,),
+            (delivery_key(f"{parent_event}:message-note", ordinal=1),),
         ).fetchone()
         note = conn.execute(
             "SELECT event_id FROM processed_events WHERE event_id=%s",
             (f"{parent_event}:message-note",),
         ).fetchone()
 
+    assert child_key.endswith(":message-note:out:0") is False
     assert row is not None
     assert row["payload"]["kind"] == "max_text"
     assert "Файл получил" in row["payload"]["text"]
@@ -91,22 +92,19 @@ def test_attachment_ack_is_durable_and_has_its_own_delivery_key():
     assert note is not None
 
 
-def test_message_with_attachment_queues_main_reply_and_ack_without_key_collision():
-    """Two outbound intents from one inbound event must have distinct keys."""
+def test_message_with_attachment_is_atomic_and_queues_two_intents():
+    """One inbound event commits state, metadata and both outbound intents."""
     survey = DurableProductionPostgresSurvey()
     user_id = f"outbox-atomic-file-{uuid.uuid4().hex}"
     event_id = f"outbox-atomic-file-event-{uuid.uuid4().hex}"
+    files = [{"kind": "file", "name": "referral.pdf", "url": "https://max.invalid/file", "size": 1234}]
+
     token = _TX_EVENT.set(event_id)
     try:
-        result = survey._mutate(
-            user_id,
-            "message_attachment",
-            {"kind": "message", "has_files": True},
-            lambda: "Основной ответ",
-            "",
-        )
-        assert result == "Основной ответ"
+        result = survey.handle_message_event(user_id, "hello", files)
+        assert result
         assert consume_direct_send_suppression() is True
+        assert consume_direct_send_suppression() is False
     finally:
         _TX_EVENT.reset(token)
 
@@ -117,12 +115,34 @@ def test_message_with_attachment_queues_main_reply_and_ack_without_key_collision
             "WHERE delivery_key IN (%s,%s) ORDER BY delivery_key",
             (delivery_key(event_id), delivery_key(event_id, ordinal=1)),
         ).fetchall()
+        processed = conn.execute(
+            "SELECT event_type,event_hash FROM processed_events WHERE event_id=%s",
+            (event_id,),
+        ).fetchone()
+        state = conn.execute(
+            "SELECT state_json FROM survey_state WHERE user_id=%s",
+            (user_id,),
+        ).fetchone()
 
     assert len(rows) == 2
     by_key = {row["delivery_key"]: row for row in rows}
-    assert by_key[delivery_key(event_id)]["payload"]["text"] == "Основной ответ"
+    assert by_key[delivery_key(event_id)]["payload"]["text"] == result
     assert "Файл получил" in by_key[delivery_key(event_id, ordinal=1)]["payload"]["text"]
     assert all(row["status"] == "pending" for row in rows)
+    assert processed is not None
+    assert processed["event_type"] == "message"
+    assert processed["event_hash"]
+    assert state is not None
+
+    # The attachment contents are part of idempotency, but are not duplicated
+    # into the audit log as raw health/free-text data.
+    with queue._connect(queue.db_url) as conn:
+        audit = conn.execute(
+            "SELECT payload_json FROM audit_events WHERE user_id=%s ORDER BY id DESC LIMIT 1",
+            (user_id,),
+        ).fetchone()
+    assert audit is not None
+    assert "fingerprint" not in audit["payload_json"]
 
 
 def test_survey_failure_rolls_back_outbox_and_state():
