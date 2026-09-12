@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Transactional outbound bridge for the production MAX bot.
 
-Survey state, audit record, processed-event marker and the outbound reply
-intent are committed in one PostgreSQL transaction. The actual MAX request is
+Survey state, audit record, processed-event marker and outbound reply intents
+are committed in one PostgreSQL transaction. The actual MAX request is
 performed later by the durable worker, so a process crash cannot lose a reply
 that was already committed.
 
@@ -13,6 +13,8 @@ network delivery.
 from __future__ import annotations
 
 import contextvars
+import hashlib
+import json
 import threading
 import weakref
 from typing import Any, Callable, TypeVar
@@ -45,6 +47,23 @@ def consume_direct_send_suppression() -> bool:
     return True
 
 
+def _message_fingerprint(text: str, files: list[dict[str, Any]]) -> str:
+    """Build a collision fingerprint without storing the incoming text.
+
+    The raw message can contain health data, names and phone numbers. Only the
+    deterministic digest crosses into the event payload; `_finish_event()`
+    removes it again before writing the audit record.
+    """
+    canonical = json.dumps(
+        {"text": text, "files": files},
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+        default=str,
+    ).encode("utf-8")
+    return hashlib.sha256(canonical).hexdigest()
+
+
 def _keyboard_rows(survey: ProductionPostgresSurvey, user_id: str) -> list[list[list[str]]]:
     """Serialize the transport-independent keyboard layout into JSON."""
     from max_bot import layout
@@ -58,12 +77,9 @@ def _keyboard_rows(survey: ProductionPostgresSurvey, user_id: str) -> list[list[
 class DurableProductionPostgresSurvey(ProductionPostgresSurvey):
     """Production survey whose textual replies enter the durable outbox.
 
-    ``ProductionPostgresSurvey`` keeps the questionnaire in ``self.state`` for
-    compatibility with the legacy Survey implementation. The production
-    object can be touched by concurrent webhook requests, therefore mutation
-    serialization is scoped to the affected user rather than globally. This
-    preserves same-user ordering without turning unrelated users into one
-    serial queue. PostgreSQL remains the cross-process serialization boundary.
+    Same-user mutations are serialized in-process and PostgreSQL provides the
+    cross-process transaction boundary. The legacy Survey state object remains
+    a compatibility cache; PostgreSQL is still the persistence authority.
     """
 
     _lock_registry_guard = threading.RLock()
@@ -120,6 +136,37 @@ class DurableProductionPostgresSurvey(ProductionPostgresSurvey):
             finally:
                 _OUTBOX_RESULT.reset(token)
 
+    def handle_message_event(
+        self,
+        user_id: str,
+        text: str,
+        files: list[dict[str, Any]] | None = None,
+    ) -> str:
+        """Atomically process one inbound MAX message including attachments.
+
+        This is the production dispatcher boundary: questionnaire state,
+        inbound event identity, attachment metadata and every outbound intent
+        are committed together. The dispatcher can fall back to the legacy
+        `handle()` + `note_message()` sequence for non-production Survey
+        implementations.
+        """
+        uid = str(user_id)
+        normalized_text = str(text or "")
+        normalized_files = list(files or [])
+        payload = {
+            "kind": "message",
+            "has_files": bool(normalized_files),
+            "fingerprint": _message_fingerprint(normalized_text, normalized_files),
+        }
+
+        def mutate() -> str:
+            result = Survey.handle(self, uid, normalized_text)
+            if normalized_files:
+                Survey.note_message(self, uid, normalized_text, normalized_files)
+            return result
+
+        return self._mutate(uid, "message", payload, mutate, "")
+
     def _finish_event(
         self,
         ctx,
@@ -140,9 +187,9 @@ class DurableProductionPostgresSurvey(ProductionPostgresSurvey):
 
             self._save_user(conn, str(user_id))
 
-            # Audit data deliberately excludes any optional fingerprint fields
-            # used only to detect event-id collisions. Health/free-text content
-            # must not be duplicated into an audit log merely for idempotency.
+            # Audit data deliberately excludes fingerprint fields used only to
+            # detect event-id collisions. Health/free-text content must not be
+            # duplicated into an audit log merely for idempotency.
             audit_payload = dict(payload or {})
             audit_payload.pop("fingerprint", None)
             self.audit(str(user_id), event_type, audit_payload)
@@ -164,12 +211,10 @@ class DurableProductionPostgresSurvey(ProductionPostgresSurvey):
                 )
                 queued = True
 
-            # Attachment acknowledgement is a distinct outbound intent, not
-            # another representation of the main reply. It therefore gets its
-            # own deterministic delivery key. Reusing event_id:out:0 here
-            # would collide with the main reply whenever both exist and would
-            # correctly abort the transaction as a payload-integrity violation.
-            if event_type == "message_attachment" and payload and payload.get("has_files") and event_id:
+            # Attachment acknowledgement is a second logical outbound intent
+            # of the SAME inbound event. Ordinal 1 makes it deterministic and
+            # collision-free with the main reply at ordinal 0.
+            if payload and payload.get("has_files") and event_id:
                 from max_bot import FILES_TAKEN
 
                 outbox.enqueue(
