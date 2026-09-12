@@ -7,8 +7,10 @@ Python dependencies are isolated in .venv.
 """
 from __future__ import annotations
 
+import getpass
 import os
 import platform
+import stat
 import subprocess
 import sys
 
@@ -84,21 +86,45 @@ def token_exists() -> bool:
         return False
 
 
+def _warn_token_permissions() -> None:
+    """Warn on POSIX when token.txt is readable by group/other users."""
+    if os.name == "nt" or not os.path.exists(TOKEN):
+        return
+    try:
+        mode = stat.S_IMODE(os.stat(TOKEN).st_mode)
+    except OSError:
+        return
+    if mode & 0o077:
+        say("[warn] token.txt доступен группе/другим пользователям; ограничиваю права до 600.")
+        try:
+            os.chmod(TOKEN, 0o600)
+        except OSError as exc:
+            say(f"[warn] Не удалось ограничить права token.txt: {exc}")
+
+
 def ask_token() -> bool:
     say("Токен MAX не найден. Вставьте токен одной строкой.")
     try:
-        token = input("Токен: ").strip()
+        # getpass не показывает токен на экране во время ввода.
+        token = getpass.getpass("Токен: ").strip()
     except (EOFError, KeyboardInterrupt):
         return False
     if not token:
         return False
     try:
-        with open(TOKEN, "w", encoding="utf-8") as fh:
-            fh.write(token + "\n")
-        try:
-            os.chmod(TOKEN, 0o600)
-        except OSError:
-            pass
+        if os.name != "nt":
+            # Создаём файл сразу с 0600, а не сначала с обычными правами.
+            fd = os.open(TOKEN, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+            with os.fdopen(fd, "w", encoding="utf-8") as fh:
+                fh.write(token + "\n")
+        else:
+            with open(TOKEN, "w", encoding="utf-8") as fh:
+                fh.write(token + "\n")
+            try:
+                os.chmod(TOKEN, 0o600)
+            except OSError:
+                pass
+        _warn_token_permissions()
     except OSError as exc:
         say(f"Не удалось сохранить token.txt: {exc}")
         return False
@@ -215,6 +241,9 @@ def main() -> int:
         if not ask_token():
             say("Без токена запуск невозможен.")
             return 6
+
+    if mode in {"bot", "doctor"}:
+        _warn_token_permissions()
 
     return start(mode)
 
