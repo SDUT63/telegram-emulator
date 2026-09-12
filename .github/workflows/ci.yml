@@ -10,6 +10,22 @@ jobs:
   # MAX bot: Python syntax/import checks plus durable-storage and webhook tests.
   max-bot-python:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: sdut_test
+          POSTGRES_USER: sdut_test
+          POSTGRES_DB: sdut_test
+        options: >-
+          --health-cmd "pg_isready -U sdut_test -d sdut_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+        ports:
+          - 5432:5432
+    env:
+      SDUT_DATABASE_URL: postgresql://sdut_test:sdut_test@127.0.0.1:5432/sdut_test
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -30,7 +46,7 @@ jobs:
         run: python -m compileall -q .
 
       - name: Run MAX bot tests
-        run: python -m pytest -q tests/test_storage_sqlite.py tests/test_webhook_config.py
+        run: python -m pytest -q tests/test_storage_sqlite.py tests/test_storage_postgres.py tests/test_webhook_config.py
 
   # Go Backend Tests
   go-backend:
