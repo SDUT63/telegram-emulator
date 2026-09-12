@@ -5,7 +5,7 @@ import uuid
 
 import pytest
 
-from outbox_postgres import PostgresOutbox, delivery_key
+from outbox_postgres import PostgresOutbox, delivery_key, payload_sha256
 
 pytestmark = pytest.mark.skipif(
     not os.getenv("SDUT_DATABASE_URL"),
@@ -26,6 +26,11 @@ def test_delivery_key_is_stable_and_validates():
         delivery_key("evt", -1)
 
 
+def test_payload_digest_is_canonical():
+    assert payload_sha256({"b": 2, "a": 1}) == payload_sha256({"a": 1, "b": 2})
+    assert payload_sha256({"a": 1}) != payload_sha256({"a": 2})
+
+
 def test_outbox_is_idempotent_and_claimable():
     queue = PostgresOutbox()
     key = _key("test-outbox-idempotency")
@@ -43,6 +48,12 @@ def test_outbox_is_idempotent_and_claimable():
     queue.mark_sent(first)
     stats = queue.stats()
     assert stats["sent"] >= 1
+
+    with queue._connect(queue.db_url) as conn:
+        row = conn.execute("SELECT payload,payload_sha256,status FROM outbox_messages WHERE id=%s", (first,)).fetchone()
+    assert row["status"] == "sent"
+    assert row["payload"] == {"kind": "redacted"}
+    assert row["payload_sha256"] == payload_sha256(payload)
 
 
 def test_delivery_key_collision_is_rejected():
@@ -130,3 +141,35 @@ def test_stale_worker_lease_counts_toward_retry_budget():
     assert row["attempts"] == 1
     assert row["locked_by"] is None
     assert row["last_error"] == "worker lease expired"
+
+
+def test_prune_sent_creates_permanent_delivery_tombstone():
+    queue = PostgresOutbox()
+    key = _key("test-outbox-prune")
+    payload = {"text": "sensitive reply"}
+    message_id = queue.enqueue(delivery_key=key, user_id="test-user", payload=payload)
+    assert any(item.id == message_id for item in queue.claim(limit=10))
+    queue.mark_sent(message_id)
+
+    with queue._connect(queue.db_url) as conn:
+        conn.execute(
+            "UPDATE outbox_messages SET sent_at=CURRENT_TIMESTAMP - INTERVAL '2 days' WHERE id=%s",
+            (message_id,),
+        )
+
+    assert queue.prune_sent(retention_seconds=60 * 60, limit=10) >= 1
+
+    with queue._connect(queue.db_url) as conn:
+        assert conn.execute("SELECT 1 FROM outbox_messages WHERE id=%s", (message_id,)).fetchone() is None
+        tombstone = conn.execute(
+            "SELECT payload_sha256 FROM outbox_delivery_tombstones WHERE delivery_key=%s",
+            (key,),
+        ).fetchone()
+    assert tombstone["payload_sha256"] == payload_sha256(payload)
+
+    # Replay of the same logical event is a no-op after retention cleanup.
+    assert queue.enqueue(delivery_key=key, user_id="test-user", payload=payload) == 0
+
+    # Reusing the key for another message remains a hard collision forever.
+    with pytest.raises(ValueError, match="delivery_key collision"):
+        queue.enqueue(delivery_key=key, user_id="test-user", payload={"text": "different"})
