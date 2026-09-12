@@ -27,10 +27,6 @@ from storage_postgres import (
 
 T = TypeVar("T")
 
-# The dispatcher calls bot.send_message immediately after Survey.handle().
-# Production must suppress that direct send when the same logical reply has
-# already been durably committed to PostgreSQL. The launcher consumes this
-# flag exactly once; the durable worker performs the real network send.
 _OUTBOX_REPLY_QUEUED: contextvars.ContextVar[bool] = contextvars.ContextVar(
     "sdut_outbox_reply_queued", default=False
 )
@@ -49,8 +45,6 @@ def consume_direct_send_suppression() -> bool:
 
 def _keyboard_rows(survey: ProductionPostgresSurvey, user_id: str) -> list[list[list[str]]]:
     """Serialize the transport-independent keyboard layout into JSON."""
-    # Imported lazily: max_bot imports Survey and the production launcher
-    # installs this class into max_bot before constructing the dispatcher.
     from max_bot import layout
 
     return [
@@ -70,9 +64,6 @@ class DurableProductionPostgresSurvey(ProductionPostgresSurvey):
         fn: Callable[[], T],
         duplicate: T,
     ) -> T:
-        # The base implementation calls _finish_event() before returning.
-        # Capture the exact return value in a ContextVar so _finish_event can
-        # persist the corresponding outbound intent before COMMIT.
         token = _OUTBOX_RESULT.set(None)
 
         def wrapped() -> T:
@@ -108,14 +99,36 @@ class DurableProductionPostgresSurvey(ProductionPostgresSurvey):
 
             result = _OUTBOX_RESULT.get()
             event_id = _TX_EVENT.get()
+            outbox = PostgresOutbox(db_url=self.db_url)
+
             if isinstance(result, str) and result and event_id:
-                outbox = PostgresOutbox(db_url=self.db_url)
                 outbox.enqueue(
                     delivery_key=delivery_key(event_id),
                     user_id=str(user_id),
                     payload={
                         "kind": "max_text",
                         "text": result,
+                        "keyboard_rows": _keyboard_rows(self, str(user_id)),
+                    },
+                    conn=conn,
+                )
+                queued = True
+
+            # max_bot.on_message() records attachments immediately after the
+            # main handle() transaction. The legacy dispatcher is deliberately
+            # unchanged, so the attachment acknowledgement is its own durable
+            # child message. This closes the previous hole where a file was
+            # persisted but the user could receive no acknowledgement because
+            # the direct send had already been suppressed.
+            if event_type == "message_attachment" and payload and payload.get("has_files") and event_id:
+                from max_bot import FILES_TAKEN
+
+                outbox.enqueue(
+                    delivery_key=delivery_key(event_id),
+                    user_id=str(user_id),
+                    payload={
+                        "kind": "max_text",
+                        "text": FILES_TAKEN,
                         "keyboard_rows": _keyboard_rows(self, str(user_id)),
                     },
                     conn=conn,
