@@ -13,7 +13,7 @@ from chatbot_survey import Survey
 from outbox_postgres import PostgresOutbox, delivery_key
 from production_storage import ProductionPostgresSurvey
 from storage_postgres import _TX_CONNECTION, _TX_EVENT, _TX_USER, _TX_ACCEPTED
-from max_ui import FILES_TAKEN, СПРАВКА_ПОДПИСЬ, article_screen, branch_screen, map_screen, questionnaire_keyboard
+from max_ui import FILES_TAKEN, СПРАВКА_ПОДПИСЬ, article_screen, branch_screen, consent_keyboard, map_screen, questionnaire_keyboard
 T = TypeVar("T")
 _OUTBOX_RESULT: contextvars.ContextVar[Any] = contextvars.ContextVar("sdut_outbox_result", default=None)
 _OUTBOX_KEYBOARD: contextvars.ContextVar[Any] = contextvars.ContextVar("sdut_outbox_keyboard", default=None)
@@ -91,7 +91,7 @@ class DurableProductionPostgresSurvey(ProductionPostgresSurvey):
                 text, keyboard = screen
             elif action == "q":
                 spot = self.current(uid); text = self.summary(uid) if not spot else self.question_text(uid); keyboard = questionnaire_keyboard(self, uid)
-            elif action == "cfull": text = self.consent_text(uid); keyboard = questionnaire_keyboard(self, uid)
+            elif action == "cfull": text = self.consent_text(uid); keyboard = consent_keyboard(full=True)
             else: return ""
             _OUTBOX_KEYBOARD.set(keyboard); return text
         return self._mutate(uid, "navigation", payload, mutate, "")
@@ -103,6 +103,10 @@ class DurableProductionPostgresSurvey(ProductionPostgresSurvey):
             spot = self.current(uid)
             if action in {"a", "s", "d"} and args and (not spot or str(spot[0]) != args[0]): return ""
             if action == "c":
+                if args[:1] == ["back"]:
+                    if self.stage(uid) != "consent": return ""
+                    _OUTBOX_KEYBOARD.set(consent_keyboard(full=False))
+                    return self.consent_short_text(uid) if hasattr(self, "consent_short_text") else __import__("chatbot_survey").CONSENT_SHORT
                 if self.stage(uid) != "consent": return ""
                 return self.grant_consent(uid) if args[:1] == ["y"] else self.refuse_consent(uid)
             if action == "a" and len(args) == 2:
