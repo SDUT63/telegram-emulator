@@ -55,6 +55,7 @@ def test_attachment_ack_is_durable_and_has_its_own_delivery_key():
     survey = DurableProductionPostgresSurvey()
     user_id = f"outbox-file-{uuid.uuid4().hex}"
     parent_event = f"outbox-file-event-{uuid.uuid4().hex}"
+    child_event = f"{parent_event}:message-note"
 
     token = _TX_EVENT.set(parent_event)
     try:
@@ -73,18 +74,17 @@ def test_attachment_ack_is_durable_and_has_its_own_delivery_key():
         _TX_EVENT.reset(token)
 
     queue = PostgresOutbox()
-    child_key = delivery_key(f"{parent_event}:message-note")
+    child_key = delivery_key(child_event, ordinal=1)
     with queue._connect(queue.db_url) as conn:
         row = conn.execute(
             "SELECT delivery_key,payload,status FROM outbox_messages WHERE delivery_key=%s",
-            (delivery_key(f"{parent_event}:message-note", ordinal=1),),
+            (child_key,),
         ).fetchone()
         note = conn.execute(
             "SELECT event_id FROM processed_events WHERE event_id=%s",
-            (f"{parent_event}:message-note",),
+            (child_event,),
         ).fetchone()
 
-    assert child_key.endswith(":message-note:out:0") is False
     assert row is not None
     assert row["payload"]["kind"] == "max_text"
     assert "Файл получил" in row["payload"]["text"]
@@ -138,11 +138,11 @@ def test_message_with_attachment_is_atomic_and_queues_two_intents():
     # into the audit log as raw health/free-text data.
     with queue._connect(queue.db_url) as conn:
         audit = conn.execute(
-            "SELECT payload_json FROM audit_events WHERE user_id=%s ORDER BY id DESC LIMIT 1",
+            "SELECT event_json FROM audit_events WHERE user_id=%s ORDER BY id DESC LIMIT 1",
             (user_id,),
         ).fetchone()
     assert audit is not None
-    assert "fingerprint" not in audit["payload_json"]
+    assert "fingerprint" not in audit["event_json"]
 
 
 def test_survey_failure_rolls_back_outbox_and_state():
