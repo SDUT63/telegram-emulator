@@ -1,405 +1,256 @@
 #!/usr/bin/env python3
+"""One-click launcher for the SDUT MAX bot and operator tools.
+
+The repository is a local test/deployment bundle for the MAX bot. The launcher
+keeps the original useful modes (bot, CRM, check, doctor) while ensuring that
+Python dependencies are isolated in .venv.
 """
-Один запуск на всё: окружение, библиотеки, токен, проверка, старт.
-
-Задача этого файла — чтобы человеку, который скачал папку с ботом,
-не пришлось знать ничего про Python. Он открывает «Запустить-бота»,
-отвечает на один вопрос про токен и получает работающего бота.
-
-Что делается по порядку:
-
-  1. проверяется версия Python;
-  2. рядом с ботом создаётся отдельное окружение `.venv`, чтобы
-     библиотеки бота не смешивались с чужими на этом компьютере;
-  3. в него ставятся нужные библиотеки — один раз, при первом запуске;
-  4. спрашивается токен, если его ещё нет, и кладётся в token.txt;
-  5. проходит короткая самопроверка: на месте ли анкета, база знаний
-     и формы согласия;
-  6. запускается то, что попросили.
-
-Запуск:
-    python launcher.py            бот
-    python launcher.py crm        рабочее место координатора
-    python launcher.py check      только проверка, ничего не запускать
-    python launcher.py doctor     разбор связи с MAX, если бот не цепляется
-
-Работает и на Windows, и на Linux, и на macOS. Сети требует только
-на первом запуске — поставить библиотеки.
-"""
-
 from __future__ import annotations
 
+import getpass
 import os
 import platform
+import stat
 import subprocess
 import sys
 
-ЗДЕСЬ = os.path.dirname(os.path.abspath(__file__))
-ОКРУЖЕНИЕ = os.path.join(ЗДЕСЬ, ".venv")
-ФАЙЛ_ТОКЕНА = os.path.join(ЗДЕСЬ, "token.txt")
-
-# Метка «мы уже перезапустились в своём окружении». Без неё launcher
-# перезапускал бы сам себя бесконечно.
-МЕТКА = "СДУТ_ОКРУЖЕНИЕ_ГОТОВО"
-
-# Что ставим и чем это проверяется. Имя модуля и имя пакета совпадают
-# не всегда, поэтому пара.
-БИБЛИОТЕКИ = (
-    ("maxapi", "maxapi>=1.2.2", "сам бот"),
-    ("flask", "flask", "рабочее место координатора и страница-справочник"),
-    ("openpyxl", "openpyxl", "выгрузка обращений в Excel"),
-)
-
-МИНИМУМ = (3, 10)
-ЧЕРТА = "─" * 62
+HERE = os.path.dirname(os.path.abspath(__file__))
+VENV = os.path.join(HERE, ".venv")
+TOKEN = os.path.join(HERE, "token.txt")
+REQUIREMENTS = os.path.join(HERE, "requirements.txt")
+ENV_FLAG = "SDUT_LAUNCHER_ENV"
+MIN_PYTHON = (3, 10)
 
 
-# --------------------------------------------------------------- вывод
-
-def скажи(текст: str = "") -> None:
-    print(текст, flush=True)
+def venv_python() -> str:
+    return os.path.join(VENV, "Scripts" if os.name == "nt" else "bin", "python.exe" if os.name == "nt" else "python")
 
 
-def ок(текст: str) -> None:
-    скажи(f"  [ок]    {текст}")
+def say(text: str = "") -> None:
+    print(text, flush=True)
 
 
-def беда(текст: str) -> None:
-    скажи(f"  [!]     {текст}")
+def run(args: list[str], *, check: bool = False) -> int:
+    return subprocess.run(args, cwd=HERE, check=check).returncode
 
 
-def сколько(число: int, один: str, два: str, много: str) -> str:
-    """«1 вопрос», «2 вопроса», «34 вопроса», «11 вопросов».
+def ensure_environment() -> int:
+    """Create .venv and install the complete requirements set once."""
+    if sys.version_info < MIN_PYTHON:
+        say(f"Нужен Python {MIN_PYTHON[0]}.{MIN_PYTHON[1]} или новее.")
+        return 2
 
-    Мелочь, но бот и его окружение разговаривают с людьми, а «34 вопросов»
-    читается как небрежность — и справедливо.
-    """
-    сотня = число % 100
-    десяток = число % 10
-    if 11 <= сотня <= 14:
-        слово = много
-    elif десяток == 1:
-        слово = один
-    elif 2 <= десяток <= 4:
-        слово = два
-    else:
-        слово = много
-    return f"{число} {слово}"
+    if os.environ.get(ENV_FLAG) == "1":
+        return 0
 
-
-def заголовок(текст: str) -> None:
-    скажи()
-    скажи(ЧЕРТА)
-    скажи(f"  {текст}")
-    скажи(ЧЕРТА)
-
-
-def настроить_вывод() -> None:
-    """Русские буквы в консоли Windows.
-
-    Старая консоль работает в кодировке 866 и на UTF-8 отвечает
-    вопросительными знаками. Переключаем поток на UTF-8 сами: это
-    надёжнее, чем полагаться на настройки системы.
-    """
-    for поток in (sys.stdout, sys.stderr):
+    py = venv_python()
+    if not os.path.exists(py):
+        say("Создаю .venv...")
         try:
-            поток.reconfigure(encoding="utf-8", errors="replace")
-        except Exception:                                       # noqa: BLE001
-            pass
+            subprocess.run([sys.executable, "-m", "venv", VENV], cwd=HERE, check=True)
+        except subprocess.CalledProcessError as exc:
+            say(f"Не удалось создать .venv: {exc}")
+            return 3
+
+    say(f"Проверяю зависимости (Python {platform.python_version()})...")
+    probe = subprocess.run(
+        [py, "-c", "import maxapi, flask, openpyxl, psycopg"],
+        cwd=HERE,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+    if probe.returncode:
+        say("Устанавливаю зависимости из requirements.txt...")
+        try:
+            subprocess.run(
+                [py, "-m", "pip", "install", "--disable-pip-version-check", "-r", REQUIREMENTS],
+                cwd=HERE,
+                check=True,
+            )
+        except subprocess.CalledProcessError as exc:
+            say(f"Не удалось установить зависимости: {exc}")
+            return 4
+
+    env = dict(os.environ, **{ENV_FLAG: "1"})
+    args = [py, os.path.abspath(__file__), *sys.argv[1:]]
+    return subprocess.run(args, cwd=HERE, env=env).returncode
 
 
-# ----------------------------------------------------------- окружение
-
-def питон_окружения() -> str:
-    """Путь к Python внутри .venv — он разный на Windows и на остальных."""
-    if os.name == "nt":
-        return os.path.join(ОКРУЖЕНИЕ, "Scripts", "python.exe")
-    return os.path.join(ОКРУЖЕНИЕ, "bin", "python")
-
-
-def мы_в_окружении() -> bool:
-    if os.environ.get(МЕТКА):
-        return True
-    свой = питон_окружения()
-    return os.path.exists(свой) and os.path.samefile(sys.executable, свой)
-
-
-def версия_подходит() -> bool:
-    if sys.version_info >= МИНИМУМ:
-        ок(f"Python {platform.python_version()}")
-        return True
-    беда(f"Python {platform.python_version()} — слишком старый.")
-    скажи(f"          Нужен {МИНИМУМ[0]}.{МИНИМУМ[1]} или новее: python.org/downloads")
-    скажи("          При установке отметьте «Add python.exe to PATH».")
-    return False
-
-
-def создать_окружение() -> str | None:
-    """Отдельное окружение рядом с ботом. Возвращает путь к его Python.
-
-    Отдельное — потому что на рабочем компьютере уже может стоять другой
-    Python с другими библиотеками, и ставить наши поверх чужих значит
-    однажды сломать и то и другое.
-    """
-    свой = питон_окружения()
-    if os.path.exists(свой):
-        ок("окружение на месте")
-        return свой
-
-    скажи("  ...     создаю окружение — это делается один раз, полминуты")
-    try:
-        subprocess.run([sys.executable, "-m", "venv", ОКРУЖЕНИЕ],
-                       check=True, cwd=ЗДЕСЬ)
-    except Exception as ошибка:                                 # noqa: BLE001
-        беда(f"не удалось создать окружение: {ошибка}")
-        скажи("          Не страшно: поставлю библиотеки в общий Python.")
-        return None
-    if not os.path.exists(свой):
-        беда("окружение создалось, но Python в нём не найден")
-        return None
-    ок("окружение создано")
-    return свой
-
-
-def чего_не_хватает(питон: str) -> list[tuple[str, str, str]]:
-    """Каких библиотек нет. Спрашиваем у того Python, который будет работать."""
-    нет: list[tuple[str, str, str]] = []
-    for модуль, пакет, зачем in БИБЛИОТЕКИ:
-        проверка = subprocess.run(
-            [питон, "-c", f"import {модуль}"],
-            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, cwd=ЗДЕСЬ)
-        if проверка.returncode != 0:
-            нет.append((модуль, пакет, зачем))
-    return нет
-
-
-def поставить(питон: str, чего: list[tuple[str, str, str]]) -> bool:
-    скажи("  ...     ставлю библиотеки, нужна сеть:")
-    for _, пакет, зачем in чего:
-        скажи(f"            {пакет} — {зачем}")
-    команда = [питон, "-m", "pip", "install", "--disable-pip-version-check",
-               "-q", *[пакет for _, пакет, _ in чего]]
-    if not os.path.exists(питон_окружения()):
-        # Ставим в общий Python — только в папку пользователя, чтобы
-        # не трогать системный Python и не требовать прав администратора.
-        команда.insert(4, "--user")
-    try:
-        subprocess.run(команда, check=True, cwd=ЗДЕСЬ)
-    except Exception as ошибка:                                 # noqa: BLE001
-        беда(f"не поставились: {ошибка}")
-        return False
-    осталось = чего_не_хватает(питон)
-    if осталось:
-        беда("после установки всё ещё не хватает: "
-             + ", ".join(м for м, _, _ in осталось))
-        return False
-    ок("библиотеки на месте")
-    return True
-
-
-def перезапуститься(питон: str, аргументы: list[str]) -> int:
-    """Продолжить работу внутри своего окружения."""
-    среда = dict(os.environ, **{МЕТКА: "1"})
-    return subprocess.call([питон, os.path.abspath(__file__), *аргументы],
-                           cwd=ЗДЕСЬ, env=среда)
-
-
-# --------------------------------------------------------------- токен
-
-def токен_есть() -> bool:
+def token_exists() -> bool:
     if (os.environ.get("MAX_BOT_TOKEN") or "").strip():
         return True
     try:
-        with open(ФАЙЛ_ТОКЕНА, encoding="utf-8") as файл:
-            return bool(файл.read().strip())
+        with open(TOKEN, encoding="utf-8-sig") as fh:
+            return any(line.strip() and not line.lstrip().startswith("#") for line in fh)
     except OSError:
         return False
 
 
-def спросить_токен() -> bool:
-    """Токен нужен один раз. Дальше он лежит в token.txt рядом с ботом."""
-    скажи()
-    скажи("  Токен бота я пока не нашёл.")
-    скажи()
-    скажи("  Где его взять: в MAX найдите бота @MasterBot, отправьте /create,")
-    скажи("  придумайте имя и ник (ник оканчивается на _bot). В ответ придёт")
-    скажи("  длинная строка — это и есть токен.")
-    скажи()
-    скажи("  Вставьте его сюда и нажмите Enter. Пустой ввод — выйти.")
-    скажи()
+def _warn_token_permissions() -> None:
+    """Warn on POSIX when token.txt is readable by group/other users."""
+    if os.name == "nt" or not os.path.exists(TOKEN):
+        return
     try:
-        токен = input("  Токен: ").strip()
+        mode = stat.S_IMODE(os.stat(TOKEN).st_mode)
+    except OSError:
+        return
+    if mode & 0o077:
+        say("[warn] token.txt доступен группе/другим пользователям; ограничиваю права до 600.")
+        try:
+            os.chmod(TOKEN, 0o600)
+        except OSError as exc:
+            say(f"[warn] Не удалось ограничить права token.txt: {exc}")
+
+
+def ask_token() -> bool:
+    say("Токен MAX не найден. Вставьте токен одной строкой.")
+    try:
+        # getpass не показывает токен на экране во время ввода.
+        token = getpass.getpass("Токен: ").strip()
     except (EOFError, KeyboardInterrupt):
-        токен = ""
-    if not токен:
-        скажи()
-        беда("без токена бот подключиться не сможет")
-        скажи("          Токен можно положить и руками: создайте рядом файл")
-        скажи("          token.txt, вставьте туда токен одной строкой")
-        скажи("          и запустите ещё раз.")
+        return False
+    if not token:
         return False
     try:
-        with open(ФАЙЛ_ТОКЕНА, "w", encoding="utf-8") as файл:
-            файл.write(токен + "\n")
-    except OSError as ошибка:
-        беда(f"не смог записать token.txt: {ошибка}")
+        if os.name != "nt":
+            # Создаём файл сразу с 0600, а не сначала с обычными правами.
+            fd = os.open(TOKEN, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+            with os.fdopen(fd, "w", encoding="utf-8") as fh:
+                fh.write(token + "\n")
+        else:
+            with open(TOKEN, "w", encoding="utf-8") as fh:
+                fh.write(token + "\n")
+            try:
+                os.chmod(TOKEN, 0o600)
+            except OSError:
+                pass
+        _warn_token_permissions()
+    except OSError as exc:
+        say(f"Не удалось сохранить token.txt: {exc}")
         return False
-    # Прав на файл на Windows не выставить, но на Linux и macOS —
-    # можно и нужно: токен это ключ от бота.
-    try:
-        os.chmod(ФАЙЛ_ТОКЕНА, 0o600)
-    except OSError:
-        pass
-    скажи()
-    ок("токен сохранён в token.txt — больше спрашивать не буду")
     return True
 
 
-# --------------------------------------------------------- самопроверка
+def preflight() -> bool:
+    """Check bot-owned files before starting a process that can receive users."""
+    required = (
+        "max_bot.py",
+        "chatbot_survey.py",
+        "survey_questions.py",
+        "knowledge.py",
+        "consent_forms.py",
+        "fallback.py",
+        "scale_731.py",
+    )
+    missing = [name for name in required if not os.path.exists(os.path.join(HERE, name))]
+    if missing:
+        say("Отсутствуют обязательные файлы: " + ", ".join(missing))
+        return False
 
-def самопроверка() -> bool:
-    """Всё ли на месте до того, как бот начнёт отвечать людям.
-
-    Проверяем не связь с MAX (для этого есть doctor), а свои файлы:
-    сломанная анкета или пустая база знаний заметны только тогда, когда
-    человек уже написал, — а это поздно.
-    """
-    всё_хорошо = True
-    sys.path.insert(0, ЗДЕСЬ)
-
+    sys.path.insert(0, HERE)
+    checks: list[str] = []
     try:
         import survey_questions
-        вопросов = len(survey_questions.QUESTIONS)
-        разделов = len({в.get("section", "") for в in survey_questions.QUESTIONS})
-        ок("анкета: " + сколько(вопросов, "вопрос", "вопроса", "вопросов")
-           + ", " + сколько(разделов, "раздел", "раздела", "разделов"))
-    except Exception as ошибка:                                 # noqa: BLE001
-        беда(f"анкета не читается: {ошибка}")
-        всё_хорошо = False
+        checks.append(f"анкета: {len(survey_questions.QUESTIONS)} вопросов")
+    except Exception as exc:  # noqa: BLE001
+        say(f"Ошибка анкеты: {exc}")
+        return False
 
     try:
         import knowledge
-        база = knowledge.загрузить()
-        своих = len({с.источник for с in база if с.источник})
-        if len(база) < 50:
-            беда(f"база знаний подозрительно мала: {len(база)} статей")
-            всё_хорошо = False
-        else:
-            ок("база знаний: "
-               + сколько(len(база), "статья", "статьи", "статей")
-               + ", " + сколько(своих, "названный источник",
-                                "названных источника", "названных источников"))
-    except Exception as ошибка:                                 # noqa: BLE001
-        беда(f"база знаний не читается: {ошибка}")
-        всё_хорошо = False
+        data = knowledge.загрузить()
+        if len(data) < 50:
+            say(f"База знаний подозрительно мала: {len(data)} статей")
+            return False
+        checks.append(f"база знаний: {len(data)} статей")
+    except Exception as exc:  # noqa: BLE001
+        say(f"Ошибка базы знаний: {exc}")
+        return False
 
     try:
         import consent_forms
         import chatbot_survey
-        assert chatbot_survey.CONSENT_SHORT and chatbot_survey.CONSENT_FULL
-        assert chatbot_survey.consent_forms is consent_forms
-        ок(f"согласие: редакция {chatbot_survey.CONSENT_VERSION}, "
-           + сколько(len(consent_forms.FORMS), "бумажная форма",
-                     "бумажные формы", "бумажных форм"))
-    except Exception as ошибка:                                 # noqa: BLE001
-        беда(f"формы согласия не собираются: {ошибка}")
-        всё_хорошо = False
+        if not chatbot_survey.CONSENT_SHORT or not chatbot_survey.CONSENT_FULL:
+            raise RuntimeError("пустой текст согласия")
+        if chatbot_survey.consent_forms is not consent_forms:
+            raise RuntimeError("модуль согласия подключён не тот")
+        checks.append(f"согласие: версия {chatbot_survey.CONSENT_VERSION}")
+    except Exception as exc:  # noqa: BLE001
+        say(f"Ошибка форм согласия: {exc}")
+        return False
 
     try:
         import fallback
-        ок("ответы на непонятное: "
-           + сколько(fallback.ступеней(fallback.ВОПРОС),
-                     "ступень", "ступени", "ступеней") + ", молчания нет")
-    except Exception as ошибка:                                 # noqa: BLE001
-        беда(f"лесенка ответов не читается: {ошибка}")
-        всё_хорошо = False
+        checks.append(f"fallback: {fallback.ступеней(fallback.ВОПРОС)} ступеней")
+    except Exception as exc:  # noqa: BLE001
+        say(f"Ошибка fallback: {exc}")
+        return False
 
     try:
         import scale_731
-        итог = scale_731.покрытие()
-        ок(f"шкала Приказа № 731: анкета закрывает {итог['закрыто']} из "
-           + сколько(итог["всего"], "позиции", "позиций", "позиций"))
-    except Exception as ошибка:                                 # noqa: BLE001
-        беда(f"шкала не читается: {ошибка}")
-        всё_хорошо = False
+        coverage = scale_731.покрытие()
+        checks.append(f"шкала 731: {coverage['закрыто']}/{coverage['всего']}")
+    except Exception as exc:  # noqa: BLE001
+        say(f"Ошибка шкалы 731: {exc}")
+        return False
 
-    # Модель необязательна. Её отсутствие — обычный режим работы,
-    # а не поломка: без неё бот отвечает выдержкой из базы.
-    try:
-        import ai
-        скажи(f"  [ ]     языковая модель: {ai.assistant.status()}")
-    except Exception:                                           # noqa: BLE001
-        скажи("  [ ]     языковая модель не подключена — бот работает по базе")
-
-    return всё_хорошо
+    for item in checks:
+        say(f"[ok] {item}")
+    return True
 
 
-# ---------------------------------------------------------------- пуск
-
-def запустить(что: str) -> int:
-    файлы = {
-        "бот": ("max_bot.py", "Бот запускается. Закрыть — Ctrl+C или крестик."),
-        "crm": ("crm_server.py", "Рабочее место откроется в браузере."),
-        "doctor": ("diagnose.py", "Разбираю связь с MAX."),
+def start(mode: str) -> int:
+    targets = {
+        "bot": ("run_max.py", "MAX bot / SQLite laptop pilot"),
+        "crm": ("crm_server.py", "CRM operator workspace"),
+        "doctor": ("diagnose.py", "MAX connectivity diagnostics"),
     }
-    имя, слово = файлы[что]
-    заголовок(слово)
-    return subprocess.call([sys.executable, os.path.join(ЗДЕСЬ, имя)], cwd=ЗДЕСЬ)
+    script, title = targets[mode]
+    say(f"\n=== {title} ===")
+    return run([sys.executable, os.path.join(HERE, script)])
 
 
-def main(аргументы: list[str]) -> int:
-    настроить_вывод()
-    что = (аргументы[0] if аргументы else "бот").lower()
-    если_неизвестно = {"bot": "бот", "check": "проверка", "crm": "crm",
-                       "doctor": "doctor", "бот": "бот", "проверка": "проверка"}
-    что = если_неизвестно.get(что, "бот")
-
-    заголовок("АНО «СДУТ» — чат-бот приёма обращений")
-    скажи(f"  Папка: {ЗДЕСЬ}")
-    скажи()
-
-    if not версия_подходит():
-        return 2
-
-    if not мы_в_окружении():
-        питон = создать_окружение() or sys.executable
-        нет = чего_не_хватает(питон)
-        if нет and not поставить(питон, нет):
-            скажи()
-            скажи("  Что обычно помогает: проверить интернет и запустить ещё раз.")
-            скажи("  Если сеть закрыта политикой организации — попросите")
-            скажи("  администратора разрешить доступ к pypi.org.")
-            return 3
-        if питон != sys.executable:
-            # Дальше работаем уже внутри окружения: там наши библиотеки.
-            return перезапуститься(питон, аргументы)
-    else:
-        ок("окружение своё, библиотеки на месте")
-
-    заголовок("Проверка перед запуском")
-    здоровье = самопроверка()
-
-    if что == "проверка":
-        скажи()
-        скажи("  Проверка закончена. Запуск: «Запустить-бота».")
-        return 0 if здоровье else 1
-
-    if not здоровье:
-        скажи()
-        беда("что-то из перечисленного не в порядке — запускать рискованно")
-        скажи("          Покажите этот вывод разработчику.")
-        return 1
-
-    if что == "бот" and not токен_есть() and not спросить_токен():
-        return 4
-
-    return запустить(что)
+def normalize_mode(value: str | None) -> str:
+    aliases = {
+        None: "bot",
+        "": "bot",
+        "bot": "bot",
+        "бот": "bot",
+        "crm": "crm",
+        "doctor": "doctor",
+        "check": "check",
+        "проверка": "check",
+    }
+    return aliases.get((value or "").strip().lower(), "bot")
 
 
-if __name__ == "__main__":                                  # pragma: no cover
+def main() -> int:
+    mode = normalize_mode(sys.argv[1] if len(sys.argv) > 1 else None)
+    env_result = ensure_environment()
+    if env_result != 0:
+        return env_result
+
+    if not preflight():
+        return 5
+
+    if mode == "check":
+        say("Проверка завершена успешно.")
+        return 0
+
+    if mode in {"bot", "doctor"} and not token_exists():
+        if not ask_token():
+            say("Без токена запуск невозможен.")
+            return 6
+
+    if mode in {"bot", "doctor"}:
+        _warn_token_permissions()
+
+    return start(mode)
+
+
+if __name__ == "__main__":
     try:
-        sys.exit(main(sys.argv[1:]))
+        raise SystemExit(main())
     except KeyboardInterrupt:
-        скажи()
-        скажи("  Остановлено. Всё, что успели ответить люди, сохранено.")
-        sys.exit(0)
+        say("\nОстановлено пользователем.")
+        raise SystemExit(0)
