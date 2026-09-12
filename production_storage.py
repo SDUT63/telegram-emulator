@@ -20,7 +20,7 @@ class ProductionPostgresSurvey(TransactionalPostgresSurvey):
         return self._mutate(str(user_id), "message", {"kind": "message"}, lambda: Survey.handle(self, str(user_id), text), "")
 
     def grant_consent(self, user_id: str) -> str:
-        return self._mutate(str(user_id), "callback", {"action": "grant_consent"}, lambda: Survey.grant_consent(self, str(user_id)), "")
+        return self._mutate(str(user_id), "callback", {"action": "grant_consent"}, lambda: Survey.grant_consent(self, str(user_id),), "")
 
     def refuse_consent(self, user_id: str) -> str:
         return self._mutate(str(user_id), "callback", {"action": "refuse_consent"}, lambda: Survey.refuse_consent(self, str(user_id)), "")
@@ -35,22 +35,38 @@ class ProductionPostgresSurvey(TransactionalPostgresSurvey):
         return self._mutate(str(user_id), "callback", {"action": "restart"}, lambda: Survey.restart_after_consent(self, str(user_id)), "")
 
     def start(self, user_id: str) -> str:
-        """Start/resume without wiping an existing production case."""
+        """Start/resume atomically using the state loaded under the row lock."""
         user_id = str(user_id)
-        existing = self.state.get(user_id)
-        if existing is not None:
-            if existing.get("finished"):
-                return ALREADY_DONE
-            if (existing.get("consent") or {}).get("refused"):
-                return CONSENT_NO
-            if (existing.get("consent") or {}).get("at"):
-                return RESUMED + "\n\n" + self.question_text(user_id)
-
-        token = _TX_EVENT.set(f"start:{user_id}:{time.time_ns()}")
+        token = None
+        if _TX_CONNECTION.get() is None:
+            token = _TX_EVENT.set(f"start:{user_id}:{time.time_ns()}")
         try:
-            return self._mutate(user_id, "bot_started", {"kind": "bot_started"}, lambda: Survey.start(self, user_id), "")
+            def start_loaded() -> str:
+                # _begin_event() has just loaded the authoritative row while
+                # holding its FOR UPDATE lock. Never call Survey.start() on
+                # an existing row: the legacy implementation intentionally
+                # resets state and is correct only for a genuinely new user.
+                person = self.state.get(user_id)
+                if person is not None:
+                    if person.get("finished"):
+                        return ALREADY_DONE
+                    consent = person.get("consent") or {}
+                    if consent.get("refused") and not consent.get("at"):
+                        return CONSENT_NO
+                    if consent.get("at"):
+                        return RESUMED + "\n\n" + self.question_text(user_id)
+                return Survey.start(self, user_id)
+
+            return self._mutate(
+                user_id,
+                "bot_started",
+                {"kind": "bot_started"},
+                start_loaded,
+                "",
+            )
         finally:
-            _TX_EVENT.reset(token)
+            if token is not None:
+                _TX_EVENT.reset(token)
 
     def understood(self, user_id: str) -> None:
         """Persist read/navigation state without reusing the parent event claim."""
