@@ -104,15 +104,12 @@ def validate_settings(url: str, secret: str, path: str) -> list[str]:
 
 
 def _storage_classes():
-    """Return transactional PostgreSQL classes when a DSN is configured."""
+    """Return production PostgreSQL classes when a DSN is configured."""
     dsn = (os.getenv("SDUT_DATABASE_URL") or "").strip()
     if dsn:
-        from storage_postgres import (
-            TransactionalPersistentSeen,
-            TransactionalPostgresSurvey,
-        )
+        from production_storage import ProductionPostgresSurvey, TransactionalPersistentSeen
 
-        return TransactionalPostgresSurvey, TransactionalPersistentSeen, "PostgreSQL"
+        return ProductionPostgresSurvey, TransactionalPersistentSeen, "PostgreSQL"
     return SQLiteSurvey, SQLiteSeen, "SQLite (pilot)"
 
 
@@ -146,8 +143,6 @@ async def main() -> None:
         print("=" * 70 + "\n")
         sys.exit(1)
 
-    # Production PostgreSQL deployments must be migrated explicitly before
-    # the application process is allowed to start.
     if (os.getenv("SDUT_DATABASE_URL") or "").strip():
         from postgres_guard import require_migrations
 
