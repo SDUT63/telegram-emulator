@@ -46,15 +46,34 @@ def _user_state(survey: Any, user_id: str) -> dict[str, Any]:
         raise TypeError("survey.user_state(user_id) must return a dict")
     return value
 
+def consent_keyboard(full: bool = False) -> list[list[list[str]]]:
+    """Keyboard that keeps the person oriented while reading the consent."""
+    if full:
+        return [
+            [["Согласен, продолжим", "c:y"]],
+            [["Не согласен", "c:n"]],
+            [["← Вернуться к краткому тексту", "c:back"]],
+        ]
+    return [
+        [["Согласен, продолжим", "c:y"]],
+        [["Прочитать полный текст", "c:full"]],
+        [["Не согласен", "c:n"]],
+        [["Просто почитать", "map"]],
+    ]
+
 def layout(survey: Survey, user_id: str) -> list[list[tuple[str, str]]]:
     rows: list[list[tuple[str, str]]] = []
-    if survey.reading(user_id): rows.append([("Полный текст согласия", "c:full")])
     if survey.stage(user_id) == "consent":
-        rows.extend([[("Согласен, продолжим", "c:y")], [("Прочитать полностью", "c:full")], [("Не согласен", "c:n")], [("Просто почитать", "map")]])
-        return rows
+        return [[(label, action) for label, action in row] for row in [
+            [("Согласен, продолжим", "c:y")],
+            [("Прочитать полный текст", "c:full")],
+            [("Не согласен", "c:n")],
+            [("Просто почитать", "map")],
+        ]]
+    if survey.reading(user_id): rows.append([("Полный текст согласия", "c:full")])
     spot = survey.current(user_id)
     if spot is None:
-        rows.append([("Мои ответы", "m"), ("Заполнить заново", "n")]); return rows
+        rows.append([("Мои ответы", "m"), ("Продолжить анкету", "n")]); return rows
     step, question = spot
     if question["kind"] != "choice": return rows
     options: list[str] = question["options"]; multi = bool(question.get("multi"))
