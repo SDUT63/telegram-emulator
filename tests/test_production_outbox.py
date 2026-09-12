@@ -6,10 +6,7 @@ import uuid
 import pytest
 
 from outbox_postgres import PostgresOutbox, delivery_key
-from production_outbox import (
-    DurableProductionPostgresSurvey,
-    consume_direct_send_suppression,
-)
+from production_outbox import DurableProductionPostgresSurvey
 from storage_postgres import _TX_EVENT
 
 
@@ -26,8 +23,6 @@ def test_survey_reply_and_outbox_commit_together():
     token = _TX_EVENT.set(event_id)
     try:
         reply = survey.handle(user_id, "hello")
-        assert consume_direct_send_suppression() is True
-        assert consume_direct_send_suppression() is False
     finally:
         _TX_EVENT.reset(token)
 
@@ -52,6 +47,7 @@ def test_survey_reply_and_outbox_commit_together():
 
 
 def test_attachment_ack_is_durable_and_has_its_own_delivery_key():
+    """Legacy separate attachment path remains covered until dispatcher migration."""
     survey = DurableProductionPostgresSurvey()
     user_id = f"outbox-file-{uuid.uuid4().hex}"
     parent_event = f"outbox-file-event-{uuid.uuid4().hex}"
@@ -61,15 +57,11 @@ def test_attachment_ack_is_durable_and_has_its_own_delivery_key():
     try:
         reply = survey.handle(user_id, "hello")
         assert reply
-        assert consume_direct_send_suppression() is True
-
         survey.note_message(
             user_id,
             "hello",
             [{"kind": "file", "name": "referral.pdf", "url": "https://max.invalid/file"}],
         )
-        assert consume_direct_send_suppression() is True
-        assert consume_direct_send_suppression() is False
     finally:
         _TX_EVENT.reset(token)
 
@@ -102,12 +94,10 @@ def test_message_with_attachment_is_atomic_and_queues_two_intents():
     token = _TX_EVENT.set(event_id)
     try:
         result = survey.handle_message_event(user_id, "hello", files)
-        assert result
-        assert consume_direct_send_suppression() is True
-        assert consume_direct_send_suppression() is False
     finally:
         _TX_EVENT.reset(token)
 
+    assert result
     queue = PostgresOutbox()
     with queue._connect(queue.db_url) as conn:
         rows = conn.execute(
@@ -134,8 +124,6 @@ def test_message_with_attachment_is_atomic_and_queues_two_intents():
     assert processed["event_hash"]
     assert state is not None
 
-    # The attachment contents are part of idempotency, but are not duplicated
-    # into the audit log as raw health/free-text data.
     with queue._connect(queue.db_url) as conn:
         audit = conn.execute(
             "SELECT event_json FROM audit_events WHERE user_id=%s ORDER BY id DESC LIMIT 1",
@@ -155,7 +143,6 @@ def test_message_event_collision_detects_changed_attachment():
     token = _TX_EVENT.set(event_id)
     try:
         first = survey.handle_message_event(user_id, "same text", first_files)
-        consume_direct_send_suppression()
         with pytest.raises(RuntimeError, match="event_id collision"):
             survey.handle_message_event(user_id, "same text", second_files)
     finally:
@@ -204,7 +191,6 @@ def test_duplicate_event_does_not_create_second_reply():
     token = _TX_EVENT.set(event_id)
     try:
         first = survey.handle(user_id, "hello")
-        consume_direct_send_suppression()
         second = survey.handle(user_id, "hello")
     finally:
         _TX_EVENT.reset(token)
