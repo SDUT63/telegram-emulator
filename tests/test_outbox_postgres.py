@@ -91,18 +91,24 @@ def test_outbox_failed_message_retries():
     assert queue.stats()["pending"] >= 1
 
 
-def test_outbox_reaches_dead_after_max_attempts():
+def test_outbox_reaches_dead_after_max_attempts_and_redacts_payload():
     queue = PostgresOutbox(max_attempts=1)
     key = _key("test-outbox-dead")
-    message_id = queue.enqueue(delivery_key=key, user_id="test-user", payload={"text": "permanent failure"})
+    payload = {"text": "permanent failure", "phone": "+79990000000"}
+    message_id = queue.enqueue(delivery_key=key, user_id="test-user", payload=payload)
     assert any(item.id == message_id for item in queue.claim(limit=10))
     queue.mark_failed(message_id, "permanent failure")
 
     with queue._connect(queue.db_url) as conn:
-        row = conn.execute("SELECT status,last_error,locked_by FROM outbox_messages WHERE id=%s", (message_id,)).fetchone()
+        row = conn.execute(
+            "SELECT payload,payload_sha256,status,last_error,locked_by FROM outbox_messages WHERE id=%s",
+            (message_id,),
+        ).fetchone()
     assert row["status"] == "dead"
     assert row["last_error"] == "permanent failure"
     assert row["locked_by"] is None
+    assert row["payload"] == {"kind": "redacted"}
+    assert row["payload_sha256"] == payload_sha256(payload)
 
 
 def test_outbox_rejects_invalid_payload():
@@ -123,10 +129,11 @@ def test_outbox_claim_uses_worker_ownership():
     queue.mark_sent(message_id)
 
 
-def test_stale_worker_lease_counts_toward_retry_budget():
+def test_stale_worker_lease_counts_toward_retry_budget_and_redacts():
     queue = PostgresOutbox(lease_seconds=1, max_attempts=1)
     key = _key("test-outbox-stale-dead")
-    message_id = queue.enqueue(delivery_key=key, user_id="test-user", payload={"text": "crash"})
+    payload = {"text": "crash", "sensitive": "must disappear"}
+    message_id = queue.enqueue(delivery_key=key, user_id="test-user", payload=payload)
     assert any(item.id == message_id for item in queue.claim(limit=10))
 
     with queue._connect(queue.db_url) as conn:
@@ -136,11 +143,16 @@ def test_stale_worker_lease_counts_toward_retry_budget():
     assert recovered >= 1
 
     with queue._connect(queue.db_url) as conn:
-        row = conn.execute("SELECT status,attempts,last_error,locked_by FROM outbox_messages WHERE id=%s", (message_id,)).fetchone()
+        row = conn.execute(
+            "SELECT payload,payload_sha256,status,attempts,last_error,locked_by FROM outbox_messages WHERE id=%s",
+            (message_id,),
+        ).fetchone()
     assert row["status"] == "dead"
     assert row["attempts"] == 1
     assert row["locked_by"] is None
     assert row["last_error"] == "worker lease expired"
+    assert row["payload"] == {"kind": "redacted"}
+    assert row["payload_sha256"] == payload_sha256(payload)
 
 
 def test_prune_sent_creates_permanent_delivery_tombstone():
@@ -173,3 +185,25 @@ def test_prune_sent_creates_permanent_delivery_tombstone():
     # Reusing the key for another message remains a hard collision forever.
     with pytest.raises(ValueError, match="delivery_key collision"):
         queue.enqueue(delivery_key=key, user_id="test-user", payload={"text": "different"})
+
+
+def test_prune_sent_fails_closed_on_existing_tombstone_digest_mismatch():
+    queue = PostgresOutbox()
+    key = _key("test-outbox-prune-collision")
+    payload = {"text": "original"}
+    message_id = queue.enqueue(delivery_key=key, user_id="test-user", payload=payload)
+    assert any(item.id == message_id for item in queue.claim(limit=10))
+    queue.mark_sent(message_id)
+
+    with queue._connect(queue.db_url) as conn:
+        conn.execute(
+            "UPDATE outbox_messages SET sent_at=CURRENT_TIMESTAMP - INTERVAL '2 days' WHERE id=%s",
+            (message_id,),
+        )
+        conn.execute(
+            "INSERT INTO outbox_delivery_tombstones(delivery_key,payload_sha256) VALUES(%s,%s)",
+            (key, payload_sha256({"text": "tampered"})),
+        )
+
+    with pytest.raises(ValueError, match="tombstone digest differs"):
+        queue.prune_sent(retention_seconds=60 * 60, limit=10)
