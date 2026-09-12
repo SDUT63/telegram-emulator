@@ -146,6 +146,17 @@ async def main() -> None:
         print("=" * 70 + "\n")
         sys.exit(1)
 
+    # Production PostgreSQL deployments must be migrated explicitly before
+    # the application process is allowed to start.
+    if (os.getenv("SDUT_DATABASE_URL") or "").strip():
+        from postgres_guard import require_migrations
+
+        try:
+            require_migrations()
+        except RuntimeError as error:
+            print(f"\n  PostgreSQL schema is not ready: {error}\n")
+            sys.exit(1)
+
     from maxapi import Bot
     from maxapi.webhook.aiohttp import AiohttpMaxWebhook
 
