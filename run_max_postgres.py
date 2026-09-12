@@ -10,13 +10,57 @@ from __future__ import annotations
 import asyncio
 
 import max_bot
+from maxapi import Bot
 from postgres_guard import require_migrations
-from production_storage import ProductionPostgresSurvey, TransactionalPersistentSeen
+from production_outbox import (
+    DurableProductionPostgresSurvey,
+    consume_direct_send_suppression,
+)
+from durable_outbox_worker import run as run_durable_outbox
+from storage_postgres import TransactionalPersistentSeen
+
+
+def _install_durable_send_guard() -> None:
+    """Prevent the dispatcher from bypassing the durable reply queue."""
+    if getattr(Bot.send_message, "_sdut_durable_guard", False):
+        return
+
+    original = Bot.send_message
+
+    async def guarded_send_message(self, *args, **kwargs):
+        if consume_direct_send_suppression():
+            return None
+        return await original(self, *args, **kwargs)
+
+    guarded_send_message._sdut_durable_guard = True
+    Bot.send_message = guarded_send_message
+
+
+def _install_combined_outbox_worker() -> None:
+    """Keep legacy CRM delivery and durable PostgreSQL delivery together."""
+    if getattr(max_bot.outbox_worker, "_sdut_combined", False):
+        return
+
+    crm_worker = max_bot.outbox_worker
+
+    async def combined(bot):
+        durable = asyncio.create_task(run_durable_outbox(bot))
+        crm = asyncio.create_task(crm_worker(bot))
+        try:
+            await asyncio.gather(durable, crm)
+        finally:
+            durable.cancel()
+            crm.cancel()
+
+    combined._sdut_combined = True
+    max_bot.outbox_worker = combined
 
 
 def main() -> None:
     require_migrations()
-    max_bot.Survey = ProductionPostgresSurvey
+    _install_durable_send_guard()
+    _install_combined_outbox_worker()
+    max_bot.Survey = DurableProductionPostgresSurvey
     max_bot.Seen = TransactionalPersistentSeen
     asyncio.run(max_bot.main())
 
