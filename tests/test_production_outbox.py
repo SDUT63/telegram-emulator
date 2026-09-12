@@ -51,6 +51,46 @@ def test_survey_reply_and_outbox_commit_together():
     assert state is not None
 
 
+def test_attachment_ack_is_durable_and_has_its_own_delivery_key():
+    survey = DurableProductionPostgresSurvey()
+    user_id = f"outbox-file-{uuid.uuid4().hex}"
+    parent_event = f"outbox-file-event-{uuid.uuid4().hex}"
+
+    token = _TX_EVENT.set(parent_event)
+    try:
+        reply = survey.handle(user_id, "hello")
+        assert reply
+        assert consume_direct_send_suppression() is True
+
+        survey.note_message(
+            user_id,
+            "hello",
+            [{"kind": "file", "name": "referral.pdf", "url": "https://max.invalid/file"}],
+        )
+        assert consume_direct_send_suppression() is True
+        assert consume_direct_send_suppression() is False
+    finally:
+        _TX_EVENT.reset(token)
+
+    queue = PostgresOutbox()
+    child_key = delivery_key(f"{parent_event}:message-note")
+    with queue._connect(queue.db_url) as conn:
+        row = conn.execute(
+            "SELECT delivery_key,payload,status FROM outbox_messages WHERE delivery_key=%s",
+            (child_key,),
+        ).fetchone()
+        note = conn.execute(
+            "SELECT event_id FROM processed_events WHERE event_id=%s",
+            (f"{parent_event}:message-note",),
+        ).fetchone()
+
+    assert row is not None
+    assert row["payload"]["kind"] == "max_text"
+    assert "Файл получил" in row["payload"]["text"]
+    assert row["status"] == "pending"
+    assert note is not None
+
+
 def test_survey_failure_rolls_back_outbox_and_state():
     survey = DurableProductionPostgresSurvey()
     user_id = f"outbox-failure-{uuid.uuid4().hex}"
