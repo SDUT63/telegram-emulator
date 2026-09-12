@@ -6,10 +6,9 @@ The adapter keeps the existing Survey interface while avoiding the dangerous
 reconciled per user: unchanged users are never touched, and concurrent
 workers merge top-level fields under a row lock.
 
-This is the production storage adapter; schema creation is intentionally
-idempotent so a fresh pilot instance can start without a separate migration
-step. A dedicated migration runner should be used once the production schema
-is frozen.
+This is durable storage for a controlled deployment. Full request-level
+atomicity is intentionally not claimed because the legacy dispatcher calls
+``Seen.fresh`` and survey mutations separately.
 """
 from __future__ import annotations
 
@@ -110,11 +109,9 @@ class PostgresSurvey(Survey):
     def save(self) -> None:
         """Persist only users changed since the last load/save.
 
-        Each changed user is locked with SELECT ... FOR UPDATE, then the
-        changed top-level fields are merged into the current database row.
-        A user deleted by this worker is deleted only when the row still
-        matches the snapshot this worker originally loaded. This prevents one
-        worker from deleting unrelated users handled by another worker.
+        Each changed user is locked with SELECT ... FOR UPDATE, then changed
+        top-level fields are merged into the current database row. A deletion
+        is conditional on the row still matching this worker's snapshot.
         """
         with self._db_lock, self._connect() as conn:
             current_ids = {str(user_id) for user_id in self.state}
@@ -138,38 +135,36 @@ class PostgresSurvey(Survey):
                     if row is None:
                         continue
                     db_state = row[0] if isinstance(row[0], dict) else {}
-                    # Do not delete a row that changed since our snapshot.
                     if before is None or _canonical(db_state) == _canonical(before):
                         conn.execute("DELETE FROM survey_state WHERE user_id=%s", (user_id,))
-                    else:
-                        continue
+                    continue
+
+                if row is None:
+                    merged = copy.deepcopy(after)
                 else:
-                    if row is None:
-                        merged = copy.deepcopy(after)
-                    else:
-                        db_state = row[0] if isinstance(row[0], dict) else {}
-                        merged = copy.deepcopy(db_state)
-                        for key, value in after.items():
-                            old_value = before.get(key) if before else None
-                            if _canonical(value) != _canonical(old_value):
-                                merged[key] = value
-                        if before:
-                            for key in before:
-                                if key not in after and key in merged:
-                                    # A nested field was deliberately removed.
-                                    if _canonical(merged[key]) == _canonical(before[key]):
-                                        merged.pop(key, None)
-                    conn.execute(
-                        """
-                        INSERT INTO survey_state(user_id, state_json, updated_at)
-                        VALUES(%s,%s,%s)
-                        ON CONFLICT(user_id) DO UPDATE SET
-                            state_json=EXCLUDED.state_json,
-                            updated_at=EXCLUDED.updated_at
-                        """,
-                        (user_id, Jsonb(merged), time.strftime("%Y-%m-%d %H:%M:%S+00")),
-                    )
-                    self.state[user_id] = merged
+                    db_state = row[0] if isinstance(row[0], dict) else {}
+                    merged = copy.deepcopy(db_state)
+                    for key, value in after.items():
+                        old_value = before.get(key) if before else None
+                        if _canonical(value) != _canonical(old_value):
+                            merged[key] = value
+                    if before:
+                        for key in before:
+                            if key not in after and key in merged:
+                                if _canonical(merged[key]) == _canonical(before[key]):
+                                    merged.pop(key, None)
+
+                conn.execute(
+                    """
+                    INSERT INTO survey_state(user_id,state_json,updated_at)
+                    VALUES(%s,%s,CURRENT_TIMESTAMP)
+                    ON CONFLICT(user_id) DO UPDATE SET
+                        state_json=EXCLUDED.state_json,
+                        updated_at=EXCLUDED.updated_at
+                    """,
+                    (user_id, Jsonb(merged)),
+                )
+                self.state[user_id] = merged
 
             self._loaded_snapshot = copy.deepcopy(self.state)
 
@@ -189,7 +184,7 @@ class PostgresSurvey(Survey):
 
 
 class PersistentSeen:
-    """Multi-instance-safe event leases backed by PostgreSQL."""
+    """Persistent event leases backed by PostgreSQL."""
 
     def __init__(
         self,
@@ -250,7 +245,7 @@ class PersistentSeen:
             else:
                 conn.execute(
                     "UPDATE event_leases SET last_seen_at=%s WHERE event_id=%s",
-                    (now, key),
+                    (now, now, key),
                 )
                 accepted = False
             conn.execute(
