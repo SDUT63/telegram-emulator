@@ -6,9 +6,10 @@ crash after MAX accepts a message but before the local `sent` commit can still
 produce a duplicate on retry because MAX does not expose a provider-side
 idempotency key for ordinary bot messages.
 
-Successful deliveries are redacted after acknowledgement. A permanent
-`tombstone` keeps the delivery key and payload digest, so retention cleanup
-cannot make an old event capable of creating a new outbound delivery.
+Successful and permanently failed deliveries are redacted after their
+terminal state is recorded. A permanent tombstone keeps the delivery key and
+payload digest, so retention cleanup cannot make an old event capable of
+creating a new outbound delivery.
 """
 from __future__ import annotations
 
@@ -169,21 +170,44 @@ class PostgresOutbox:
             raise ValueError("limit must be >= 1")
         now = datetime.now(timezone.utc)
         with _connect(self.db_url) as conn:
-            conn.execute(
+            stale = conn.execute(
                 """
-                UPDATE outbox_messages
-                   SET status=CASE WHEN attempts >= %s THEN 'dead' ELSE 'pending' END,
-                       locked_at=NULL,
-                       locked_by=NULL,
-                       last_error=CASE
-                           WHEN attempts >= %s THEN COALESCE(last_error, 'worker lease expired')
-                           ELSE last_error
-                       END
+                SELECT id,payload,payload_sha256,attempts
+                  FROM outbox_messages
                  WHERE status='sending'
                    AND locked_at < CURRENT_TIMESTAMP - (%s * INTERVAL '1 second')
+                 FOR UPDATE SKIP LOCKED
                 """,
-                (self.max_attempts, self.max_attempts, self.lease_seconds),
-            )
+                (self.lease_seconds,),
+            ).fetchall()
+            for row in stale:
+                attempts = int(row["attempts"])
+                if attempts >= self.max_attempts:
+                    # A stale delivery that exhausted its budget is terminal.
+                    # Redact its potentially sensitive response before making
+                    # it visible as dead; the digest remains the integrity
+                    # identity of the original outbound intent.
+                    digest = str(row["payload_sha256"] or payload_sha256(dict(row["payload"])))
+                    conn.execute(
+                        """
+                        UPDATE outbox_messages
+                           SET status='dead', payload=%s, payload_sha256=%s,
+                               locked_at=NULL, locked_by=NULL,
+                               last_error=COALESCE(last_error, 'worker lease expired')
+                         WHERE id=%s AND status='sending'
+                        """,
+                        (Jsonb(_REDACTED_PAYLOAD), digest, int(row["id"])),
+                    )
+                else:
+                    conn.execute(
+                        """
+                        UPDATE outbox_messages
+                           SET status='pending', locked_at=NULL, locked_by=NULL
+                         WHERE id=%s AND status='sending'
+                        """,
+                        (int(row["id"]),),
+                    )
+
             rows = conn.execute(
                 """
                 WITH picked AS (
@@ -228,16 +252,22 @@ class PostgresOutbox:
         safe_error = str(error)[:4000]
         with _connect(self.db_url) as conn:
             row = conn.execute(
-                "SELECT attempts FROM outbox_messages WHERE id=%s AND status='sending' AND locked_by=%s FOR UPDATE",
+                "SELECT payload,payload_sha256,attempts FROM outbox_messages WHERE id=%s AND status='sending' AND locked_by=%s FOR UPDATE",
                 (message_id, self.worker_id),
             ).fetchone()
             if row is None:
                 raise RuntimeError(f"outbox message {message_id} is not owned by this worker")
             attempts = int(row["attempts"])
             if attempts >= self.max_attempts:
+                digest = str(row["payload_sha256"] or payload_sha256(dict(row["payload"])))
                 conn.execute(
-                    "UPDATE outbox_messages SET status='dead',last_error=%s,locked_at=NULL,locked_by=NULL WHERE id=%s AND status='sending' AND locked_by=%s",
-                    (safe_error, message_id, self.worker_id),
+                    """
+                    UPDATE outbox_messages
+                       SET status='dead', payload=%s, payload_sha256=%s,
+                           last_error=%s, locked_at=NULL, locked_by=NULL
+                     WHERE id=%s AND status='sending' AND locked_by=%s
+                    """,
+                    (Jsonb(_REDACTED_PAYLOAD), digest, safe_error, message_id, self.worker_id),
                 )
             else:
                 delay = min(3600, 2 ** min(attempts, 10))
@@ -249,17 +279,40 @@ class PostgresOutbox:
     def recover_stale(self) -> int:
         """Release expired leases, enforcing the retry budget."""
         with _connect(self.db_url) as conn:
-            result = conn.execute(
+            rows = conn.execute(
                 """
-                UPDATE outbox_messages
-                   SET status=CASE WHEN attempts >= %s THEN 'dead' ELSE 'pending' END,
-                       locked_at=NULL, locked_by=NULL,
-                       last_error=CASE WHEN attempts >= %s THEN COALESCE(last_error, 'worker lease expired') ELSE last_error END
-                 WHERE status='sending' AND locked_at < CURRENT_TIMESTAMP - (%s * INTERVAL '1 second')
+                SELECT id,payload,payload_sha256,attempts
+                  FROM outbox_messages
+                 WHERE status='sending'
+                   AND locked_at < CURRENT_TIMESTAMP - (%s * INTERVAL '1 second')
+                 FOR UPDATE SKIP LOCKED
                 """,
-                (self.max_attempts, self.max_attempts, self.lease_seconds),
-            )
-            return result.rowcount
+                (self.lease_seconds,),
+            ).fetchall()
+            for row in rows:
+                attempts = int(row["attempts"])
+                if attempts >= self.max_attempts:
+                    digest = str(row["payload_sha256"] or payload_sha256(dict(row["payload"])))
+                    conn.execute(
+                        """
+                        UPDATE outbox_messages
+                           SET status='dead', payload=%s, payload_sha256=%s,
+                               locked_at=NULL, locked_by=NULL,
+                               last_error=COALESCE(last_error, 'worker lease expired')
+                         WHERE id=%s AND status='sending'
+                        """,
+                        (Jsonb(_REDACTED_PAYLOAD), digest, int(row["id"])),
+                    )
+                else:
+                    conn.execute(
+                        """
+                        UPDATE outbox_messages
+                           SET status='pending', locked_at=NULL, locked_by=NULL
+                         WHERE id=%s AND status='sending'
+                        """,
+                        (int(row["id"]),),
+                    )
+            return len(rows)
 
     def prune_sent(self, *, retention_seconds: int = DEFAULT_SENT_RETENTION_SECONDS, limit: int = 500) -> int:
         """Redact-and-tombstone old sent rows without reopening delivery keys.
@@ -292,14 +345,20 @@ class PostgresOutbox:
             ids: list[int] = []
             for row in rows:
                 digest = str(row["payload_sha256"] or payload_sha256(dict(row["payload"])))
-                conn.execute(
-                    """
-                    INSERT INTO outbox_delivery_tombstones(delivery_key,payload_sha256)
-                    VALUES(%s,%s)
-                    ON CONFLICT(delivery_key) DO UPDATE SET payload_sha256=EXCLUDED.payload_sha256
-                    """,
-                    (str(row["delivery_key"]), digest),
-                )
+                existing = conn.execute(
+                    "SELECT payload_sha256 FROM outbox_delivery_tombstones WHERE delivery_key=%s FOR UPDATE",
+                    (str(row["delivery_key"]),),
+                ).fetchone()
+                if existing is not None:
+                    if str(existing["payload_sha256"]) != digest:
+                        raise ValueError(
+                            f"delivery_key collision for {row['delivery_key']!r}: tombstone digest differs"
+                        )
+                else:
+                    conn.execute(
+                        "INSERT INTO outbox_delivery_tombstones(delivery_key,payload_sha256) VALUES(%s,%s)",
+                        (str(row["delivery_key"]), digest),
+                    )
                 ids.append(int(row["id"]))
             conn.execute("DELETE FROM outbox_messages WHERE id = ANY(%s)", (ids,))
             return len(ids)
