@@ -8,6 +8,7 @@ semantics when PostgreSQL is configured.
 from __future__ import annotations
 
 import asyncio
+import os
 
 import max_bot
 from maxapi import Bot
@@ -57,7 +58,18 @@ def _install_combined_outbox_worker() -> None:
 
 
 def main() -> None:
+    if not (os.getenv("SDUT_DATABASE_URL") or "").strip():
+        raise SystemExit(
+            "run_max_postgres.py требует SDUT_DATABASE_URL; "
+            "для SQLite-пилота используйте run_max.py"
+        )
+
+    # A production PostgreSQL launcher must never silently accept an
+    # un-migrated schema. Operators may override this only by choosing the
+    # SQLite pilot launcher explicitly.
+    os.environ.setdefault("SDUT_REQUIRE_MIGRATIONS", "1")
     require_migrations()
+
     _install_durable_send_guard()
     _install_combined_outbox_worker()
     max_bot.Survey = DurableProductionPostgresSurvey
