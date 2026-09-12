@@ -243,7 +243,7 @@ def test_ни_один_экран_не_тупик():
         экраны.append(б)
     for б in экраны:
         assert б.кнопки[0], "экран без кнопок"
-        assert any(п == "m" or п.startswith("v:") for _, п in б.кнопки[0])
+        assert any(п == "map" or п.startswith("v:") for _, п in б.кнопки[0])
 
 
 def test_все_кнопки_тем_ведут_в_живые_статьи():
@@ -278,3 +278,36 @@ def test_без_анкеты_кнопки_возврата_нет():
     б = Кнопки()
     asyncio.run(max_bot.меню_тем(б, 1, "u1"))
     assert max_bot.К_АНКЕТЕ not in б.подписи
+
+
+# ------------------------------------------------ порог на входе
+
+def test_кнопка_карты_не_спорит_с_моими_ответами():
+    """«m» — это «Мои ответы» в анкете. Карта не имеет права его забрать."""
+    import re
+    исходник = open(os.path.join(os.path.dirname(os.path.dirname(
+        os.path.abspath(__file__))), "max_bot.py"), encoding="utf-8").read()
+    действия = set(re.findall(r'payload="([a-z]+)"', исходник))
+    assert "map" in действия
+    # «Мои ответы» на законченной анкете остались на своём месте
+    assert '("Мои ответы", "m")' in исходник
+
+
+def test_на_экране_согласия_есть_дорога_мимо_порога():
+    """Человек ещё ничего не получил, а у него уже просят разрешение.
+
+    Читать материалы можно без согласия, и на экране это должно быть
+    видно кнопкой, а не спрятано в тексте.
+    """
+    import tempfile
+    from chatbot_survey import Survey
+    папка = tempfile.mkdtemp()
+    s = Survey(storage_path=os.path.join(папка, "r.json"), list_options=False)
+    s.handle("u1", "здравствуйте")
+    assert s.stage("u1") == "consent"
+
+    ряды = max_bot.layout(s, "u1")
+    подписи = [подпись for ряд in ряды for подпись, _ in ряд]
+    адреса = [адрес for ряд in ряды for _, адрес in ряд]
+    assert "map" in адреса, подписи
+    assert "Просто почитать" in подписи

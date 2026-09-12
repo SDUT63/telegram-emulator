@@ -184,6 +184,10 @@ def layout(survey: Survey, user_id: str) -> list[list[tuple[str, str]]]:
         rows.append([("Согласен, продолжим", "c:y")])
         rows.append([("Прочитать полностью", "c:full")])
         rows.append([("Не согласен", "c:n")])
+        # Экран согласия — первый порог, и на нём он самый высокий:
+        # человек ещё ничего не получил, а у него уже просят разрешение.
+        # Кнопка мимо порога: почитать материалы, ничего о себе не оставляя.
+        rows.append([("Просто почитать", "map")])
         return rows
 
     spot = survey.current(user_id)
@@ -316,7 +320,7 @@ def _кнопки_подсказок(вопрос: str, кроме: str = ""):
                                     payload="k:" + заголовок[:60]))
     # Поиск мог не понять вопроса, а человек — не знать нужного слова.
     # Карта здесь не украшение, а второй способ добраться до ответа.
-    keyboard.row(CallbackButton(text=ВСЕ_ТЕМЫ, payload="m"))
+    keyboard.row(CallbackButton(text=ВСЕ_ТЕМЫ, payload="map"))
     return keyboard.as_markup()
 
 
@@ -462,7 +466,7 @@ def _кнопки_ветви(стр: dict, survey=None, who: str = ""):
             text=ДАЛЬШЕ, payload=f"v:{стр['id']}:{стр['номер'] + 1}"))
     if листалка:
         keyboard.row(*листалка)
-    keyboard.row(CallbackButton(text=ВСЕ_ТЕМЫ, payload="m"))
+    keyboard.row(CallbackButton(text=ВСЕ_ТЕМЫ, payload="map"))
     _строка_возврата(keyboard, survey, who)
     return keyboard.as_markup()
 
@@ -482,7 +486,7 @@ def _кнопки_статьи(заголовок: str, survey=None, who: str = 
     if ветвь:
         низ.append(CallbackButton(text="‹ " + ветвь["кратко"],
                                   payload=f"v:{ветвь['id']}:1"))
-    низ.append(CallbackButton(text=ВСЕ_ТЕМЫ, payload="m"))
+    низ.append(CallbackButton(text=ВСЕ_ТЕМЫ, payload="map"))
     keyboard.row(*низ)
     _строка_возврата(keyboard, survey, who)
     return keyboard.as_markup()
@@ -732,7 +736,7 @@ def build_dispatcher(survey: Survey):
                 await say(event.bot, chat_id, who, survey.summary(who))
             return
 
-        if action == "m":
+        if action == "map":
             # «Все темы» — карта. Работает из любого места разговора.
             await подтвердить(event, "Открываю")
             await меню_тем(event.bot, chat_id, who, survey)
