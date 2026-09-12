@@ -26,7 +26,7 @@ class ProductionPostgresSurvey(TransactionalPostgresSurvey):
         return self._mutate(str(user_id), "callback", {"action": "refuse_consent"}, lambda: Survey.refuse_consent(self, str(user_id)), "")
 
     def toggle(self, user_id: str, step: int, index: int) -> bool:
-        return self._mutate(str(user_id), "callback", {"action": "toggle", "step": step, "index": index}, lambda: Survey.toggle(self, str(user_id), str(user_id), step, index), False)
+        return self._mutate(str(user_id), "callback", {"action": "toggle", "step": step, "index": index}, lambda: Survey.toggle(self, str(user_id), step, index), False)
 
     def answer_by_numbers(self, user_id: str, numbers: list[int]) -> str:
         return self._mutate(str(user_id), "callback", {"action": "answer", "numbers": numbers}, lambda: Survey.answer_by_numbers(self, str(user_id), numbers), "")
