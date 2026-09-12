@@ -74,6 +74,7 @@ def main() -> None:
             "для SQLite-пилота используйте run_max.py"
         )
 
+    os.environ.setdefault("SDUT_REQUIRE_MIGRATIONS", "1")
     _install_durable_send_guard()
     _install_production_storage()
     _install_combined_outbox_worker()
