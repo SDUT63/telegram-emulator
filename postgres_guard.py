@@ -15,6 +15,7 @@ REQUIRED_MIGRATIONS = {
     "002_migration_meta.sql",
     "003_processed_events.sql",
     "004_outbox_messages.sql",
+    "005_outbox_retention.sql",
 }
 
 
