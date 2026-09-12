@@ -5,9 +5,11 @@ import uuid
 
 import pytest
 
-from chatbot_survey import Survey
 from outbox_postgres import PostgresOutbox, delivery_key
-from production_outbox import DurableProductionPostgresSurvey
+from production_outbox import (
+    DurableProductionPostgresSurvey,
+    consume_direct_send_suppression,
+)
 from storage_postgres import _TX_EVENT
 
 
@@ -24,6 +26,8 @@ def test_survey_reply_and_outbox_commit_together():
     token = _TX_EVENT.set(event_id)
     try:
         reply = survey.handle(user_id, "hello")
+        assert consume_direct_send_suppression() is True
+        assert consume_direct_send_suppression() is False
     finally:
         _TX_EVENT.reset(token)
 
@@ -42,6 +46,7 @@ def test_survey_reply_and_outbox_commit_together():
     assert row is not None
     assert row["user_id"] == user_id
     assert row["payload"]["text"] == reply
+    assert isinstance(row["payload"]["keyboard_rows"], list)
     assert row["status"] == "pending"
     assert state is not None
 
@@ -86,6 +91,7 @@ def test_duplicate_event_does_not_create_second_reply():
     token = _TX_EVENT.set(event_id)
     try:
         first = survey.handle(user_id, "hello")
+        consume_direct_send_suppression()
         second = survey.handle(user_id, "hello")
     finally:
         _TX_EVENT.reset(token)
