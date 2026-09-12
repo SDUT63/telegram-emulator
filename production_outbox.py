@@ -79,6 +79,25 @@ class DurableProductionPostgresSurvey(ProductionPostgresSurvey):
                 cls._mutation_locks[key] = lock
             return lock
 
+    def health(self) -> bool:
+        """Check the complete production persistence surface, not just TCP."""
+        required = {
+            "survey_state",
+            "processed_events",
+            "audit_events",
+            "outbox_messages",
+        }
+        try:
+            with self._connect() as conn:
+                rows = conn.execute(
+                    "SELECT table_name FROM information_schema.tables "
+                    "WHERE table_schema='public' AND table_name = ANY(%s)",
+                    (list(required),),
+                ).fetchall()
+            return {str(row[0]) for row in rows} == required
+        except Exception:
+            return False
+
     def _mutate(
         self,
         user_id: str,
