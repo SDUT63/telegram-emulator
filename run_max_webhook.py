@@ -11,29 +11,10 @@ import os
 
 import max_bot
 import max_webhook
-from maxapi import Bot
-from production_outbox import (
-    DurableProductionPostgresSurvey,
-    consume_direct_send_suppression,
-)
+from production_outbox import DurableProductionPostgresSurvey
 from durable_outbox_worker import run as run_durable_outbox
+from scripts.check_outbound_paths import require_clean
 from storage_postgres import TransactionalPersistentSeen
-
-
-def _install_durable_send_guard() -> None:
-    """Prevent the dispatcher from bypassing the durable reply queue."""
-    if getattr(Bot.send_message, "_sdut_durable_guard", False):
-        return
-
-    original = Bot.send_message
-
-    async def guarded_send_message(self, *args, **kwargs):
-        if consume_direct_send_suppression():
-            return None
-        return await original(self, *args, **kwargs)
-
-    guarded_send_message._sdut_durable_guard = True
-    Bot.send_message = guarded_send_message
 
 
 def _install_production_storage() -> None:
@@ -74,8 +55,12 @@ def main() -> None:
             "для SQLite-пилота используйте run_max.py"
         )
 
+    # Do not hide unsafe application sends behind a Bot.send_message
+    # monkeypatch. Until the canonical dispatcher uses the explicit durable
+    # transport, production startup must fail closed.
+    require_clean()
+
     os.environ.setdefault("SDUT_REQUIRE_MIGRATIONS", "1")
-    _install_durable_send_guard()
     _install_production_storage()
     _install_combined_outbox_worker()
     max_bot.Survey = DurableProductionPostgresSurvey
