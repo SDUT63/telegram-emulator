@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Recommended MAX pilot launcher with durable state and idempotency."""
+"""Запуск MAX-бота СДУТ на ноутбуке с долговременным хранением."""
 from __future__ import annotations
 
 import asyncio
@@ -9,6 +9,8 @@ from storage_sqlite import PersistentSeen, SQLiteSurvey
 
 
 def main() -> None:
+    # max_bot.py — проверенный транспорт и сценарий. Здесь меняем только
+    # реализации хранения/идемпотентности, не переписывая диспетчер.
     max_bot.Survey = SQLiteSurvey
     max_bot.Seen = PersistentSeen
     asyncio.run(max_bot.main())
