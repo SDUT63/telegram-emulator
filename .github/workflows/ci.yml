@@ -45,6 +45,9 @@ jobs:
       - name: Check committed secrets
         run: python scripts/check_secrets.py
 
+      - name: Check outbound architecture
+        run: python scripts/check_outbound_paths.py
+
       - name: Compile Python sources
         run: python -m compileall -q .
 
@@ -63,6 +66,7 @@ jobs:
             tests/test_outbox_multiworker.py \
             tests/test_migration_guard.py \
             tests/test_durable_outbox_worker.py \
+            tests/test_durable_outbox_crash_boundary.py \
             tests/test_webhook_config.py \
             tests/test_crm_outbox.py
 
