@@ -164,14 +164,16 @@ class DurableProductionPostgresSurvey(ProductionPostgresSurvey):
                 )
                 queued = True
 
-            # Attachment acknowledgement is currently a separate dispatcher
-            # follow-up transaction. Its durable key prevents duplicate child
-            # rows, while the parent message transaction remains independent.
+            # Attachment acknowledgement is a distinct outbound intent, not
+            # another representation of the main reply. It therefore gets its
+            # own deterministic delivery key. Reusing event_id:out:0 here
+            # would collide with the main reply whenever both exist and would
+            # correctly abort the transaction as a payload-integrity violation.
             if event_type == "message_attachment" and payload and payload.get("has_files") and event_id:
                 from max_bot import FILES_TAKEN
 
                 outbox.enqueue(
-                    delivery_key=delivery_key(event_id),
+                    delivery_key=delivery_key(event_id, ordinal=1),
                     user_id=str(user_id),
                     payload={
                         "kind": "max_text",
