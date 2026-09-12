@@ -6,6 +6,7 @@ import copy
 import time
 
 from chatbot_survey import ALREADY_DONE, CONSENT_NO, CONSENT_SHORT, RESUMED, Survey
+from survey_questions import CHECKPOINT_ID, QUESTIONS
 from storage_postgres import (
     _TX_CONNECTION,
     _TX_EVENT,
@@ -49,7 +50,52 @@ class ProductionPostgresSurvey(TransactionalPostgresSurvey):
         return self._mutate(str(user_id), "callback", {"action": "answer", "numbers": numbers}, lambda: Survey.answer_by_numbers(self, str(user_id), numbers), "")
 
     def restart_after_consent(self, user_id: str) -> str:
-        return self._mutate(str(user_id), "callback", {"action": "restart"}, lambda: Survey.restart_after_consent(self, str(user_id)), "")
+        """Restart only the detailed assessment, retaining the intake data.
+
+        The short intake contains identity/contact/routing data (including
+        name, phone and address). Re-entering those fields is both frustrating
+        and unnecessary. The checkpoint answer is normalized to "Продолжить"
+        and the first detailed question becomes current. Existing consent and
+        conversation metadata remain untouched.
+        """
+        uid = str(user_id)
+
+        def restart_loaded() -> str:
+            person = self.state.get(uid)
+            if not person:
+                return Survey.restart_after_consent(self, uid)
+
+            checkpoint = next((i for i, q in enumerate(QUESTIONS) if q["id"] == CHECKPOINT_ID), None)
+            if checkpoint is None:
+                raise RuntimeError(f"Survey checkpoint {CHECKPOINT_ID!r} is not defined")
+
+            keep_ids = {q["id"] for q in QUESTIONS[: checkpoint + 1]}
+            # Derived address fields are produced by the address question and
+            # are part of the same primary intake record.
+            keep_ids.update({"district", "lift"})
+            answers = {
+                key: value
+                for key, value in (person.get("answers") or {}).items()
+                if key in keep_ids
+            }
+            answers[CHECKPOINT_ID] = "Продолжить"
+
+            person["answers"] = answers
+            person["step"] = self._next(checkpoint + 1, answers)
+            person["history"] = [
+                step for step in (person.get("history") or []) if step < checkpoint + 1
+            ]
+            person["pending"] = None
+            person["alerts"] = []
+            person["finished"] = None
+            person["total_seen"] = 0
+            person["reading"] = False
+            return (
+                "Основные данные уже сохранены — имя, телефон и адрес повторно вводить не нужно.\n\n"
+                + self._ask(uid, person["step"])
+            )
+
+        return self._mutate(uid, "callback", {"action": "restart"}, restart_loaded, "")
 
     def start(self, user_id: str) -> str:
         """Start/resume atomically using the state loaded under the row lock.
