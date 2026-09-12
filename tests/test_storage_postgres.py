@@ -71,6 +71,26 @@ def test_postgres_bot_started_survives_new_process_instance(postgres_dsn):
         _cleanup(first, user_id)
 
 
+def test_postgres_existing_legacy_row_is_not_reset_on_start(postgres_dsn):
+    user_id = f"pytest-legacy-start-{uuid.uuid4()}"
+    survey = ProductionPostgresSurvey(db_url=postgres_dsn, list_options=False)
+    try:
+        survey.state[user_id] = {
+            "step": 3,
+            "answers": {"legacy_marker": "must-survive"},
+            "finished": None,
+            "consent": None,
+        }
+        survey.save()
+        response = survey.start(user_id)
+        assert response
+        assert survey.state[user_id]["answers"]["legacy_marker"] == "must-survive"
+        assert survey.state[user_id]["step"] == 3
+        assert survey.state[user_id]["consent"] is None
+    finally:
+        _cleanup(survey, user_id)
+
+
 def test_postgres_event_is_atomic_and_idempotent(postgres_dsn):
     user_id = f"pytest-atomic-{uuid.uuid4()}"
     event_id = f"pytest-atomic-event-{uuid.uuid4()}"
