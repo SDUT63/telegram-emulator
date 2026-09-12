@@ -16,35 +16,38 @@
 - Отдельный webhook entrypoint для серверного режима.
 - Существующая анкета `chatbot_survey.py` не переписана.
 - `max_bot.py` сохранён без изменений.
-- SQLite сохраняет состояние анкеты между перезапусками.
+- SQLite сохраняет состояние анкеты между перезапусками для локального пилота.
 - SQLite хранит идемпотентность событий между перезапусками.
 - Для duplicate suppression используется lease: сбой между claim события и сохранением состояния не приводит к его бессрочной потере.
+- PostgreSQL-адаптер добавлен для серверного durable storage.
+- Production webhook launcher автоматически выбирает PostgreSQL при заданном `SDUT_DATABASE_URL`.
 - Есть audit table как технический фундамент.
 - `launcher.py` создаёт `.venv`, устанавливает `requirements.txt`, запрашивает токен и запускает durable entrypoint.
 - Секреты и локальные базы исключены из Git.
-- Python-тесты проверяют persistence, duplicate suppression, crash recovery lease и Webhook configuration.
+- Python-тесты проверяют SQLite persistence, duplicate suppression, crash recovery lease, PostgreSQL smoke persistence/lease и Webhook configuration.
+- CI запускает PostgreSQL service для MAX storage tests.
 - Webhook configuration разделяет публичный HTTPS endpoint и внутренний listener.
 - Регистрация Webhook не требует предварительного удаления старой подписки.
 
-## 3. Что не следует выдавать за production readiness
+## 3. Что всё ещё нельзя выдавать за production readiness
 
-SQLite — решение для однопроцессного пилота на ноутбуке. Для production/multi-instance нужен PostgreSQL или эквивалентное централизованное хранилище.
+PostgreSQL уже реализован, но production ещё не считается полностью принятым: в текущей архитектуре обработчик события, изменение состояния анкеты и audit не объединены одной транзакцией. Для этого требуется изменение границы обработки события в диспетчере или очередь/worker.
 
-Даже после hardening Webhook production deployment требует реального домена, доверенного TLS-сертификата, reverse proxy, мониторинга и проверки доставки через MAX.
+До полноценного production необходимы:
 
-До полноценного production необходимы отдельные работы по:
-
-1. PostgreSQL и миграциям.
-2. Атомарной транзакции `event claim + state + audit` в одном хранилище.
-3. RBAC и разделению ролей операторов.
-4. Политике хранения/удаления/резервного копирования ПДн.
-5. Шифрованию и управлению секретами.
-6. Полноценному audit trail без записи лишних медицинских данных.
-7. E2E-тестам реальных MAX-событий, duplicate delivery и stale callbacks.
-8. Disaster recovery и проверке восстановления из backup.
-9. Юридической финализации текста согласия и политики обработки ПДн.
-10. Нагрузочному тестированию и безопасной многопроцессной работе.
-11. Очереди/worker для тяжёлой обработки Webhook, чтобы HTTP endpoint стабильно укладывался в лимит MAX.
+1. Миграции PostgreSQL вместо `CREATE TABLE IF NOT EXISTS` при старте.
+2. Атомарная транзакция `event claim + state + audit` в одном хранилище.
+3. RBAC и разделение ролей операторов.
+4. Формальная политика хранения/удаления/резервного копирования ПДн.
+5. Шифрование и управление секретами.
+6. Полноценный audit trail без записи лишних медицинских данных.
+7. E2E-тесты реальных MAX-событий, duplicate delivery и stale callbacks.
+8. Disaster recovery и проверка восстановления из backup.
+9. Юридическая финализация текста согласия и политики обработки ПДн.
+10. Нагрузочное тестирование и проверка многопроцессной схемы.
+11. Очередь/worker для тяжёлой обработки Webhook, чтобы HTTP endpoint стабильно укладывался в лимит MAX.
+12. Реальная проверка reverse proxy, доверенного TLS-сертификата и доставки через MAX на :443.
+13. Отдельный production monitoring/readiness слой.
 
 ## 4. Критические сценарии приёмки
 
@@ -73,13 +76,22 @@ SQLite — решение для однопроцессного пилота н�
 
 Не переписывать рабочий `max_bot.py` ради хранения. Сценарий и транспорт остаются в исходной реализации; долговременное хранение подключается адаптером. Любое изменение анкеты должно сопровождаться тестом соответствующего сценария.
 
-## 6. Definition of Done для пилота
+## 6. Definition of Done для текущего технического этапа
 
 - `python launcher.py` на чистом ноутбуке создаёт окружение и устанавливает зависимости.
 - Токен не хранится в Git.
 - После остановки/перезапуска состояние пользователя не теряется.
 - Duplicate event не меняет состояние дважды, а незавершённый claim может быть повторно обработан после lease timeout.
-- `pytest` включён в CI.
+- PostgreSQL storage и production launcher добавлены.
+- `pytest` включён в CI вместе с PostgreSQL service.
 - Контрольная ветка остаётся неизменной.
 - README/инструкция не обещают production-функции, которые ещё не проверены.
 - Webhook configuration rejects non-HTTPS/non-443 public endpoints before subscription.
+
+## 7. Что считается подтверждённым, а что нет
+
+**Подтверждено кодом:** структура SQLite/PostgreSQL storage, lease-based deduplication, webhook configuration validation, отдельные launchers, CI-конфигурация.
+
+**Не подтверждено исполнением в этой сессии:** локальный `pytest`, GitHub Actions run на последнем commit, реальный MAX webhook через HTTPS :443, восстановление PostgreSQL backup и нагрузочный тест.
+
+Это разделение обязательное: наличие теста в репозитории не является доказательством того, что тест реально прошёл.
