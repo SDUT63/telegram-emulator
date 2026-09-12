@@ -26,7 +26,7 @@ class ProductionPostgresSurvey(TransactionalPostgresSurvey):
         return self._mutate(str(user_id), "callback", {"action": "refuse_consent"}, lambda: Survey.refuse_consent(self, str(user_id)), "")
 
     def toggle(self, user_id: str, step: int, index: int) -> bool:
-        return self._mutate(str(user_id), "callback", {"action": "toggle", "step": step, "index": index}, lambda: Survey.toggle(self, str(user_id), step, index), False)
+        return self._mutate(str(user_id), "callback", {"action": "toggle", "step": step, "index": index}, lambda: Survey.toggle(self, str(user_id), str(user_id), step, index), False)
 
     def answer_by_numbers(self, user_id: str, numbers: list[int]) -> str:
         return self._mutate(str(user_id), "callback", {"action": "answer", "numbers": numbers}, lambda: Survey.answer_by_numbers(self, str(user_id), numbers), "")
@@ -55,18 +55,10 @@ class ProductionPostgresSurvey(TransactionalPostgresSurvey):
                         return CONSENT_NO
                     if consent.get("at"):
                         return RESUMED + "\n\n" + self.question_text(user_id)
-                    # A pre-consent/legacy row must not be reset. Keep the
-                    # existing record and ask for the missing legal decision.
                     return CONSENT_SHORT
                 return Survey.start(self, user_id)
 
-            return self._mutate(
-                user_id,
-                "bot_started",
-                {"kind": "bot_started"},
-                start_loaded,
-                "",
-            )
+            return self._mutate(user_id, "bot_started", {"kind": "bot_started"}, start_loaded, "")
         finally:
             if token is not None:
                 _TX_EVENT.reset(token)
