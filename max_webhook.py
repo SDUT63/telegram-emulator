@@ -17,8 +17,8 @@ from urllib.parse import urlsplit
 
 from aiohttp import web
 
-import max_bot
 from durable_outbox_worker import run as run_durable_outbox
+from max_config import COMMANDS, read_token
 from max_production_dispatcher import build_dispatcher
 from production_outbox import DurableProductionPostgresSurvey
 from storage_postgres import TransactionalPersistentSeen
@@ -92,7 +92,7 @@ async def main() -> None:
         print("\nMAX Webhook остановлен: SDUT_DATABASE_URL не задан. SQLite разрешён только через run_max.py.\n")
         sys.exit(1)
 
-    token = max_bot.read_token()
+    token = read_token()
     public_url = (os.getenv("MAX_WEBHOOK_URL") or "").strip().rstrip("/")
     path = (os.getenv("MAX_WEBHOOK_PATH") or DEFAULT_PATH).strip() or DEFAULT_PATH
     host = (os.getenv("MAX_WEBHOOK_HOST") or DEFAULT_HOST).strip()
@@ -139,7 +139,7 @@ async def main() -> None:
         me = await bot.get_me()
         await bot.subscribe_webhook(url=public_url, secret=secret)
         try:
-            await bot.set_commands(*(BotCommand(name=n, description=t) for n, t in max_bot.COMMANDS))
+            await bot.set_commands(*(BotCommand(name=n, description=t) for n, t in COMMANDS))
         except Exception as error:  # noqa: BLE001
             log.warning("Меню команд не обновилось: %s", error)
 
