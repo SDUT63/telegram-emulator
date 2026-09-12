@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import contextvars
 import threading
+import weakref
 from typing import Any, Callable, TypeVar
 
 from chatbot_survey import Survey
@@ -58,14 +59,25 @@ class DurableProductionPostgresSurvey(ProductionPostgresSurvey):
     """Production survey whose textual replies enter the durable outbox.
 
     ``ProductionPostgresSurvey`` keeps the questionnaire in ``self.state`` for
-    compatibility with the legacy Survey implementation. The webhook transport
-    can dispatch several requests concurrently, so a single survey instance
-    must not let two transactions mutate that shared in-memory snapshot at the
-    same time. PostgreSQL still provides the cross-process/user serialization;
-    this lock protects the in-process legacy object from races.
+    compatibility with the legacy Survey implementation. The production
+    object can be touched by concurrent webhook requests, therefore mutation
+    serialization is scoped to the affected user rather than globally. This
+    preserves same-user ordering without turning unrelated users into one
+    serial queue. PostgreSQL remains the cross-process serialization boundary.
     """
 
-    _mutation_lock = threading.RLock()
+    _lock_registry_guard = threading.RLock()
+    _mutation_locks: weakref.WeakValueDictionary[str, threading.RLock] = weakref.WeakValueDictionary()
+
+    @classmethod
+    def _mutation_lock_for(cls, user_id: str) -> threading.RLock:
+        key = str(user_id)
+        with cls._lock_registry_guard:
+            lock = cls._mutation_locks.get(key)
+            if lock is None:
+                lock = threading.RLock()
+                cls._mutation_locks[key] = lock
+            return lock
 
     def _mutate(
         self,
@@ -75,12 +87,15 @@ class DurableProductionPostgresSurvey(ProductionPostgresSurvey):
         fn: Callable[[], T],
         duplicate: T,
     ) -> T:
-        with self._mutation_lock:
+        lock = self._mutation_lock_for(str(user_id))
+        with lock:
             token = _OUTBOX_RESULT.set(None)
+
             def wrapped() -> T:
                 result = fn()
                 _OUTBOX_RESULT.set(result)
                 return result
+
             try:
                 return super()._mutate(user_id, event_type, payload, wrapped, duplicate)
             finally:
@@ -105,7 +120,13 @@ class DurableProductionPostgresSurvey(ProductionPostgresSurvey):
                 return
 
             self._save_user(conn, str(user_id))
-            self.audit(str(user_id), event_type, payload or {})
+
+            # Audit data deliberately excludes any optional fingerprint fields
+            # used only to detect event-id collisions. Health/free-text content
+            # must not be duplicated into an audit log merely for idempotency.
+            audit_payload = dict(payload or {})
+            audit_payload.pop("fingerprint", None)
+            self.audit(str(user_id), event_type, audit_payload)
 
             result = _OUTBOX_RESULT.get()
             event_id = _TX_EVENT.get()
@@ -124,12 +145,9 @@ class DurableProductionPostgresSurvey(ProductionPostgresSurvey):
                 )
                 queued = True
 
-            # max_bot.on_message() records attachments immediately after the
-            # main handle() transaction. The legacy dispatcher is deliberately
-            # unchanged, so the attachment acknowledgement is its own durable
-            # child message. This closes the previous hole where a file was
-            # persisted but the user could receive no acknowledgement because
-            # the direct send had already been suppressed.
+            # Attachment acknowledgement is currently a separate dispatcher
+            # follow-up transaction. Its durable key prevents duplicate child
+            # rows, while the parent message transaction remains independent.
             if event_type == "message_attachment" and payload and payload.get("has_files") and event_id:
                 from max_bot import FILES_TAKEN
 
