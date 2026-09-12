@@ -20,7 +20,6 @@ import psycopg
 from psycopg.rows import dict_row
 from psycopg.types.json import Jsonb
 
-
 DEFAULT_LEASE_SECONDS = 60
 DEFAULT_MAX_ATTEMPTS = 12
 DEFAULT_BATCH_SIZE = 20
@@ -60,24 +59,9 @@ class OutboxMessage:
 
 
 class PostgresOutbox:
-    """Insert, claim, acknowledge and retry outbound messages.
+    """Insert, claim, acknowledge and retry outbound messages."""
 
-    ``enqueue(..., conn=...)`` is intentionally transaction-aware: callers
-    processing an inbound event can put the outbound intent into the same
-    PostgreSQL transaction as state/audit/processed-event records. The row is
-    therefore either committed together with the state transition or rolled
-    back with it; it can never become a detached "reply" to a rolled-back
-    survey transition.
-    """
-
-    def __init__(
-        self,
-        db_url: str | None = None,
-        *,
-        lease_seconds: int = DEFAULT_LEASE_SECONDS,
-        max_attempts: int = DEFAULT_MAX_ATTEMPTS,
-        worker_id: str | None = None,
-    ) -> None:
+    def __init__(self, db_url: str | None = None, *, lease_seconds: int = DEFAULT_LEASE_SECONDS, max_attempts: int = DEFAULT_MAX_ATTEMPTS, worker_id: str | None = None) -> None:
         if lease_seconds <= 0:
             raise ValueError("lease_seconds must be > 0")
         if max_attempts < 1:
@@ -87,23 +71,17 @@ class PostgresOutbox:
         self.max_attempts = max_attempts
         self.worker_id = worker_id or f"{socket.gethostname()}:{os.getpid()}:{uuid.uuid4().hex[:8]}"
 
-    def enqueue(
-        self,
-        *,
-        delivery_key: str,
-        user_id: str,
-        payload: dict[str, Any],
-        chat_id: str | None = None,
-        conn=None,
-    ) -> int:
-        """Persist one outbound intent, idempotently.
+    def enqueue(self, *, delivery_key: str, user_id: str, payload: dict[str, Any], chat_id: str | None = None, conn=None) -> int:
+        """Persist one outbound intent, idempotently and collision-safely.
 
-        When ``conn`` is supplied this method never commits or rolls back it;
-        transaction ownership remains with the event processor.
+        Reusing a delivery key for a different logical message is a programming
+        error and fails loudly instead of silently preserving the first row.
         """
-        if not str(delivery_key).strip():
+        key = str(delivery_key).strip()
+        uid = str(user_id).strip()
+        if not key:
             raise ValueError("delivery_key must not be empty")
-        if not str(user_id).strip():
+        if not uid:
             raise ValueError("user_id must not be empty")
         if not isinstance(payload, dict):
             raise TypeError("payload must be a dict")
@@ -118,17 +96,23 @@ class PostgresOutbox:
                 ON CONFLICT(delivery_key) DO NOTHING
                 RETURNING id
                 """,
-                (str(delivery_key).strip(), str(user_id).strip(), chat_id, Jsonb(payload)),
+                (key, uid, chat_id, Jsonb(payload)),
             ).fetchone()
             if row:
                 message_id = int(row["id"])
             else:
                 existing = connection.execute(
-                    "SELECT id FROM outbox_messages WHERE delivery_key=%s",
-                    (str(delivery_key).strip(),),
+                    "SELECT id,user_id,chat_id,payload FROM outbox_messages WHERE delivery_key=%s",
+                    (key,),
                 ).fetchone()
                 if existing is None:
                     raise RuntimeError("outbox insert disappeared unexpectedly")
+                existing_payload = existing["payload"]
+                if isinstance(existing_payload, str):
+                    existing_payload = json.loads(existing_payload)
+                existing_chat = str(existing["chat_id"]) if existing["chat_id"] is not None else None
+                if str(existing["user_id"]) != uid or existing_chat != chat_id or dict(existing_payload) != payload:
+                    raise ValueError(f"delivery_key collision for {key!r}: existing outbound intent differs")
                 message_id = int(existing["id"])
             if own:
                 connection.commit()
@@ -147,9 +131,6 @@ class PostgresOutbox:
             raise ValueError("limit must be >= 1")
         now = datetime.now(timezone.utc)
         with _connect(self.db_url) as conn:
-            # A dead worker may leave a row in `sending`. Once its lease has
-            # expired, it counts as another delivery attempt. Do not allow
-            # repeated worker crashes to bypass max_attempts forever.
             conn.execute(
                 """
                 UPDATE outbox_messages
@@ -168,19 +149,13 @@ class PostgresOutbox:
             rows = conn.execute(
                 """
                 WITH picked AS (
-                    SELECT id
-                      FROM outbox_messages
-                     WHERE status='pending'
-                       AND available_at <= CURRENT_TIMESTAMP
-                     ORDER BY id
-                     FOR UPDATE SKIP LOCKED
-                     LIMIT %s
+                    SELECT id FROM outbox_messages
+                     WHERE status='pending' AND available_at <= CURRENT_TIMESTAMP
+                     ORDER BY id FOR UPDATE SKIP LOCKED LIMIT %s
                 )
                 UPDATE outbox_messages AS o
-                   SET status='sending', locked_at=%s, locked_by=%s,
-                       attempts=o.attempts+1
-                  FROM picked
-                 WHERE o.id=picked.id
+                   SET status='sending', locked_at=%s, locked_by=%s, attempts=o.attempts+1
+                  FROM picked WHERE o.id=picked.id
                 RETURNING o.*
                 """,
                 (limit, now, self.worker_id),
@@ -192,8 +167,7 @@ class PostgresOutbox:
             updated = conn.execute(
                 """
                 UPDATE outbox_messages
-                   SET status='sent', sent_at=CURRENT_TIMESTAMP,
-                       locked_at=NULL, locked_by=NULL, last_error=NULL
+                   SET status='sent', sent_at=CURRENT_TIMESTAMP, locked_at=NULL, locked_by=NULL, last_error=NULL
                  WHERE id=%s AND status='sending' AND locked_by=%s
                 """,
                 (message_id, self.worker_id),
@@ -211,28 +185,16 @@ class PostgresOutbox:
             ).fetchone()
             if row is None:
                 raise RuntimeError(f"outbox message {message_id} is not owned by this worker")
-
             attempts = int(row["attempts"])
             if attempts >= self.max_attempts:
                 conn.execute(
-                    """
-                    UPDATE outbox_messages
-                       SET status='dead', last_error=%s,
-                           locked_at=NULL, locked_by=NULL
-                     WHERE id=%s AND status='sending' AND locked_by=%s
-                    """,
+                    "UPDATE outbox_messages SET status='dead',last_error=%s,locked_at=NULL,locked_by=NULL WHERE id=%s AND status='sending' AND locked_by=%s",
                     (safe_error, message_id, self.worker_id),
                 )
             else:
                 delay = min(3600, 2 ** min(attempts, 10))
                 conn.execute(
-                    """
-                    UPDATE outbox_messages
-                       SET status='pending',
-                           available_at=CURRENT_TIMESTAMP + (%s * INTERVAL '1 second'),
-                           last_error=%s, locked_at=NULL, locked_by=NULL
-                     WHERE id=%s AND status='sending' AND locked_by=%s
-                    """,
+                    "UPDATE outbox_messages SET status='pending',available_at=CURRENT_TIMESTAMP + (%s * INTERVAL '1 second'),last_error=%s,locked_at=NULL,locked_by=NULL WHERE id=%s AND status='sending' AND locked_by=%s",
                     (delay, safe_error, message_id, self.worker_id),
                 )
 
@@ -243,14 +205,9 @@ class PostgresOutbox:
                 """
                 UPDATE outbox_messages
                    SET status=CASE WHEN attempts >= %s THEN 'dead' ELSE 'pending' END,
-                       locked_at=NULL,
-                       locked_by=NULL,
-                       last_error=CASE
-                           WHEN attempts >= %s THEN COALESCE(last_error, 'worker lease expired')
-                           ELSE last_error
-                       END
-                 WHERE status='sending'
-                   AND locked_at < CURRENT_TIMESTAMP - (%s * INTERVAL '1 second')
+                       locked_at=NULL, locked_by=NULL,
+                       last_error=CASE WHEN attempts >= %s THEN COALESCE(last_error, 'worker lease expired') ELSE last_error END
+                 WHERE status='sending' AND locked_at < CURRENT_TIMESTAMP - (%s * INTERVAL '1 second')
                 """,
                 (self.max_attempts, self.max_attempts, self.lease_seconds),
             )
@@ -258,9 +215,7 @@ class PostgresOutbox:
 
     def stats(self) -> dict[str, int]:
         with _connect(self.db_url) as conn:
-            rows = conn.execute(
-                "SELECT status, COUNT(*) AS n FROM outbox_messages GROUP BY status"
-            ).fetchall()
+            rows = conn.execute("SELECT status, COUNT(*) AS n FROM outbox_messages GROUP BY status").fetchall()
         result = {"pending": 0, "sending": 0, "sent": 0, "dead": 0}
         result.update({str(row["status"]): int(row["n"]) for row in rows})
         return result
@@ -271,13 +226,8 @@ class PostgresOutbox:
         if isinstance(payload, str):
             payload = json.loads(payload)
         return OutboxMessage(
-            id=int(row["id"]),
-            delivery_key=str(row["delivery_key"]),
-            user_id=str(row["user_id"]),
+            id=int(row["id"]), delivery_key=str(row["delivery_key"]), user_id=str(row["user_id"]),
             chat_id=str(row["chat_id"]) if row["chat_id"] is not None else None,
-            payload=dict(payload),
-            status=str(row["status"]),
-            attempts=int(row["attempts"]),
-            available_at=row["available_at"],
-            last_error=row["last_error"],
+            payload=dict(payload), status=str(row["status"]), attempts=int(row["attempts"]),
+            available_at=row["available_at"], last_error=row["last_error"],
         )
