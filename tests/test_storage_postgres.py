@@ -203,14 +203,9 @@ def test_postgres_follow_up_events_are_distinct_and_idempotent(postgres_dsn):
         _cleanup(survey, user_id, event_id, f"{event_id}:message-note")
 
 
-def test_production_survey_serializes_shared_state_mutations(postgres_dsn):
-    from production_outbox import DurableProductionPostgresSurvey
-
-    survey = DurableProductionPostgresSurvey(db_url=postgres_dsn, list_options=False)
-    users = [f"pytest-concurrent-{uuid.uuid4().hex}" for _ in range(2)]
-    events = [f"pytest-concurrent-event-{uuid.uuid4().hex}" for _ in range(2)]
-    start_barrier = threading.Barrier(2)
-    lock = threading.Lock()
+def _run_concurrent_mutations(survey, user_ids, event_ids, sleep_seconds=0.05):
+    barrier = threading.Barrier(len(user_ids))
+    counter_lock = threading.Lock()
     active = 0
     max_active = 0
     errors: list[BaseException] = []
@@ -219,18 +214,18 @@ def test_production_survey_serializes_shared_state_mutations(postgres_dsn):
         nonlocal active, max_active
         token = _TX_EVENT.set(event_id)
         try:
-            start_barrier.wait(timeout=5)
+            barrier.wait(timeout=5)
 
             def mutate() -> None:
                 nonlocal active, max_active
-                with lock:
+                with counter_lock:
                     active += 1
                     max_active = max(max_active, active)
                 try:
-                    time.sleep(0.05)
+                    time.sleep(sleep_seconds)
                     survey.state[user_id]["concurrency_marker"] = event_id
                 finally:
-                    with lock:
+                    with counter_lock:
                         active -= 1
 
             survey._mutate(
@@ -246,35 +241,53 @@ def test_production_survey_serializes_shared_state_mutations(postgres_dsn):
             _TX_EVENT.reset(token)
 
     threads = [
-        threading.Thread(target=worker, args=(users[0], events[0]), daemon=True),
-        threading.Thread(target=worker, args=(users[1], events[1]), daemon=True),
+        threading.Thread(target=worker, args=(user_id, event_id), daemon=True)
+        for user_id, event_id in zip(user_ids, event_ids)
     ]
     for thread in threads:
         thread.start()
     for thread in threads:
         thread.join(timeout=10)
+    assert not errors, errors
+    return max_active
 
+
+def test_production_survey_serializes_same_user_mutations(postgres_dsn):
+    from production_outbox import DurableProductionPostgresSurvey
+
+    survey = DurableProductionPostgresSurvey(db_url=postgres_dsn, list_options=False)
+    user_id = f"pytest-same-user-{uuid.uuid4().hex}"
+    events = [f"pytest-same-user-event-{uuid.uuid4().hex}" for _ in range(2)]
     try:
-        assert not errors, errors
+        max_active = _run_concurrent_mutations(survey, [user_id, user_id], events)
         assert max_active == 1
         with survey._connect() as conn:
             rows = conn.execute(
-                "SELECT user_id,event_json->>'event_id' FROM audit_events "
-                "WHERE user_id = ANY(%s) AND event_type='concurrency_test'",
-                (users,),
+                "SELECT event_json->>'event_id' FROM audit_events WHERE user_id=%s AND event_type='concurrency_test'",
+                (user_id,),
             ).fetchall()
-            state_rows = conn.execute(
-                "SELECT user_id,state_json->>'concurrency_marker' FROM survey_state WHERE user_id = ANY(%s)",
+        assert {row[0] for row in rows} == set(events)
+    finally:
+        _cleanup(survey, user_id, *events)
+
+
+def test_production_survey_allows_different_users_in_parallel(postgres_dsn):
+    from production_outbox import DurableProductionPostgresSurvey
+
+    survey = DurableProductionPostgresSurvey(db_url=postgres_dsn, list_options=False)
+    users = [f"pytest-different-user-{uuid.uuid4().hex}" for _ in range(2)]
+    events = [f"pytest-different-user-event-{uuid.uuid4().hex}" for _ in range(2)]
+    try:
+        max_active = _run_concurrent_mutations(survey, users, events)
+        assert max_active == 2
+        with survey._connect() as conn:
+            rows = conn.execute(
+                "SELECT user_id,event_json->>'event_id' FROM audit_events WHERE user_id = ANY(%s) AND event_type='concurrency_test'",
                 (users,),
             ).fetchall()
         assert {row[0] for row in rows} == set(users)
         assert {row[1] for row in rows} == set(events)
-        assert {row[0] for row in state_rows} == set(users)
-        assert {row[1] for row in state_rows} == set(events)
     finally:
-        with survey._connect() as conn:
-            for user_id in users:
-                conn.execute("DELETE FROM survey_state WHERE user_id=%s", (user_id,))
-                conn.execute("DELETE FROM audit_events WHERE user_id=%s", (user_id,))
-            for event_id in events:
-                conn.execute("DELETE FROM processed_events WHERE event_id=%s", (event_id,))
+        for user_id in users:
+            _cleanup(survey, user_id)
+        _cleanup(survey, users[0], *events)
