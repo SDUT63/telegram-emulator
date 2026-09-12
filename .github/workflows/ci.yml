@@ -55,6 +55,7 @@ jobs:
             tests/test_storage_sqlite.py \
             tests/test_storage_postgres.py \
             tests/test_outbox_postgres.py \
+            tests/test_production_outbox.py \
             tests/test_webhook_config.py \
             tests/test_crm_outbox.py
 
