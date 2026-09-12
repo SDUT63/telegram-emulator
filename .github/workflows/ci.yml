@@ -42,11 +42,14 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install -r requirements.txt pytest
 
+      - name: Check committed secrets
+        run: python scripts/check_secrets.py
+
       - name: Compile Python sources
         run: python -m compileall -q .
 
       - name: Run MAX bot tests
-        run: python -m pytest -q tests/test_storage_sqlite.py tests/test_storage_postgres.py tests/test_webhook_config.py tests/test_crm_outbox.py
+        run: python -m pytest -q tests/test_launcher_security.py tests/test_storage_sqlite.py tests/test_storage_postgres.py tests/test_webhook_config.py tests/test_crm_outbox.py
 
   # Go Backend Tests
   go-backend:
@@ -157,8 +160,3 @@ jobs:
         output: 'trivy-results.sarif'
 
     # Note: SARIF upload remains disabled until repository security integration is configured.
-    # - name: Upload Trivy scan results to GitHub Security tab
-    #   uses: github/codeql-action/upload-sarif@v3
-    #   if: always()
-    #   with:
-    #     sarif_file: 'trivy-results.sarif'
