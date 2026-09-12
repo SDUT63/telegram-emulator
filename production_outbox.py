@@ -7,11 +7,13 @@ import json
 import threading
 import weakref
 from typing import Any, Callable, TypeVar
+import fallback
+import knowledge
 from chatbot_survey import Survey
 from outbox_postgres import PostgresOutbox, delivery_key
 from production_storage import ProductionPostgresSurvey
 from storage_postgres import _TX_CONNECTION, _TX_EVENT, _TX_USER, _TX_ACCEPTED
-from max_ui import FILES_TAKEN, article_screen, branch_screen, map_screen, navigation_keyboard, questionnaire_keyboard
+from max_ui import FILES_TAKEN, СПРАВКА_ПОДПИСЬ, article_screen, branch_screen, map_screen, questionnaire_keyboard
 T = TypeVar("T")
 _OUTBOX_RESULT: contextvars.ContextVar[Any] = contextvars.ContextVar("sdut_outbox_result", default=None)
 _OUTBOX_KEYBOARD: contextvars.ContextVar[Any] = contextvars.ContextVar("sdut_outbox_keyboard", default=None)
@@ -26,41 +28,42 @@ def _keyboard_rows(survey: ProductionPostgresSurvey, user_id: str) -> list[list[
 def _enqueue_text(outbox: PostgresOutbox, conn, survey: ProductionPostgresSurvey, user_id: str, event_id: str, text: str, ordinal: int = 0, keyboard_rows: list[list[list[str]]] | None = None) -> None:
     if not text: return
     rows = keyboard_rows if keyboard_rows is not None else _keyboard_rows(survey, user_id)
-    outbox.enqueue(delivery_key=delivery_key(event_id, ordinal=ordinal), user_id=str(user_id), payload={"kind": "max_text", "text": str(text), "keyboard_rows": rows}, conn=conn)
+    outbox.enqueue(delivery_key(event_id, ordinal=ordinal), str(user_id), {"kind": "max_text", "text": str(text), "keyboard_rows": rows}, conn=conn)
 
 class DurableProductionPostgresSurvey(ProductionPostgresSurvey):
     """Production survey with one durable transaction boundary per MAX event."""
     _lock_registry_guard = threading.RLock()
     _mutation_locks: weakref.WeakValueDictionary[str, threading.RLock] = weakref.WeakValueDictionary()
-
     @classmethod
     def _mutation_lock_for(cls, user_id: str) -> threading.RLock:
         key = str(user_id)
         with cls._lock_registry_guard:
             lock = cls._mutation_locks.get(key)
-            if lock is None:
-                lock = threading.RLock(); cls._mutation_locks[key] = lock
+            if lock is None: lock = threading.RLock(); cls._mutation_locks[key] = lock
             return lock
-
     def health(self) -> bool:
         required = {"survey_state", "processed_events", "audit_events", "outbox_messages"}
         try:
             with self._connect() as conn:
                 rows = conn.execute("SELECT table_name FROM information_schema.tables WHERE table_schema='public' AND table_name = ANY(%s)", (list(required),)).fetchall()
             return {str(row[0]) for row in rows} == required
-        except Exception:
-            return False
-
+        except Exception: return False
     def _mutate(self, user_id: str, event_type: str, payload: dict[str, Any], fn: Callable[[], T], duplicate: T) -> T:
-        lock = self._mutation_lock_for(str(user_id))
-        with lock:
+        with self._mutation_lock_for(str(user_id)):
             token_result = _OUTBOX_RESULT.set(None); token_keyboard = _OUTBOX_KEYBOARD.set(None)
             def wrapped() -> T:
                 result = fn(); _OUTBOX_RESULT.set(result); return result
-            try:
-                return super()._mutate(user_id, event_type, payload, wrapped, duplicate)
-            finally:
-                _OUTBOX_RESULT.reset(token_result); _OUTBOX_KEYBOARD.reset(token_keyboard)
+            try: return super()._mutate(user_id, event_type, payload, wrapped, duplicate)
+            finally: _OUTBOX_RESULT.reset(token_result); _OUTBOX_KEYBOARD.reset(token_keyboard)
+
+    def _reference_reply(self, user_id: str, question: str) -> str:
+        """Resolve the deterministic local knowledge path inside the event boundary."""
+        text = knowledge.ответ_без_модели(question)
+        if text:
+            Survey.understood(self, user_id)
+            return text + "\n\n" + СПРАВКА_ПОДПИСЬ
+        attempt = self.miss(user_id)
+        return fallback.фраза(attempt, fallback.ВОПРОС)
 
     def handle_message_event(self, user_id: str, text: str, files: list[dict[str, Any]] | None = None) -> str:
         uid = str(user_id); normalized_text = str(text or ""); normalized_files = list(files or [])
@@ -68,7 +71,8 @@ class DurableProductionPostgresSurvey(ProductionPostgresSurvey):
         def mutate() -> str:
             result = Survey.handle(self, uid, normalized_text)
             if normalized_files: Survey.note_message(self, uid, normalized_text, normalized_files)
-            return result
+            if result or not normalized_text: return result
+            return self._reference_reply(uid, normalized_text)
         return self._mutate(uid, "message", payload, mutate, "")
 
     def handle_navigation_event(self, user_id: str, action: str, args: list[str]) -> str:
@@ -76,8 +80,7 @@ class DurableProductionPostgresSurvey(ProductionPostgresSurvey):
         payload = {"kind": "navigation", "action": action, "args": args}
         def mutate() -> str:
             Survey.understood(self, uid)
-            if action == "map":
-                text, keyboard = map_screen(self, uid)
+            if action == "map": text, keyboard = map_screen(self, uid)
             elif action == "v" and args:
                 screen = branch_screen(args[0], int(args[1]) if len(args) > 1 and args[1].isdigit() else 1, self, uid)
                 if not screen: return ""
@@ -87,15 +90,10 @@ class DurableProductionPostgresSurvey(ProductionPostgresSurvey):
                 if not screen: return ""
                 text, keyboard = screen
             elif action == "q":
-                spot = self.current(uid)
-                text = self.summary(uid) if not spot else self.question_text(uid)
-                keyboard = questionnaire_keyboard(self, uid)
-            elif action == "cfull":
-                text = self.consent_text(uid); keyboard = questionnaire_keyboard(self, uid)
-            else:
-                return ""
-            _OUTBOX_KEYBOARD.set(keyboard)
-            return text
+                spot = self.current(uid); text = self.summary(uid) if not spot else self.question_text(uid); keyboard = questionnaire_keyboard(self, uid)
+            elif action == "cfull": text = self.consent_text(uid); keyboard = questionnaire_keyboard(self, uid)
+            else: return ""
+            _OUTBOX_KEYBOARD.set(keyboard); return text
         return self._mutate(uid, "navigation", payload, mutate, "")
 
     def handle_callback_event(self, user_id: str, action: str, args: list[str]) -> str:
@@ -131,8 +129,7 @@ class DurableProductionPostgresSurvey(ProductionPostgresSurvey):
     def start_event(self, user_id: str) -> str:
         uid = str(user_id); token = None
         if _TX_EVENT.get() is None:
-            import time
-            token = _TX_EVENT.set(f"start:{uid}:{time.time_ns()}")
+            import time; token = _TX_EVENT.set(f"start:{uid}:{time.time_ns()}")
         try: return self._mutate(uid, "bot_started", {"kind": "bot_started"}, lambda: self._start_loaded(uid), "")
         finally:
             if token is not None: _TX_EVENT.reset(token)
@@ -155,12 +152,9 @@ class DurableProductionPostgresSurvey(ProductionPostgresSurvey):
             self._save_user(conn, str(user_id))
             audit_payload = dict(payload or {}); audit_payload.pop("fingerprint", None)
             self.audit(str(user_id), event_type, audit_payload)
-            result = _OUTBOX_RESULT.get(); keyboard = _OUTBOX_KEYBOARD.get(); event_id = _TX_EVENT.get()
-            outbox = PostgresOutbox(db_url=self.db_url)
-            if isinstance(result, str) and result and event_id:
-                _enqueue_text(outbox, conn, self, str(user_id), event_id, result, 0, keyboard)
-            if payload and payload.get("has_files") and event_id:
-                _enqueue_text(outbox, conn, self, str(user_id), event_id, FILES_TAKEN, 1)
+            result = _OUTBOX_RESULT.get(); keyboard = _OUTBOX_KEYBOARD.get(); event_id = _TX_EVENT.get(); outbox = PostgresOutbox(db_url=self.db_url)
+            if isinstance(result, str) and result and event_id: _enqueue_text(outbox, conn, self, str(user_id), event_id, result, 0, keyboard)
+            if payload and payload.get("has_files") and event_id: _enqueue_text(outbox, conn, self, str(user_id), event_id, FILES_TAKEN, 1)
             conn.commit()
         except BaseException:
             conn.rollback(); raise
