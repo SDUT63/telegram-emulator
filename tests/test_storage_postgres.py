@@ -8,6 +8,7 @@ import uuid
 import pytest
 
 from production_storage import ProductionPostgresSurvey, TransactionalPersistentSeen
+from storage_postgres import _TX_EVENT
 
 
 @pytest.fixture()
@@ -208,6 +209,7 @@ def test_production_survey_serializes_shared_state_mutations(postgres_dsn):
     survey = DurableProductionPostgresSurvey(db_url=postgres_dsn, list_options=False)
     users = [f"pytest-concurrent-{uuid.uuid4().hex}" for _ in range(2)]
     events = [f"pytest-concurrent-event-{uuid.uuid4().hex}" for _ in range(2)]
+    start_barrier = threading.Barrier(2)
     lock = threading.Lock()
     active = 0
     max_active = 0
@@ -215,8 +217,10 @@ def test_production_survey_serializes_shared_state_mutations(postgres_dsn):
 
     def worker(user_id: str, event_id: str) -> None:
         nonlocal active, max_active
-        token = __import__("storage_postgres")._TX_EVENT.set(event_id)
+        token = _TX_EVENT.set(event_id)
         try:
+            start_barrier.wait(timeout=5)
+
             def mutate() -> None:
                 nonlocal active, max_active
                 with lock:
@@ -239,7 +243,7 @@ def test_production_survey_serializes_shared_state_mutations(postgres_dsn):
         except BaseException as exc:  # pragma: no cover
             errors.append(exc)
         finally:
-            __import__("storage_postgres")._TX_EVENT.reset(token)
+            _TX_EVENT.reset(token)
 
     threads = [
         threading.Thread(target=worker, args=(users[0], events[0]), daemon=True),
