@@ -37,18 +37,14 @@ def _in_questionnaire(survey: Survey | None, user_id: str) -> bool:
     return survey is not None and survey.current(user_id) is not None
 
 def _user_state(survey: Any, user_id: str) -> dict[str, Any]:
-    """Read production state through its explicit user-scoped API.
-
-    ``Survey.state`` is intentionally not a production UI data source: it is
-    an in-process compatibility cache and is neither worker-safe nor a source
-    of truth. The production PostgreSQL facade provides ``user_state``.
-    """
+    """Read state only through the explicit user-scoped production contract."""
     reader = getattr(survey, "user_state", None)
     if reader is None:
-        # This path is retained only for the legacy/unit-test Survey contract.
-        # Production surveys always expose user_state().
-        return (getattr(survey, "state", {}) or {}).get(str(user_id), {})
-    return reader(str(user_id))
+        raise TypeError("Production UI requires survey.user_state(user_id); shared Survey.state is not a valid source")
+    value = reader(str(user_id))
+    if not isinstance(value, dict):
+        raise TypeError("survey.user_state(user_id) must return a dict")
+    return value
 
 def layout(survey: Survey, user_id: str) -> list[list[tuple[str, str]]]:
     rows: list[list[tuple[str, str]]] = []
