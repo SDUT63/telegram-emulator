@@ -7,9 +7,6 @@ import pathlib
 import sys
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
-# max_bot.py remains the SQLite/pilot compatibility module. It is deliberately
-# not a production entrypoint anymore. Production starts only through the
-# explicit PostgreSQL launchers and max_production_dispatcher.py.
 PRODUCTION_FILES = {
     ROOT / "max_webhook.py",
     ROOT / "run_max_postgres.py",
