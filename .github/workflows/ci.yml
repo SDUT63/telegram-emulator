@@ -7,7 +7,7 @@ on:
     branches: [ master, main, develop, max-bot-complete-2026, claude/chat-bot-survey-publik-nq2w1s ]
 
 jobs:
-  # MAX bot: Python syntax/import checks plus durable-storage and webhook tests.
+  # MAX bot: Python syntax/import checks plus durable-storage, outbox and webhook tests.
   max-bot-python:
     runs-on: ubuntu-latest
     services:
@@ -46,7 +46,7 @@ jobs:
         run: python -m compileall -q .
 
       - name: Run MAX bot tests
-        run: python -m pytest -q tests/test_storage_sqlite.py tests/test_storage_postgres.py tests/test_webhook_config.py
+        run: python -m pytest -q tests/test_storage_sqlite.py tests/test_storage_postgres.py tests/test_webhook_config.py tests/test_crm_outbox.py
 
   # Go Backend Tests
   go-backend:
