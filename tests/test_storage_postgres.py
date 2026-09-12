@@ -29,22 +29,14 @@ def test_postgres_survey_round_trip(postgres_dsn):
     user_id = f"pytest-user-{uuid.uuid4()}"
     survey = ProductionPostgresSurvey(db_url=postgres_dsn, list_options=False)
     try:
-        survey.state[user_id] = {
-            "step": 2,
-            "answers": {"name": "pytest"},
-            "finished": None,
-        }
+        survey.state[user_id] = {"step": 2, "answers": {"name": "pytest"}, "finished": None}
         survey.save()
-
         restored = ProductionPostgresSurvey(db_url=postgres_dsn, list_options=False)
         assert restored.state[user_id]["step"] == 2
         assert restored.state[user_id]["answers"]["name"] == "pytest"
-
         del restored.state[user_id]
         restored.save()
-        assert user_id not in ProductionPostgresSurvey(
-            db_url=postgres_dsn, list_options=False
-        ).state
+        assert user_id not in ProductionPostgresSurvey(db_url=postgres_dsn, list_options=False).state
     finally:
         _cleanup(survey, user_id)
 
@@ -55,10 +47,8 @@ def test_postgres_bot_started_does_not_reset_existing_case(postgres_dsn):
     try:
         first = survey.start(user_id)
         assert first
-        person = survey.state[user_id]
-        person["answers"]["marker"] = "must-survive"
+        survey.state[user_id]["answers"]["marker"] = "must-survive"
         survey.save()
-
         second = survey.start(user_id)
         assert "must-survive" in survey.state[user_id]["answers"]
         assert second
@@ -73,10 +63,6 @@ def test_postgres_bot_started_survives_new_process_instance(postgres_dsn):
         first.start(user_id)
         first.state[user_id]["answers"]["restart_marker"] = "persisted"
         first.save()
-
-        # A fresh worker does not preload the whole DB. The transactional
-        # start path must nevertheless lock/load the durable row before
-        # calling the legacy Survey.start(), otherwise BotStarted could wipe it.
         second = ProductionPostgresSurvey(db_url=postgres_dsn, list_options=False)
         response = second.start(user_id)
         assert response
@@ -91,27 +77,15 @@ def test_postgres_event_is_atomic_and_idempotent(postgres_dsn):
     survey = ProductionPostgresSurvey(db_url=postgres_dsn, list_options=False)
     try:
         survey.start(user_id)
-
         seen = TransactionalPersistentSeen()
         assert seen.fresh(event_id) is True
         first = survey.handle(user_id, "help")
         assert first
-
-        # MAX redelivery: the same event must not execute Survey.handle again.
         assert seen.fresh(event_id) is True
-        second = survey.handle(user_id, "help")
-        assert second == ""
-
+        assert survey.handle(user_id, "help") == ""
         with survey._connect() as conn:
-            processed = conn.execute(
-                "SELECT count(*) FROM processed_events WHERE event_id=%s", (event_id,)
-            ).fetchone()[0]
-            audit = conn.execute(
-                "SELECT count(*) FROM audit_events WHERE user_id=%s AND event_type='message'",
-                (user_id,),
-            ).fetchone()[0]
-        assert processed == 1
-        assert audit == 1
+            assert conn.execute("SELECT count(*) FROM processed_events WHERE event_id=%s", (event_id,)).fetchone()[0] == 1
+            assert conn.execute("SELECT count(*) FROM audit_events WHERE user_id=%s AND event_type='message'", (user_id,)).fetchone()[0] == 1
     finally:
         _cleanup(survey, user_id, event_id)
 
@@ -122,31 +96,13 @@ def test_postgres_event_claim_rolls_back_on_failure(postgres_dsn):
     survey = ProductionPostgresSurvey(db_url=postgres_dsn, list_options=False)
     try:
         survey.start(user_id)
-
         seen = TransactionalPersistentSeen()
         assert seen.fresh(event_id) is True
-
         with pytest.raises(RuntimeError):
-            survey._mutate(
-                user_id,
-                "message",
-                {"kind": "message"},
-                lambda: (_ for _ in ()).throw(RuntimeError("simulated handler crash")),
-                "",
-            )
-
+            survey._mutate(user_id, "message", {"kind": "message"}, lambda: (_ for _ in ()).throw(RuntimeError("simulated handler crash")), "")
         with survey._connect() as conn:
-            processed = conn.execute(
-                "SELECT count(*) FROM processed_events WHERE event_id=%s", (event_id,)
-            ).fetchone()[0]
-            audit = conn.execute(
-                "SELECT count(*) FROM audit_events WHERE user_id=%s AND event_type='message'",
-                (user_id,),
-            ).fetchone()[0]
-        assert processed == 0
-        assert audit == 0
-
-        # The same event is redeliverable after rollback.
+            assert conn.execute("SELECT count(*) FROM processed_events WHERE event_id=%s", (event_id,)).fetchone()[0] == 0
+            assert conn.execute("SELECT count(*) FROM audit_events WHERE user_id=%s AND event_type='message'", (user_id,)).fetchone()[0] == 0
         assert seen.fresh(event_id) is True
     finally:
         _cleanup(survey, user_id, event_id)
@@ -164,9 +120,7 @@ def test_postgres_direct_transactional_survey_handle_uses_atomic_path(postgres_d
         assert seen.fresh(event_id)
         assert survey.handle(user_id, "help")
         with survey._connect() as conn:
-            assert conn.execute(
-                "SELECT count(*) FROM processed_events WHERE event_id=%s", (event_id,)
-            ).fetchone()[0] == 1
+            assert conn.execute("SELECT count(*) FROM processed_events WHERE event_id=%s", (event_id,)).fetchone()[0] == 1
     finally:
         _cleanup(survey, user_id, event_id)
 
@@ -177,17 +131,13 @@ def test_postgres_follow_up_events_are_distinct_and_idempotent(postgres_dsn):
     survey = ProductionPostgresSurvey(db_url=postgres_dsn, list_options=False)
     try:
         survey.start(user_id)
-        # Create an event context exactly as the dispatcher Seen adapter does.
         seen = TransactionalPersistentSeen()
         assert seen.fresh(event_id)
         survey.handle(user_id, "help")
         survey.note_message(user_id, "дополнение")
-
+        survey.note_message(user_id, "дополнение")
         with survey._connect() as conn:
-            rows = conn.execute(
-                "SELECT event_type, count(*) FROM processed_events WHERE user_id=%s GROUP BY event_type",
-                (user_id,),
-            ).fetchall()
+            rows = conn.execute("SELECT event_type, count(*) FROM processed_events WHERE user_id=%s GROUP BY event_type", (user_id,)).fetchall()
             event_types = {row[0]: row[1] for row in rows}
         assert event_types.get("message") == 1
         assert event_types.get("message_attachment") == 1
