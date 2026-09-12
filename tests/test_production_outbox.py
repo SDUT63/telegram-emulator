@@ -145,6 +145,25 @@ def test_message_with_attachment_is_atomic_and_queues_two_intents():
     assert "fingerprint" not in audit["event_json"]
 
 
+def test_message_event_collision_detects_changed_attachment():
+    survey = DurableProductionPostgresSurvey()
+    user_id = f"outbox-collision-file-{uuid.uuid4().hex}"
+    event_id = f"outbox-collision-file-event-{uuid.uuid4().hex}"
+    first_files = [{"kind": "file", "name": "one.pdf", "url": "https://max.invalid/one", "size": 10}]
+    second_files = [{"kind": "file", "name": "two.pdf", "url": "https://max.invalid/two", "size": 20}]
+
+    token = _TX_EVENT.set(event_id)
+    try:
+        first = survey.handle_message_event(user_id, "same text", first_files)
+        consume_direct_send_suppression()
+        with pytest.raises(RuntimeError, match="event_id collision"):
+            survey.handle_message_event(user_id, "same text", second_files)
+    finally:
+        _TX_EVENT.reset(token)
+
+    assert first
+
+
 def test_survey_failure_rolls_back_outbox_and_state():
     survey = DurableProductionPostgresSurvey()
     user_id = f"outbox-failure-{uuid.uuid4().hex}"
