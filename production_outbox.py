@@ -13,6 +13,7 @@ network delivery.
 from __future__ import annotations
 
 import contextvars
+import threading
 from typing import Any, Callable, TypeVar
 
 from chatbot_survey import Survey
@@ -54,7 +55,17 @@ def _keyboard_rows(survey: ProductionPostgresSurvey, user_id: str) -> list[list[
 
 
 class DurableProductionPostgresSurvey(ProductionPostgresSurvey):
-    """Production survey whose textual replies enter the durable outbox."""
+    """Production survey whose textual replies enter the durable outbox.
+
+    ``ProductionPostgresSurvey`` keeps the questionnaire in ``self.state`` for
+    compatibility with the legacy Survey implementation. The webhook transport
+    can dispatch several requests concurrently, so a single survey instance
+    must not let two transactions mutate that shared in-memory snapshot at the
+    same time. PostgreSQL still provides the cross-process/user serialization;
+    this lock protects the in-process legacy object from races.
+    """
+
+    _mutation_lock = threading.RLock()
 
     def _mutate(
         self,
@@ -64,17 +75,16 @@ class DurableProductionPostgresSurvey(ProductionPostgresSurvey):
         fn: Callable[[], T],
         duplicate: T,
     ) -> T:
-        token = _OUTBOX_RESULT.set(None)
-
-        def wrapped() -> T:
-            result = fn()
-            _OUTBOX_RESULT.set(result)
-            return result
-
-        try:
-            return super()._mutate(user_id, event_type, payload, wrapped, duplicate)
-        finally:
-            _OUTBOX_RESULT.reset(token)
+        with self._mutation_lock:
+            token = _OUTBOX_RESULT.set(None)
+            def wrapped() -> T:
+                result = fn()
+                _OUTBOX_RESULT.set(result)
+                return result
+            try:
+                return super()._mutate(user_id, event_type, payload, wrapped, duplicate)
+            finally:
+                _OUTBOX_RESULT.reset(token)
 
     def _finish_event(
         self,
