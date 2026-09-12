@@ -1,8 +1,7 @@
 from __future__ import annotations
 
+import asyncio
 from datetime import datetime, timezone
-
-import pytest
 
 from durable_outbox_worker import deliver_once
 from outbox_postgres import OutboxMessage
@@ -50,12 +49,11 @@ def message(*, payload=None):
     )
 
 
-@pytest.mark.asyncio
-async def test_deliver_once_marks_success_after_max_accepts_message():
+def test_deliver_once_marks_success_after_max_accepts_message():
     bot = FakeBot()
     queue = FakeQueue(message())
 
-    assert await deliver_once(bot, queue=queue) == 1
+    assert asyncio.run(deliver_once(bot, queue=queue)) == 1
 
     assert len(bot.calls) == 1
     assert bot.calls[0]["user_id"] == 123
@@ -64,20 +62,18 @@ async def test_deliver_once_marks_success_after_max_accepts_message():
     assert queue.failed == []
 
 
-@pytest.mark.asyncio
-async def test_deliver_once_retries_network_failure_without_marking_sent():
+def test_deliver_once_retries_network_failure_without_marking_sent():
     bot = FakeBot(fail=True)
     queue = FakeQueue(message())
 
-    assert await deliver_once(bot, queue=queue) == 1
+    assert asyncio.run(deliver_once(bot, queue=queue)) == 1
 
     assert len(bot.calls) == 1
     assert queue.sent == []
     assert queue.failed == [(7, "MAX unavailable")]
 
 
-@pytest.mark.asyncio
-async def test_deliver_once_does_not_resend_when_sent_commit_fails():
+def test_deliver_once_does_not_resend_when_sent_commit_fails():
     class SentCommitFailureQueue(FakeQueue):
         def mark_sent(self, message_id):
             raise RuntimeError("database unavailable")
@@ -86,7 +82,7 @@ async def test_deliver_once_does_not_resend_when_sent_commit_fails():
     queue = SentCommitFailureQueue(message())
 
     # The delivery already happened; the worker must not call send_message a
-    # second time just because the local acknowledgement failed.
-    assert await deliver_once(bot, queue=queue) == 1
+    # second time merely because the local acknowledgement failed.
+    assert asyncio.run(deliver_once(bot, queue=queue)) == 1
     assert len(bot.calls) == 1
     assert queue.failed == []
