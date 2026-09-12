@@ -128,6 +128,41 @@ def test_postgres_event_claim_rolls_back_on_failure(postgres_dsn):
         _cleanup(survey, user_id, event_id)
 
 
+def test_postgres_event_id_collision_is_rejected(postgres_dsn):
+    user_id = f"pytest-collision-{uuid.uuid4()}"
+    event_id = f"pytest-collision-event-{uuid.uuid4()}"
+    survey = ProductionPostgresSurvey(db_url=postgres_dsn, list_options=False)
+    try:
+        survey.start(user_id)
+        seen = TransactionalPersistentSeen()
+        assert seen.fresh(event_id)
+        assert survey.handle(user_id, "help")
+        assert seen.fresh(event_id)
+        with pytest.raises(RuntimeError, match="event_id collision"):
+            survey._mutate(user_id, "callback", {"action": "different"}, lambda: "must-not-run", "")
+        with survey._connect() as conn:
+            row = conn.execute("SELECT event_type,event_hash FROM processed_events WHERE event_id=%s", (event_id,)).fetchone()
+            assert row is not None
+            assert row[0] == "message"
+    finally:
+        _cleanup(survey, user_id, event_id)
+
+
+def test_postgres_missing_event_id_still_persists_transactionally(postgres_dsn):
+    user_id = f"pytest-no-mid-{uuid.uuid4()}"
+    survey = ProductionPostgresSurvey(db_url=postgres_dsn, list_options=False)
+    try:
+        survey.start(user_id)
+        seen = TransactionalPersistentSeen()
+        assert seen.fresh(None) is True
+        assert survey.handle(user_id, "help")
+        with survey._connect() as conn:
+            row = conn.execute("SELECT count(*) FROM processed_events WHERE user_id=%s AND event_type='message'", (user_id,)).fetchone()
+            assert row[0] == 1
+    finally:
+        _cleanup(survey, user_id)
+
+
 def test_postgres_direct_transactional_survey_handle_uses_atomic_path(postgres_dsn):
     from storage_postgres import TransactionalPostgresSurvey
 
