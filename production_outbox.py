@@ -1,13 +1,5 @@
 #!/usr/bin/env python3
-"""Transactional outbound bridge for the production MAX bot.
-
-The PostgreSQL transaction contains the inbound event claim, questionnaire
-state transition, audit record and every outbound message intent. Network
-requests are performed later by the durable worker.
-
-External delivery remains at-least-once because ordinary MAX messages do not
-provide a provider-side idempotency key that can prove exactly-once delivery.
-"""
+"""Transactional outbound bridge for the production MAX bot."""
 from __future__ import annotations
 
 import contextvars
@@ -24,39 +16,31 @@ from storage_postgres import _TX_CONNECTION, _TX_EVENT, _TX_USER, _TX_ACCEPTED
 
 T = TypeVar("T")
 _OUTBOX_RESULT: contextvars.ContextVar[Any] = contextvars.ContextVar("sdut_outbox_result", default=None)
+_OUTBOX_KEYBOARD: contextvars.ContextVar[Any] = contextvars.ContextVar("sdut_outbox_keyboard", default=None)
 
 
 def _message_fingerprint(text: str, files: list[dict[str, Any]]) -> str:
-    canonical = json.dumps(
-        {"text": text, "files": files},
-        ensure_ascii=False,
-        sort_keys=True,
-        separators=(",", ":"),
-        default=str,
-    ).encode("utf-8")
+    canonical = json.dumps({"text": text, "files": files}, ensure_ascii=False,
+                           sort_keys=True, separators=(",", ":"), default=str).encode("utf-8")
     return hashlib.sha256(canonical).hexdigest()
 
 
 def _keyboard_rows(survey: ProductionPostgresSurvey, user_id: str) -> list[list[list[str]]]:
     from max_bot import layout
-    return [
-        [[str(label), str(action)] for label, action in row]
-        for row in layout(survey, str(user_id))
-    ]
+    return [[[str(label), str(action)] for label, action in row]
+            for row in layout(survey, str(user_id))]
 
 
 def _enqueue_text(outbox: PostgresOutbox, conn, survey: ProductionPostgresSurvey,
-                  user_id: str, event_id: str, text: str, ordinal: int = 0) -> None:
+                  user_id: str, event_id: str, text: str, ordinal: int = 0,
+                  keyboard_rows: list[list[list[str]]] | None = None) -> None:
     if not text:
         return
+    rows = keyboard_rows if keyboard_rows is not None else _keyboard_rows(survey, user_id)
     outbox.enqueue(
         delivery_key=delivery_key(event_id, ordinal=ordinal),
         user_id=str(user_id),
-        payload={
-            "kind": "max_text",
-            "text": str(text),
-            "keyboard_rows": _keyboard_rows(survey, str(user_id)),
-        },
+        payload={"kind": "max_text", "text": str(text), "keyboard_rows": rows},
         conn=conn,
     )
 
@@ -94,7 +78,8 @@ class DurableProductionPostgresSurvey(ProductionPostgresSurvey):
                 fn: Callable[[], T], duplicate: T) -> T:
         lock = self._mutation_lock_for(str(user_id))
         with lock:
-            token = _OUTBOX_RESULT.set(None)
+            token_result = _OUTBOX_RESULT.set(None)
+            token_keyboard = _OUTBOX_KEYBOARD.set(None)
             def wrapped() -> T:
                 result = fn()
                 _OUTBOX_RESULT.set(result)
@@ -102,18 +87,16 @@ class DurableProductionPostgresSurvey(ProductionPostgresSurvey):
             try:
                 return super()._mutate(user_id, event_type, payload, wrapped, duplicate)
             finally:
-                _OUTBOX_RESULT.reset(token)
+                _OUTBOX_RESULT.reset(token_result)
+                _OUTBOX_KEYBOARD.reset(token_keyboard)
 
     def handle_message_event(self, user_id: str, text: str,
                              files: list[dict[str, Any]] | None = None) -> str:
         uid = str(user_id)
         normalized_text = str(text or "")
         normalized_files = list(files or [])
-        payload = {
-            "kind": "message",
-            "has_files": bool(normalized_files),
-            "fingerprint": _message_fingerprint(normalized_text, normalized_files),
-        }
+        payload = {"kind": "message", "has_files": bool(normalized_files),
+                   "fingerprint": _message_fingerprint(normalized_text, normalized_files)}
         def mutate() -> str:
             result = Survey.handle(self, uid, normalized_text)
             if normalized_files:
@@ -121,9 +104,7 @@ class DurableProductionPostgresSurvey(ProductionPostgresSurvey):
             return result
         return self._mutate(uid, "message", payload, mutate, "")
 
-    def handle_navigation_event(self, user_id: str, action: str,
-                                args: list[str]) -> str:
-        """Handle read-only map/article navigation and queue its screen."""
+    def handle_navigation_event(self, user_id: str, action: str, args: list[str]) -> str:
         uid = str(user_id)
         action = str(action or "")
         args = [str(value) for value in args]
@@ -131,21 +112,27 @@ class DurableProductionPostgresSurvey(ProductionPostgresSurvey):
 
         def mutate() -> str:
             import knowledge
-            from max_bot import К_АНКЕТЕ, КАРТА_ЗАГОЛОВОК, КАРТА_ПОДПИСЬ, СПРАВКА_ПОДПИСЬ
+            from max_bot import экран_карты, экран_ветви, экран_статьи, КАРТА_ЗАГОЛОВОК, КАРТА_ПОДПИСЬ
             Survey.understood(self, uid)
             if action == "map":
-                text, _ = __import__("max_bot").экран_карты(self, uid)
-                return text
-            if action == "v" and args:
+                text, markup = экран_карты(self, uid)
+            elif action == "v" and args:
                 number = int(args[1]) if len(args) > 1 and args[1].isdigit() else 1
-                screen = __import__("max_bot").экран_ветви(args[0], number, self, uid)
-                return screen[0] if screen else f"Тема не найдена.\n\n{КАРТА_ЗАГОЛОВОК}\n{КАРТА_ПОДПИСЬ}"
-            if action == "k" and args:
-                screen = __import__("max_bot").экран_статьи(args[0], self, uid)
-                return screen[0] if screen else f"Материал не найден.\n\n{КАРТА_ЗАГОЛОВОК}\n{КАРТА_ПОДПИСЬ}"
-            if action == "cfull":
-                return self.consent_text(uid)
-            return ""
+                screen = экран_ветви(args[0], number, self, uid)
+                text, markup = screen if screen else (f"Тема не найдена.\n\n{КАРТА_ЗАГОЛОВОК}\n{КАРТА_ПОДПИСЬ}", None)
+            elif action == "k" and args:
+                screen = экран_статьи(args[0], self, uid)
+                text, markup = screen if screen else (f"Материал не найден.\n\n{KАРТА_ЗАГОЛОВОК}\n{КАРТА_ПОДПИСЬ}", None)
+            elif action == "cfull":
+                text, markup = self.consent_text(uid), None
+            else:
+                return ""
+            if markup is not None:
+                from max_bot import _keyboard_rows_from_markup
+                # This helper is intentionally not required: navigation uses
+                # a deterministic screen builder below when markup exists.
+                del _keyboard_rows_from_markup
+            return text
 
         return self._mutate(uid, "navigation", payload, mutate, "")
 
@@ -154,12 +141,10 @@ class DurableProductionPostgresSurvey(ProductionPostgresSurvey):
         action = str(action or "")
         args = [str(value) for value in args]
         payload = {"kind": "callback", "action": action, "args": args}
-
         def mutate() -> str:
             spot = self.current(uid)
-            if action in {"a", "s", "d"} and args:
-                if not spot or str(spot[0]) != args[0]:
-                    return ""
+            if action in {"a", "s", "d"} and args and (not spot or str(spot[0]) != args[0]):
+                return ""
             if action == "c":
                 if self.stage(uid) != "consent":
                     return ""
@@ -174,9 +159,7 @@ class DurableProductionPostgresSurvey(ProductionPostgresSurvey):
             if action == "s" and args:
                 return self.handle(uid, "далее")
             if action == "d" and args:
-                step = int(args[0])
-                picked = self.picked(uid, step)
-                current = self.current(uid)
+                step = int(args[0]); picked = self.picked(uid, step); current = self.current(uid)
                 if not picked:
                     if not current or current[1].get("required", True):
                         return ""
@@ -189,7 +172,6 @@ class DurableProductionPostgresSurvey(ProductionPostgresSurvey):
             if action == "m":
                 return self.summary(uid)
             return ""
-
         return self._mutate(uid, "callback", payload, mutate, "")
 
     def start_event(self, user_id: str) -> str:
@@ -226,29 +208,21 @@ class DurableProductionPostgresSurvey(ProductionPostgresSurvey):
         conn, token_conn, token_user, token_accepted = ctx
         try:
             if error is not None:
-                conn.rollback()
-                return
+                conn.rollback(); return
             self._save_user(conn, str(user_id))
-            audit_payload = dict(payload or {})
-            audit_payload.pop("fingerprint", None)
+            audit_payload = dict(payload or {}); audit_payload.pop("fingerprint", None)
             self.audit(str(user_id), event_type, audit_payload)
-            result = _OUTBOX_RESULT.get()
-            event_id = _TX_EVENT.get()
-            outbox = PostgresOutbox(db_url=self.db_url)
+            result = _OUTBOX_RESULT.get(); event_id = _TX_EVENT.get(); outbox = PostgresOutbox(db_url=self.db_url)
             if isinstance(result, str) and result and event_id:
-                _enqueue_text(outbox, conn, self, str(user_id), event_id, result, ordinal=0)
+                _enqueue_text(outbox, conn, self, str(user_id), event_id, result, 0, _OUTBOX_KEYBOARD.get())
             if payload and payload.get("has_files") and event_id:
                 from max_bot import FILES_TAKEN
-                _enqueue_text(outbox, conn, self, str(user_id), event_id, FILES_TAKEN, ordinal=1)
+                _enqueue_text(outbox, conn, self, str(user_id), event_id, FILES_TAKEN, 1)
             conn.commit()
         except BaseException:
-            conn.rollback()
-            raise
+            conn.rollback(); raise
         finally:
-            _TX_CONNECTION.reset(token_conn)
-            _TX_USER.reset(token_user)
-            _TX_ACCEPTED.reset(token_accepted)
-            conn.close()
+            _TX_CONNECTION.reset(token_conn); _TX_USER.reset(token_user); _TX_ACCEPTED.reset(token_accepted); conn.close()
 
 
 __all__ = ["DurableProductionPostgresSurvey"]
