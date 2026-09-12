@@ -10,13 +10,14 @@ REQUIRED_MIGRATIONS = {
     "001_initial.sql",
     "002_migration_meta.sql",
     "003_processed_events.sql",
+    "004_outbox_messages.sql",
 }
 
 
 def require_migrations(db_url: str | None = None) -> None:
     """Require all production migrations before the application starts.
 
-    The runtime storage adapter still keeps idempotent CREATE TABLE statements
+    The runtime storage adapters still keep idempotent CREATE TABLE statements
     for backwards compatibility with tests/pilots. Production entrypoints
     call this guard first, so an un-migrated production database fails closed.
     """
