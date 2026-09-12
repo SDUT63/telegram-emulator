@@ -1,11 +1,17 @@
 #!/usr/bin/env python3
-"""Durable persistence adapters for the SDUT survey."""
+"""Durable persistence adapters for the SDUT survey.
+
+SQLite is intentionally limited to the single-process pilot. Event
+idempotency uses a short lease so a process crash between event claim and
+state save does not permanently lose the event.
+"""
 from __future__ import annotations
 
 import json
 import os
 import sqlite3
 import threading
+import time
 from pathlib import Path
 from typing import Any
 
@@ -20,8 +26,6 @@ class SQLiteSurvey(Survey):
         Path(self.db_path).parent.mkdir(parents=True, exist_ok=True)
         self._db_lock = threading.RLock()
         self._init_db()
-        # Survey.__init__ calls self.load(); dynamic dispatch therefore restores
-        # the SQLite state before the transport starts receiving events.
         super().__init__(storage_path=":memory:", list_options=list_options)
 
     def _connect(self) -> sqlite3.Connection:
@@ -34,9 +38,12 @@ class SQLiteSurvey(Survey):
     def _init_db(self) -> None:
         with self._connect() as conn:
             conn.execute("CREATE TABLE IF NOT EXISTS survey_state (user_id TEXT PRIMARY KEY, state_json TEXT NOT NULL, updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)")
+            # Kept for compatibility with pilot databases created by earlier builds.
             conn.execute("CREATE TABLE IF NOT EXISTS processed_events (event_id TEXT PRIMARY KEY, processed_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)")
+            conn.execute("CREATE TABLE IF NOT EXISTS event_leases (event_id TEXT PRIMARY KEY, claimed_at REAL NOT NULL, last_seen_at REAL NOT NULL)")
             conn.execute("CREATE TABLE IF NOT EXISTS audit_events (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id TEXT, event_type TEXT NOT NULL, event_json TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)")
             conn.execute("CREATE INDEX IF NOT EXISTS idx_audit_user_created ON audit_events(user_id, created_at)")
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_event_leases_seen ON event_leases(last_seen_at)")
 
     def load(self) -> None:
         with self._db_lock, self._connect() as conn:
@@ -73,22 +80,12 @@ class SQLiteSurvey(Survey):
                 raise
 
     def mark_event_once(self, event_id: str) -> bool:
-        event_id = (event_id or "").strip()
-        if not event_id:
-            return True
-        with self._db_lock, self._connect() as conn:
-            try:
-                conn.execute("INSERT INTO processed_events(event_id) VALUES(?)", (event_id,))
-                return True
-            except sqlite3.IntegrityError:
-                return False
+        """Compatibility helper using the same crash-recovery lease as the transport."""
+        return PersistentSeen(db_path=self.db_path).fresh(event_id)
 
     def audit(self, user_id: str | None, event_type: str, payload: dict[str, Any]) -> None:
         with self._db_lock, self._connect() as conn:
-            conn.execute(
-                "INSERT INTO audit_events(user_id, event_type, event_json) VALUES(?,?,?)",
-                (user_id, event_type, json.dumps(payload, ensure_ascii=False, separators=(",", ":"))),
-            )
+            conn.execute("INSERT INTO audit_events(user_id, event_type, event_json) VALUES(?,?,?)", (user_id, event_type, json.dumps(payload, ensure_ascii=False, separators=(",", ":"))))
 
     def health(self) -> bool:
         with self._db_lock, self._connect() as conn:
@@ -96,34 +93,43 @@ class SQLiteSurvey(Survey):
 
 
 class PersistentSeen:
-    """Drop-in replacement for max_bot.Seen, surviving process restarts."""
+    """Persistent event de-duplication with crash-recovery leases."""
 
-    def __init__(self, limit: int = 5000, db_path: str | None = None) -> None:
+    DEFAULT_LEASE_SECONDS = 45.0
+
+    def __init__(self, limit: int = 5000, db_path: str | None = None, *, lease_seconds: float = DEFAULT_LEASE_SECONDS) -> None:
         if limit < 1:
             raise ValueError("limit must be >= 1")
+        if lease_seconds <= 0:
+            raise ValueError("lease_seconds must be > 0")
         self.limit = limit
+        self.lease_seconds = float(lease_seconds)
         self.db_path = db_path or os.getenv("SDUT_DB_PATH", "data/sdut_bot.sqlite3")
         Path(self.db_path).parent.mkdir(parents=True, exist_ok=True)
         self._lock = threading.RLock()
         with sqlite3.connect(self.db_path, timeout=30) as conn:
-            conn.execute("CREATE TABLE IF NOT EXISTS processed_events (event_id TEXT PRIMARY KEY, processed_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)")
+            conn.execute("PRAGMA busy_timeout=30000")
+            conn.execute("CREATE TABLE IF NOT EXISTS event_leases (event_id TEXT PRIMARY KEY, claimed_at REAL NOT NULL, last_seen_at REAL NOT NULL)")
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_event_leases_seen ON event_leases(last_seen_at)")
 
     def fresh(self, key: str | None) -> bool:
+        """Return True when the event may be handled now; reclaim stale leases."""
+        key = (key or "").strip()
         if not key:
             return True
+        now = time.time()
+        cutoff = now - self.lease_seconds
         with self._lock, sqlite3.connect(self.db_path, timeout=30) as conn:
-            try:
-                conn.execute("INSERT INTO processed_events(event_id) VALUES(?)", (key,))
-            except sqlite3.IntegrityError:
-                return False
-            # Keep the newest N rows. rowid breaks timestamp ties deterministically.
-            conn.execute(
-                """DELETE FROM processed_events
-                   WHERE event_id NOT IN (
-                       SELECT event_id FROM processed_events
-                       ORDER BY processed_at DESC, rowid DESC
-                       LIMIT ?
-                   )""",
-                (self.limit,),
-            )
-        return True
+            conn.execute("PRAGMA busy_timeout=30000")
+            row = conn.execute("SELECT claimed_at FROM event_leases WHERE event_id = ?", (key,)).fetchone()
+            if row is None:
+                conn.execute("INSERT INTO event_leases(event_id, claimed_at, last_seen_at) VALUES(?,?,?)", (key, now, now))
+                accepted = True
+            elif float(row[0]) <= cutoff:
+                conn.execute("UPDATE event_leases SET claimed_at = ?, last_seen_at = ? WHERE event_id = ?", (now, now, key))
+                accepted = True
+            else:
+                conn.execute("UPDATE event_leases SET last_seen_at = ? WHERE event_id = ?", (now, key))
+                accepted = False
+            conn.execute("""DELETE FROM event_leases WHERE event_id NOT IN (SELECT event_id FROM event_leases ORDER BY last_seen_at DESC, rowid DESC LIMIT ?)""", (self.limit,))
+        return accepted
