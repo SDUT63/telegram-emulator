@@ -18,67 +18,52 @@ class FakeBot:
 
 
 def message(payload, *, user_id="123"):
-    return OutboxMessage(
-        id=1,
-        delivery_key="event:out:0",
-        user_id=user_id,
-        chat_id=None,
-        payload=payload,
-        status="sending",
-        attempts=1,
-        available_at=datetime.now(timezone.utc),
-        last_error=None,
-    )
+    return OutboxMessage(id=1, delivery_key="event:out:0", user_id=user_id, chat_id=None, payload=payload, status="sending", attempts=1, available_at=datetime.now(timezone.utc), last_error=None)
 
 
 @pytest.mark.asyncio
 async def test_transport_sends_valid_text_to_user():
     bot = FakeBot()
-    transport = MaxOutboundTransport(bot)
-
-    await transport.send(message({"kind": "max_text", "text": "hello", "keyboard_rows": []}))
-
+    await MaxOutboundTransport(bot).send(message({"kind": "max_text", "text": "hello", "keyboard_rows": []}))
     assert bot.calls == [{"text": "hello", "attachments": None, "user_id": 123}]
 
 
 @pytest.mark.asyncio
 async def test_transport_rejects_unknown_payload_kind_before_network():
     bot = FakeBot()
-    transport = MaxOutboundTransport(bot)
-
     with pytest.raises(ValueError, match="неизвестный тип outbox payload"):
-        await transport.send(message({"kind": "other", "text": "hello"}))
-
+        await MaxOutboundTransport(bot).send(message({"kind": "other", "text": "hello"}))
     assert bot.calls == []
 
 
 @pytest.mark.asyncio
 async def test_transport_rejects_invalid_user_id_before_network():
     bot = FakeBot()
-    transport = MaxOutboundTransport(bot)
-
     with pytest.raises(ValueError, match="user_id должен быть числовым"):
-        await transport.send(message({"kind": "max_text", "text": "hello"}, user_id="not-a-number"))
-
+        await MaxOutboundTransport(bot).send(message({"kind": "max_text", "text": "hello"}, user_id="not-a-number"))
     assert bot.calls == []
 
 
+def test_transport_rejects_timeout_outside_lease_safe_range():
+    with pytest.raises(ValueError, match="диапазоне 1..55"):
+        MaxOutboundTransport(FakeBot(), timeout_seconds=0.5)
+    with pytest.raises(ValueError, match="диапазоне 1..55"):
+        MaxOutboundTransport(FakeBot(), timeout_seconds=56)
+
+
 @pytest.mark.asyncio
-async def test_transport_timeout_is_bounded():
-    started = asyncio.Event()
+async def test_transport_cancels_hanging_provider_at_timeout():
+    cancelled = asyncio.Event()
 
     class HangingBot:
         async def send_message(self, **kwargs):
-            started.set()
-            await asyncio.Event().wait()
+            try:
+                await asyncio.Event().wait()
+            except asyncio.CancelledError:
+                cancelled.set()
+                raise
 
-    transport = MaxOutboundTransport(HangingBot(), timeout_seconds=0.01)
-    with pytest.raises(ValueError, match="диапазоне 1..55"):
-        MaxOutboundTransport(HangingBot(), timeout_seconds=0.5)
-
-    # Use a direct wait_for boundary with a valid production-range timeout
-    # monkey-free: the provider coroutine must be cancellable by the transport.
     transport = MaxOutboundTransport(HangingBot(), timeout_seconds=1)
     with pytest.raises(asyncio.TimeoutError):
-        await asyncio.wait_for(transport.send(message({"kind": "max_text", "text": "hello"})), timeout=0.05)
-    assert started.is_set()
+        await transport.send(message({"kind": "max_text", "text": "hello"}))
+    assert cancelled.is_set()
