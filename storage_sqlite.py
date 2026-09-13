@@ -87,6 +87,32 @@ class SQLiteSurvey(Survey):
         with self._db_lock, self._connect() as conn:
             conn.execute("INSERT INTO audit_events(user_id, event_type, event_json) VALUES(?,?,?)", (user_id, event_type, json.dumps(payload, ensure_ascii=False, separators=(",", ":"))))
 
+    def export_csv(self, *args: Any, **kwargs: Any) -> None:
+        """Never write a plaintext table of everyone's answers to disk.
+
+        The base survey calls this on every completed questionnaire and on
+        erase. On a laptop the working directory is often a synced folder
+        (OneDrive, Dropbox), so that one line quietly copies the medical
+        answers of every respondent into someone's cloud. Answers live in the
+        database; a deliberate operator export goes through export_excel.py.
+        """
+        return None
+
+    def erase(self, user_id: str) -> str:
+        """Remove everything about this person, not only the questionnaire row.
+
+        Право по ст. 14 и 21 ФЗ-152: подтверждение возвращается человеку, а
+        технический аудит по нему больше не хранится.
+        """
+        from chatbot_survey import ERASED
+
+        uid = str(user_id)
+        self.state.pop(uid, None)
+        self.save()
+        with self._db_lock, self._connect() as conn:
+            conn.execute("DELETE FROM audit_events WHERE user_id = ?", (uid,))
+        return ERASED
+
     def health(self) -> bool:
         with self._db_lock, self._connect() as conn:
             return conn.execute("SELECT 1").fetchone() == (1,)
