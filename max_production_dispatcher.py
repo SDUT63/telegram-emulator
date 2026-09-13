@@ -36,15 +36,36 @@ def _resolve_article_callback(token: str) -> str | None:
 
 
 def _event_id(value: object) -> str | None:
-    """Normalize a provider event identifier; missing IDs are not deduplicable."""
+    """Normalize a provider identifier; missing values are not accepted."""
     if value is None:
         return None
     value = str(value).strip()
     return value or None
 
 
+def _callback_event_id(event, callback_id: str, user_id: str) -> str | None:
+    """Build a retry-stable callback event identity.
+
+    MAX's ``callback_id`` identifies the button, not the click event. Reusing
+    it as a deduplication key would make the first click permanently suppress
+    every later legitimate click on the same button. MAX's public Update model
+    exposes the event timestamp rather than a unique callback event ID, so the
+    production boundary fingerprints the event's stable fields instead.
+    """
+    timestamp = _event_id(getattr(event, "timestamp", None))
+    if timestamp is None:
+        return None
+    message = getattr(event, "message", None)
+    body = getattr(message, "body", None)
+    message_id = _event_id(getattr(body, "mid", None) or getattr(message, "mid", None)) or ""
+    chat_id = _event_id(getattr(event, "chat_id", None)) or ""
+    payload = _event_id(getattr(getattr(event, "callback", None), "payload", None)) or ""
+    raw = "|".join((user_id, chat_id, message_id, callback_id, payload, timestamp))
+    return "callback:" + hashlib.sha256(raw.encode("utf-8")).hexdigest()
+
+
 async def _with_event_id(event_id: str, handler) -> object:
-    """Run a DB mutation with the provider event ID bound to the transaction."""
+    """Run a DB mutation with the provider event identity bound to the transaction."""
     token = _TX_EVENT.set(event_id)
     try:
         return await handler()
@@ -101,11 +122,9 @@ def build_dispatcher(survey, seen=None):
 
         async def mutate() -> None:
             if incoming.lower().strip(" ?!.") in ASK_WORDS:
-                reply = survey.handle_navigation_event(uid, "map", [])
+                survey.handle_navigation_event(uid, "map", [])
             else:
-                reply = survey.handle_message_event(uid, incoming, files)
-            if reply:
-                log.info("%s: message transition committed to outbox", uid)
+                survey.handle_message_event(uid, incoming, files)
 
         await _with_event_id(event_key, mutate)
 
@@ -116,7 +135,11 @@ def build_dispatcher(survey, seen=None):
         callback = event.callback
         callback_id = _event_id(getattr(callback, "callback_id", None))
         if callback_id is None:
-            log.error("%s: callback without provider callback_id rejected", uid)
+            log.error("%s: callback without button callback_id rejected", uid)
+            return
+        event_key = _callback_event_id(event, callback_id, uid)
+        if event_key is None:
+            log.error("%s: callback without event timestamp rejected", uid)
             return
         payload = (getattr(callback, "payload", None) or "")
         if len(payload) > 512:
@@ -147,20 +170,18 @@ def build_dispatcher(survey, seen=None):
                 survey.handle_navigation_event(uid, "cfull", [])
                 return
             if action in {"c", "a", "s", "d", "b", "n", "m"}:
-                reply = survey.handle_callback_event(uid, action, args)
-                if reply:
-                    log.info("%s: callback transition committed to outbox", uid)
+                survey.handle_callback_event(uid, action, args)
                 return
             log.info("%s: unknown callback action rejected", uid)
 
-        # The provider acknowledgement is deliberately outside the database
-        # transaction. A slow/failing network acknowledgement must never hold
-        # the user's PostgreSQL locks. If acknowledgement fails, MAX may retry;
-        # the same provider callback ID is already deduplicated at the DB boundary.
-        await _with_event_id(callback_id, mutate)
+        # Acknowledgement is deliberately outside the database transaction.
+        # A slow/failing acknowledgement must never hold PostgreSQL locks.
+        # MAX may retry the same webhook; the event fingerprint is stable for
+        # the retry, while later legitimate clicks receive a different key.
+        await _with_event_id(event_key, mutate)
         await acknowledge(event)
 
     return dp
 
 
-__all__ = ["build_dispatcher", "_resolve_article_callback"]
+__all__ = ["build_dispatcher", "_resolve_article_callback", "_callback_event_id"]
