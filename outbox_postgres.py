@@ -7,9 +7,10 @@ import json
 import os
 import socket
 import uuid
+from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Any
+from typing import Any, Iterator
 
 import psycopg
 from psycopg.rows import dict_row
@@ -91,6 +92,8 @@ class PostgresOutbox:
         digest = payload_sha256(payload)
         own = conn is None; connection = conn or _connect(self.db_url)
         try:
+            if connection.execute("SELECT 1 FROM deleted_users WHERE user_id=%s", (uid,)).fetchone() is not None:
+                raise RuntimeError("cannot enqueue outbound message for deleted user")
             tombstone = connection.execute("SELECT payload_sha256 FROM outbox_delivery_tombstones WHERE delivery_key=%s", (key,)).fetchone()
             if tombstone is not None:
                 if str(tombstone["payload_sha256"]) != digest:
@@ -121,6 +124,25 @@ class PostgresOutbox:
         finally:
             if own: connection.close()
 
+    @contextmanager
+    def user_delivery_lock(self, user_id: str) -> Iterator[None]:
+        """Hold a PostgreSQL session advisory lock through provider delivery.
+
+        User deletion acquires the same lock transactionally, so deletion is
+        serialized either before delivery or after the provider result and its
+        terminal outbox state have been persisted. This closes the otherwise
+        unavoidable "claimed but not yet sent" privacy race.
+        """
+        uid = str(user_id)
+        if not uid:
+            raise ValueError("user_id must not be empty")
+        with _connect(self.db_url) as conn:
+            conn.execute("SELECT pg_advisory_lock(hashtextextended(%s, 0))", (uid,))
+            try:
+                yield
+            finally:
+                conn.execute("SELECT pg_advisory_unlock(hashtextextended(%s, 0))", (uid,))
+
     def claim(self, *, limit: int = DEFAULT_BATCH_SIZE) -> list[OutboxMessage]:
         if limit < 1: raise ValueError("limit must be >= 1")
         now = datetime.now(timezone.utc)
@@ -143,8 +165,10 @@ class PostgresOutbox:
                     conn.execute("UPDATE outbox_messages SET status='pending', locked_at=NULL, locked_by=NULL WHERE id=%s AND status='sending'", (int(row["id"]),))
             rows = conn.execute("""
                 WITH picked AS (
-                    SELECT id FROM outbox_messages WHERE status='pending' AND available_at <= CURRENT_TIMESTAMP
-                    ORDER BY id FOR UPDATE SKIP LOCKED LIMIT %s
+                    SELECT o.id FROM outbox_messages AS o
+                    LEFT JOIN deleted_users AS d ON d.user_id=o.user_id
+                    WHERE o.status='pending' AND o.available_at <= CURRENT_TIMESTAMP AND d.user_id IS NULL
+                    ORDER BY o.id FOR UPDATE OF o SKIP LOCKED LIMIT %s
                 )
                 UPDATE outbox_messages AS o SET status='sending', locked_at=%s, locked_by=%s, attempts=o.attempts+1
                 FROM picked WHERE o.id=picked.id RETURNING o.*
