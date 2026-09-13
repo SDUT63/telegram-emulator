@@ -2,7 +2,8 @@ from __future__ import annotations
 
 from chatbot_survey import ALREADY_DONE, CONSENT_NO, CONSENT_SHORT, HELP, RESUMED
 from max_laptop_pilot_v2 import LaptopSurvey, markup, rows
-from max_ui import FILES_TAKEN
+from max_production_dispatcher import _resolve_article_callback as resolve_article
+from max_ui import FILES_TAKEN, article_screen, branch_screen, map_screen
 
 START_GUIDE = """Как пользоваться ботом:
 
@@ -46,14 +47,15 @@ async def browse(event, chat_id, user_id, screen, survey, missing=""):
     if screen is None:
         if missing:
             old.log.info("%s: %s", uid, missing)
-        screen = old.экран_карты(survey, uid)
+        screen = map_screen(survey, uid)
     survey.understood(uid)
-    text, markup_ = screen
+    text, rows = screen
+    attachments = [markup(rows)] if rows else None
     try:
-        await event.edit(text=text, attachments=[markup_] if markup_ else None, raise_if_not_exists=False)
+        await event.edit(text=text, attachments=attachments, raise_if_not_exists=False)
     except Exception as error:  # noqa: BLE001
         old.log.debug("экран не переписался, шлём новым: %s", type(error).__name__)
-        await old._отправить(event.bot, chat_id, uid, text, markup_)
+        await send(event.bot, chat_id, uid, text, rows)
 
 
 async def send(bot, chat_id, user_id, text, keyboard=None):
@@ -98,7 +100,9 @@ def build_dispatcher(survey):
         normalized = text.casefold().strip(" ?!.")
         if normalized in old.ASK_WORDS:
             if normalized in {"темы", "покажи темы", "список тем"} and uid in survey.state:
-                await old.меню_тем(event.bot, chat_id, uid, survey)
+                survey.understood(uid)
+                text_, rows_ = map_screen(survey, uid)
+                await send(event.bot, chat_id, uid, text_, rows_)
             else:
                 await send(event.bot, chat_id, uid, HELP, visible_rows(survey, uid))
             return
@@ -118,7 +122,8 @@ def build_dispatcher(survey):
     async def callback(event):
         chat_id, user_id = event.get_ids()
         uid = str(user_id)
-        parts = (event.callback.payload or "").split(":")
+        payload = event.callback.payload or ""
+        parts = payload.split(":")
         action = parts[0] if parts else ""
         try:
             await event.ack(notification="Принято")
@@ -135,13 +140,17 @@ def build_dispatcher(survey):
             await send(event.bot, chat_id, uid, HELP, visible_rows(survey, uid)); return
         # Карта, ветвь и статья переписывают один экран, а не копят сообщения.
         if action == "map":
-            await browse(event, chat_id, uid, old.экран_карты(survey, uid), survey); return
+            await browse(event, chat_id, uid, map_screen(survey, uid), survey); return
         if action == "v" and len(parts) >= 2:
             page = int(parts[2]) if len(parts) > 2 and parts[2].isdigit() else 1
-            await browse(event, chat_id, uid, old.экран_ветви(parts[1], page, survey, uid), survey, f"ветвь {parts[1]} не найдена"); return
+            await browse(event, chat_id, uid, branch_screen(parts[1], page, survey, uid), survey, f"ветвь {parts[1]} не найдена"); return
         if action == "k":
-            title = parts[1] if len(parts) > 1 else ""
-            await browse(event, chat_id, uid, old.экран_статьи(title, survey, uid), survey, "статья не найдена"); return
+            # Заголовок в payload не помещается и содержит двоеточия: ключ
+            # кнопки — устойчивый дайджест, тот же, что в production.
+            title = resolve_article(payload[2:]) if payload.startswith("k:") else None
+            if title is None:
+                await browse(event, chat_id, uid, None, survey, "статья по кнопке не опознана"); return
+            await browse(event, chat_id, uid, article_screen(title, survey, uid), survey, "статья не найдена"); return
         if action == "q":
             text = survey.question_text(uid) if survey.current(uid) else survey.summary(uid)
             await send(event.bot, chat_id, uid, text, visible_rows(survey, uid)); return
