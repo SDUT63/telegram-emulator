@@ -29,11 +29,13 @@ services:
       MAX_WEBHOOK_URL: ${MAX_WEBHOOK_URL:?MAX_WEBHOOK_URL is required}
       MAX_WEBHOOK_SECRET: ${MAX_WEBHOOK_SECRET:?MAX_WEBHOOK_SECRET is required}
       MAX_WEBHOOK_PATH: ${MAX_WEBHOOK_PATH-/max}
-      MAX_WEBHOOK_HOST: 0.0.0.0
+      MAX_WEBHOOK_HOST: 127.0.0.1
       MAX_WEBHOOK_PORT: 8080
       SDUT_DATABASE_URL: ${SDUT_DATABASE_URL:?SDUT_DATABASE_URL is required}
+    # The application port is private. A TLS reverse proxy on the host must
+    # expose public HTTPS :443 and proxy only to this loopback listener.
     ports:
-      - "8080:8080"
+      - "127.0.0.1:8080:8080"
     depends_on:
       migrate:
         condition: service_completed_successfully
