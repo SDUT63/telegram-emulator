@@ -8,10 +8,7 @@ import os
 import time
 
 from max_outbound_transport import MaxOutboundTransport
-from outbox_postgres import (
-    DEFAULT_SENT_RETENTION_SECONDS,
-    PostgresOutbox,
-)
+from outbox_postgres import DEFAULT_SENT_RETENTION_SECONDS, PostgresOutbox
 
 log = logging.getLogger("сдут-бот")
 POLL_SECONDS = 0.5
@@ -51,33 +48,43 @@ async def deliver_once(bot, *, queue: PostgresOutbox | None = None) -> int:
     the lease of the first rows and let another worker deliver them again.
     Parallelism is provided by multiple worker processes, not by one lease
     covering an unbounded serial batch.
+
+    The per-user PostgreSQL advisory session lock is held across the provider
+    request and terminal state transition. User deletion takes the same lock,
+    so it cannot commit while a delivery for that user is in flight.
     """
     queue = queue or PostgresOutbox()
     transport = MaxOutboundTransport(bot)
     _validate_lease_budget(queue, transport)
     claimed = queue.claim(limit=1)
     for message in claimed:
-        try:
-            await transport.send(message)
-        except Exception as error:  # noqa: BLE001
-            log.warning(
-                "MAX outbox #%s delivery failed (attempt %s): %s",
-                message.id,
-                message.attempts,
-                type(error).__name__,
-            )
+        if not message.user_id:
+            log.error("MAX outbox #%s: claimed message has no recipient", message.id)
+            continue
+        with queue.user_delivery_lock(message.user_id):
             try:
-                queue.mark_failed(message.id, error)
-            except Exception:
-                log.exception("MAX outbox #%s: failure state could not be persisted", message.id)
-        else:
-            try:
-                queue.mark_sent(message.id)
-            except Exception:
-                # The provider request may already have succeeded. Do not send
-                # the message a second time merely because the acknowledgement
-                # transaction failed; the row remains recoverable as sending.
-                log.exception("MAX outbox #%s: sent state could not be persisted", message.id)
+                await transport.send(message)
+            except Exception as error:  # noqa: BLE001
+                log.warning(
+                    "MAX outbox #%s delivery failed (attempt %s): %s",
+                    message.id,
+                    message.attempts,
+                    type(error).__name__,
+                )
+                try:
+                    queue.mark_failed(message.id, error)
+                except Exception:
+                    log.exception("MAX outbox #%s: failure state could not be persisted", message.id)
+            else:
+                try:
+                    queue.mark_sent(message.id)
+                except Exception:
+                    # The provider request may already have succeeded. Do not
+                    # send the message a second time merely because the
+                    # acknowledgement transaction failed; the row remains
+                    # recoverable as sending. The delivery lock is held until
+                    # this function exits, so deletion cannot race this state.
+                    log.exception("MAX outbox #%s: sent state could not be persisted", message.id)
     return len(claimed)
 
 
