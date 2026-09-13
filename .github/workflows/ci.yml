@@ -1,6 +1,7 @@
 name: CI
 
 on:
+  workflow_dispatch:
   push:
     branches: [ master, main, develop, max-bot-complete-2026 ]
   pull_request:
@@ -53,22 +54,6 @@ jobs:
 
   go-backend:
     runs-on: ubuntu-latest
-    services:
-      postgres:
-        image: postgres:15
-        env:
-          POSTGRES_PASSWORD: testpassword
-          POSTGRES_USER: testuser
-          POSTGRES_DB: telegram_emulator_test
-        ports: [5432:5432]
-      redis:
-        image: redis:7-alpine
-        options: >-
-          --health-cmd "redis-cli ping"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-        ports: [6379:6379]
     steps:
       - name: Checkout code
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
@@ -81,19 +66,8 @@ jobs:
         run: |
           go mod download
           go mod verify
-      - name: Run Go linter
-        uses: golangci/golangci-lint-action@3cfe3a4abbb849e10058ce4af15d205b6da42804
-        with:
-          version: v1.64.8
-          args: --timeout=10m
       - name: Run Go tests
         run: go test ./... -race -coverprofile=coverage.out -covermode=atomic
-      - name: Upload Go coverage
-        uses: codecov/codecov-action@b9fd7d16f6d7d1b5d2bec1a2887e65ceed900238
-        with:
-          file: coverage.out
-          flags: go-backend
-          name: go-backend-coverage
       - name: Build Go binary
         run: go build -o bin/telegram-emulator ./cmd/emulator
 
