@@ -16,6 +16,7 @@ from outbox_postgres import (
 log = logging.getLogger("сдут-бот")
 POLL_SECONDS = 0.5
 PRUNE_INTERVAL_SECONDS = 3600
+LEASE_SAFETY_MARGIN_SECONDS = 5
 
 
 def _retention_seconds() -> int:
@@ -32,6 +33,17 @@ def _retention_seconds() -> int:
     return days * 24 * 60 * 60
 
 
+def _validate_lease_budget(queue: PostgresOutbox, transport: MaxOutboundTransport) -> None:
+    """Fail closed unless a provider call cannot normally outlive its lease."""
+    required = transport.timeout_seconds + LEASE_SAFETY_MARGIN_SECONDS
+    if queue.lease_seconds < required:
+        raise ValueError(
+            "outbox lease_seconds must be at least send timeout plus "
+            f"{LEASE_SAFETY_MARGIN_SECONDS}s safety margin "
+            f"({required}s required, {queue.lease_seconds}s configured)"
+        )
+
+
 async def deliver_once(bot, *, queue: PostgresOutbox | None = None) -> int:
     """Claim and process one message through the explicit MAX transport.
 
@@ -42,6 +54,7 @@ async def deliver_once(bot, *, queue: PostgresOutbox | None = None) -> int:
     """
     queue = queue or PostgresOutbox()
     transport = MaxOutboundTransport(bot)
+    _validate_lease_budget(queue, transport)
     claimed = queue.claim(limit=1)
     for message in claimed:
         try:
@@ -94,5 +107,5 @@ async def run(bot, *, poll_seconds: float = POLL_SECONDS, prune_interval_seconds
         except asyncio.CancelledError:
             raise
         except Exception as error:  # noqa: BLE001
-            log.warning("MAX durable outbox worker failure: %s", type(error).__name__)
+            log.warning("MAX outbox worker failure: %s", type(error).__name__)
             await asyncio.sleep(poll_seconds)
