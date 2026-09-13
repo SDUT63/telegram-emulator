@@ -1,4 +1,5 @@
-from max_laptop_pilot_v2 import LaptopSurvey, consent_rows, rows, START_GUIDE
+from max_laptop_pilot_v2 import LaptopSurvey, consent_rows, rows
+from run_max import START_GUIDE
 from survey_questions import CHECKPOINT_ID, QUESTIONS
 
 
