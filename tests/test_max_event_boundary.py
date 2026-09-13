@@ -1,8 +1,12 @@
 import asyncio
+import ast
+from pathlib import Path
 
 import max_production_dispatcher as dispatcher
 from outbox_postgres import safe_error_code
 from storage_postgres import _TX_EVENT
+
+ROOT = Path(__file__).resolve().parents[1]
 
 
 def test_provider_event_id_normalization_rejects_missing_values():
@@ -44,6 +48,19 @@ def test_with_event_id_restores_outer_event_id_after_nested_dispatch():
         ("outer-after", "outer"),
     ]
     assert _TX_EVENT.get() is None
+
+
+def test_dispatcher_does_not_use_pre_transaction_seen_deduplication():
+    source = (ROOT / "max_production_dispatcher.py").read_text(encoding="utf-8")
+    tree = ast.parse(source)
+    calls = [
+        node for node in ast.walk(tree)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Attribute)
+        and node.func.attr == "fresh"
+    ]
+    assert not calls
+    assert "_TX_EVENT" in source
 
 
 def test_safe_error_code_does_not_store_raw_provider_error_text():
