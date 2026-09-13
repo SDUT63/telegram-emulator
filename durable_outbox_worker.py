@@ -42,15 +42,15 @@ async def deliver_once(bot, *, queue: PostgresOutbox | None = None) -> int:
             await transport.send(message)
         except Exception as error:  # noqa: BLE001
             log.warning(
-                "MAX outbox #%s не отправился (попытка %s): %s",
+                "MAX outbox #%s delivery failed (attempt %s): %s",
                 message.id,
                 message.attempts,
-                error,
+                type(error).__name__,
             )
             try:
-                queue.mark_failed(message.id, str(error))
+                queue.mark_failed(message.id, error)
             except Exception:
-                log.exception("MAX outbox #%s: не удалось зафиксировать failure", message.id)
+                log.exception("MAX outbox #%s: failure state could not be persisted", message.id)
         else:
             try:
                 queue.mark_sent(message.id)
@@ -58,7 +58,7 @@ async def deliver_once(bot, *, queue: PostgresOutbox | None = None) -> int:
                 # The provider request may already have succeeded. Do not send
                 # the message a second time merely because the acknowledgement
                 # transaction failed; the row remains recoverable as sending.
-                log.exception("MAX outbox #%s: не удалось зафиксировать sent", message.id)
+                log.exception("MAX outbox #%s: sent state could not be persisted", message.id)
     return len(claimed)
 
 
@@ -88,5 +88,5 @@ async def run(bot, *, poll_seconds: float = POLL_SECONDS, prune_interval_seconds
         except asyncio.CancelledError:
             raise
         except Exception as error:  # noqa: BLE001
-            log.warning("MAX durable outbox: %s", error)
+            log.warning("MAX durable outbox worker failure: %s", type(error).__name__)
             await asyncio.sleep(poll_seconds)
