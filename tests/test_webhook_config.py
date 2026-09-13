@@ -1,12 +1,8 @@
-import pytest
-
-from max_webhook import _storage_classes, validate_public_url, validate_secret, validate_settings
+from max_webhook import validate_public_url, validate_secret, validate_settings
 
 
 def test_valid_production_webhook_config():
-    assert validate_settings(
-        "https://bot.example.ru/max", "Abc-123_xyz", "/max"
-    ) == []
+    assert validate_settings("https://bot.example.ru/max", "Abc-123_xyz", "/max") == []
 
 
 def test_webhook_rejects_http():
@@ -35,15 +31,17 @@ def test_settings_require_secret():
     assert any("секрет" in error for error in errors)
 
 
-def test_webhook_storage_fails_closed_without_postgres(monkeypatch):
-    monkeypatch.delenv("SDUT_DATABASE_URL", raising=False)
-    with pytest.raises(RuntimeError, match="требует SDUT_DATABASE_URL"):
-        _storage_classes()
+def test_production_components_are_postgres_based():
+    from production_privacy import ProductionPrivacySurvey
+    from storage_postgres import TransactionalPersistentSeen
+
+    assert ProductionPrivacySurvey.__name__ == "ProductionPrivacySurvey"
+    assert TransactionalPersistentSeen.__name__ == "TransactionalPersistentSeen"
 
 
-def test_webhook_storage_uses_postgres_when_configured(monkeypatch):
-    monkeypatch.setenv("SDUT_DATABASE_URL", "postgresql://example")
-    survey_cls, seen_cls, storage_name = _storage_classes()
-    assert survey_cls.__name__ == "ProductionPostgresSurvey"
-    assert seen_cls.__name__ == "TransactionalPersistentSeen"
-    assert storage_name == "PostgreSQL"
+def test_webhook_does_not_offer_a_sqlite_production_fallback():
+    import max_webhook
+
+    source = open(max_webhook.__file__, encoding="utf-8").read()
+    assert "SQLiteSurvey" not in source
+    assert "SDUT_DATABASE_URL" in source
