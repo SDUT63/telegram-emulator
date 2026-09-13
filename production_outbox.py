@@ -70,9 +70,6 @@ class DurableProductionPostgresSurvey(ProductionPostgresSurvey):
         payload = {"kind": "message", "has_files": bool(normalized_files), "fingerprint": _message_fingerprint(normalized_text, normalized_files)}
         def mutate() -> str:
             result = Survey.handle(self, uid, normalized_text)
-            # Survey.handle already records free-form/unrecognized text. When
-            # an attachment is present, persist attachment metadata separately
-            # but do not duplicate the same text in the conversation journal.
             if normalized_files: Survey.note_message(self, uid, "" if not result else normalized_text, normalized_files)
             if result or not normalized_text: return result
             return self._reference_reply(uid, normalized_text)
@@ -125,7 +122,7 @@ class DurableProductionPostgresSurvey(ProductionPostgresSurvey):
                 if not picked:
                     if not current or current[1].get("required", True): return ""
                     return self.handle(uid, "далее")
-                return self.answer_by_numbers(uid, [index + 1 for index in picked])
+                return self.answer_by_numbers(uid, [picked_index + 1 for picked_index in picked])
             if action == "b": return self.handle(uid, "назад")
             if action == "n": return self.restart_after_consent(uid)
             if action == "m": return self.summary(uid)
