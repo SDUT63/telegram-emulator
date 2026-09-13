@@ -19,6 +19,7 @@ REQUIRED_MIGRATIONS = {
     "006_operator_crm.sql",
     "007_operator_operations.sql",
     "008_privacy_outbox.sql",
+    "009_user_deletion.sql",
 }
 
 
