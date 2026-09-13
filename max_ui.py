@@ -2,6 +2,7 @@
 """Transport-independent MAX UI/scenario helpers used by production."""
 from __future__ import annotations
 from typing import Any
+import hashlib
 import knowledge
 from chatbot_survey import Survey
 ASK_WORDS = {"спросить", "хочу спросить", "у меня вопрос", "вопрос", "задать вопрос", "что спросить", "что можно спросить", "о чём можно спросить", "о чем можно спросить", "не знаю что спросить", "не знаю, что спросить", "темы", "покажи темы", "список тем", "меню", "подсказки", "подскажи", "подскажите", "справка", "справочник", "информация", "инфо", "что ты умеешь", "что умеешь", "чем поможешь", "чем ты поможешь", "не знаю с чего начать", "с чего начать", "с чего начинать", "/ask", "/faq", "/menu", "/topics"}
@@ -22,19 +23,24 @@ FILES_TAKEN = "Файл получил, приложу к вашему обра�
 ДАЛЬШЕ = "Ещё ›"
 К_АНКЕТЕ = "Вернуться к анкете"
 
+
 def _width(text: str) -> float:
     return sum(1.35 if c in WIDE else 0.5 if c in NARROW else 1.0 for c in text)
 
+
 def fits(text: str) -> str:
     return text if len(text) <= BUTTON_LIMIT else text[: BUTTON_LIMIT - 1] + "…"
+
 
 def _columns(options: list[str], multi: bool) -> int:
     if len(options) < 3: return 1
     limit = TWO_COLUMNS_AT_MULTI if multi else TWO_COLUMNS_AT
     return 2 if max((_width(name) for name in options), default=0) <= limit else 1
 
+
 def _in_questionnaire(survey: Survey | None, user_id: str) -> bool:
     return survey is not None and survey.current(user_id) is not None
+
 
 def _user_state(survey: Any, user_id: str) -> dict[str, Any]:
     """Read state only through the explicit user-scoped production contract."""
@@ -45,6 +51,7 @@ def _user_state(survey: Any, user_id: str) -> dict[str, Any]:
     if not isinstance(value, dict):
         raise TypeError("survey.user_state(user_id) must return a dict")
     return value
+
 
 def consent_keyboard(full: bool = False) -> list[list[list[str]]]:
     """Keyboard that keeps the person oriented while reading the consent."""
@@ -60,6 +67,18 @@ def consent_keyboard(full: bool = False) -> list[list[list[str]]]:
         [["Не согласен", "c:n"]],
         [["Просто почитать", "map"]],
     ]
+
+
+def _article_callback(title: str) -> str:
+    """Return a short, deterministic callback key rather than truncating a title.
+
+    MAX callback payloads are bounded and titles are not stable identifiers. A
+    digest keeps the payload short and collision-resistant while allowing every
+    process to resolve the same article from the canonical knowledge source.
+    """
+    digest = hashlib.sha256(title.encode("utf-8")).hexdigest()[:16]
+    return "k:@" + digest
+
 
 def layout(survey: Survey, user_id: str) -> list[list[tuple[str, str]]]:
     rows: list[list[tuple[str, str]]] = []
@@ -93,8 +112,10 @@ def layout(survey: Survey, user_id: str) -> list[list[tuple[str, str]]]:
     elif bottom: rows.append(bottom)
     return rows
 
+
 def questionnaire_keyboard(survey: Survey, user_id: str) -> list[list[list[str]]]:
     return [[[str(label), str(action)] for label, action in row] for row in layout(survey, user_id)]
+
 
 def navigation_keyboard(action: str, args: list[str], survey: Survey | None, user_id: str) -> list[list[list[str]]]:
     rows: list[list[list[str]]] = []
@@ -105,7 +126,7 @@ def navigation_keyboard(action: str, args: list[str], survey: Survey | None, use
     if action == "v" and args:
         number = int(args[1]) if len(args) > 1 and args[1].isdigit() else 1; page = knowledge.страница(args[0], number)
         if not page: return [[[ВСЕ_ТЕМЫ, "map"]]]
-        for title in page["статьи"]: rows.append([[fits(knowledge.подпись(title)), "k:" + title[:60]]])
+        for title in page["статьи"]: rows.append([[fits(knowledge.подпись(title)), _article_callback(title)]])
         nav: list[list[str]] = []
         if page["номер"] > 1: nav.append([НАЗАД, f"v:{page['id']}:{page['номер'] - 1}"])
         if page["номер"] < page["всего"]: nav.append([ДАЛЬШЕ, f"v:{page['id']}:{page['номер'] + 1}"])
@@ -115,7 +136,7 @@ def navigation_keyboard(action: str, args: list[str], survey: Survey | None, use
         return rows
     if action == "k" and args:
         title = args[0]
-        for neighbor in knowledge.соседи(title, сколько=3): rows.append([[fits(knowledge.подпись(neighbor)), "k:" + neighbor[:60]]])
+        for neighbor in knowledge.соседи(title, сколько=3): rows.append([[fits(knowledge.подпись(neighbor)), _article_callback(neighbor)]])
         branch = knowledge.ветвь(knowledge.где(title) or ""); bottom: list[list[str]] = []
         if branch: bottom.append(["‹ " + branch["кратко"], f"v:{branch['id']}:1"])
         bottom.append([ВСЕ_ТЕМЫ, "map"]); rows.append(bottom)
@@ -124,8 +145,10 @@ def navigation_keyboard(action: str, args: list[str], survey: Survey | None, use
     if action == "q" and survey is not None: return questionnaire_keyboard(survey, user_id)
     return rows
 
+
 def map_screen(survey: Survey | None = None, user_id: str = "") -> tuple[str, list[list[list[str]]]]:
     return КАРТА_ЗАГОЛОВОК + "\n\n" + КАРТА_ПОДПИСЬ, navigation_keyboard("map", [], survey, user_id)
+
 
 def branch_screen(branch_id: str, page_number: int = 1, survey: Survey | None = None, user_id: str = "") -> tuple[str, list[list[list[str]]]] | None:
     page = knowledge.страница(branch_id, page_number)
@@ -134,12 +157,14 @@ def branch_screen(branch_id: str, page_number: int = 1, survey: Survey | None = 
     if page["всего"] > 1: header += f"\n\nТемы {page['первая']}–{last} из {page['статей']}"
     return header, navigation_keyboard("v", [branch_id, str(page_number)], survey, user_id)
 
+
 def article_screen(title: str, survey: Survey | None = None, user_id: str = "") -> tuple[str, list[list[list[str]]]] | None:
     text = knowledge.статья_целиком(title)
     if not text: return None
     breadcrumbs = knowledge.путь(title)
     if breadcrumbs: text = breadcrumbs.rstrip(" ·") + "\n\n" + text
     return text + "\n\n" + СПРАВКА_ПОДПИСЬ, navigation_keyboard("k", [title], survey, user_id)
+
 
 def files_of(body: Any) -> list[dict[str, Any]]:
     found: list[dict[str, Any]] = []
