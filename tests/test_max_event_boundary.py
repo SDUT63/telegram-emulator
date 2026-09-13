@@ -55,6 +55,18 @@ def test_callback_event_identity_changes_for_a_later_legitimate_click():
     assert dispatcher._callback_event_id(first_event, "button-1", "42") != dispatcher._callback_event_id(second_event, "button-1", "42")
 
 
+def test_bot_started_event_identity_is_retry_stable_and_not_button_like():
+    class Event:
+        chat_id = 77
+        timestamp = 1000
+
+    first = dispatcher._started_event_id(Event(), "42")
+    retry = dispatcher._started_event_id(Event(), "42")
+    assert first == retry
+    assert first is not None
+    assert first.startswith("bot_started:")
+
+
 def test_with_event_id_binds_provider_id_for_transaction_boundary():
     seen = []
 
