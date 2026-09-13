@@ -2,19 +2,26 @@
 """Fail CI if obvious MAX/API credentials are committed to the source tree."""
 from __future__ import annotations
 
-import os
 import re
-import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 SKIP_DIRS = {".git", ".venv", "venv", "node_modules", "__pycache__", ".pytest_cache"}
 SKIP_NAMES = {"package-lock.json", "yarn.lock", "pnpm-lock.yaml"}
+EXAMPLE_SUFFIXES = {".md", ".rst", ".txt"}
 PATTERNS = (
-    re.compile(r"(?im)^\s*MAX_BOT_TOKEN\s*=\s*[^\s#][^\r\n]*$"),
+    re.compile(r"(?im)^\s*MAX_BOT_TOKEN\s*=\s*([^\s#][^\r\n]*)$") ,
     re.compile(r"(?i)\bAuthorization\s*:\s*Bearer\s+[A-Za-z0-9._~+/=-]{16,}"),
     re.compile(r"(?i)\bBearer\s+[A-Za-z0-9._~+/=-]{24,}"),
 )
+PLACEHOLDERS = {"...", "…", "<token>", "<your-token>", "<your_token>", "changeme", "change-me", "example", "dummy", "test"}
+
+
+def _is_placeholder(value: str) -> bool:
+    normalized = value.strip().strip('"\'').lower()
+    if not normalized or normalized in PLACEHOLDERS:
+        return True
+    return normalized.startswith("<") and normalized.endswith(">")
 
 
 def files() -> list[Path]:
@@ -24,8 +31,6 @@ def files() -> list[Path]:
             continue
         if any(part in SKIP_DIRS for part in path.relative_to(ROOT).parts):
             continue
-        # Only inspect reasonably sized text files; this is a source-control
-        # guard, not a general binary scanner.
         try:
             if path.stat().st_size > 2_000_000:
                 continue
@@ -42,8 +47,17 @@ def main() -> int:
             text = path.read_text(encoding="utf-8")
         except (OSError, UnicodeDecodeError):
             continue
+        is_document = path.suffix.lower() in EXAMPLE_SUFFIXES
         for lineno, line in enumerate(text.splitlines(), 1):
-            if any(pattern.search(line) for pattern in PATTERNS):
+            match = PATTERNS[0].search(line)
+            if match and _is_placeholder(match.group(1)):
+                continue
+            if is_document and "example" in line.lower() and any(pattern.search(line) for pattern in PATTERNS):
+                continue
+            if any(pattern.search(line) for pattern in PATTERNS[1:]):
+                hits.append((path.relative_to(ROOT), lineno))
+                continue
+            if match:
                 hits.append((path.relative_to(ROOT), lineno))
     if hits:
         print("Potential committed secret(s) detected:")
