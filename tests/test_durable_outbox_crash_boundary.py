@@ -16,6 +16,8 @@ class FakeBot:
 
 
 class MarkSentFailsQueue:
+    lease_seconds = 60
+
     def __init__(self) -> None:
         self.claimed = [
             SimpleNamespace(
@@ -29,7 +31,8 @@ class MarkSentFailsQueue:
         self.mark_sent_calls = 0
         self.mark_failed_calls = 0
 
-    def claim(self):
+    def claim(self, *, limit: int):
+        assert limit == 1
         return list(self.claimed)
 
     def mark_sent(self, message_id: int) -> None:
@@ -39,6 +42,10 @@ class MarkSentFailsQueue:
     def mark_failed(self, message_id: int, error: str) -> None:
         self.mark_failed_calls += 1
         raise AssertionError("a successful external send must not be converted to failure")
+
+
+class ShortLeaseQueue(MarkSentFailsQueue):
+    lease_seconds = 34
 
 
 def test_mark_sent_failure_does_not_immediately_resend() -> None:
@@ -52,3 +59,17 @@ def test_mark_sent_failure_does_not_immediately_resend() -> None:
     assert bot.calls == 1
     assert queue.mark_sent_calls == 1
     assert queue.mark_failed_calls == 0
+
+
+def test_worker_rejects_lease_shorter_than_provider_timeout_budget() -> None:
+    bot = FakeBot()
+    queue = ShortLeaseQueue()
+
+    try:
+        asyncio.run(deliver_once(bot, queue=queue))
+    except ValueError as error:
+        assert "lease_seconds" in str(error)
+    else:
+        raise AssertionError("worker must fail closed when the lease can expire during send")
+
+    assert bot.calls == 0
