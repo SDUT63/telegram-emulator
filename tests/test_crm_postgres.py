@@ -10,7 +10,6 @@ from psycopg.rows import dict_row
 
 from crm_postgres import PostgresOperatorCRM
 
-
 DB_URL = (os.getenv("SDUT_DATABASE_URL") or "").strip()
 pytestmark = pytest.mark.skipif(not DB_URL, reason="SDUT_DATABASE_URL is not configured")
 
@@ -28,28 +27,35 @@ def test_operator_message_and_case_are_atomic_and_idempotent():
     try:
         delivery = crm.queue_message(user_id, "Здравствуйте", "operator-1", operation_id=operation_id)
         assert delivery == f"crm:{operation_id}:out:0"
-
-        # Retrying the same operator command must not enqueue another message
-        # or append another note.
         assert crm.queue_message(user_id, "Здравствуйте", "operator-1", operation_id=operation_id) == delivery
         with psycopg.connect(DB_URL, row_factory=dict_row) as conn:
-            outbox = conn.execute(
-                "SELECT COUNT(*) AS n FROM outbox_messages WHERE delivery_key=%s",
-                (delivery,),
-            ).fetchone()
-            notes = conn.execute(
-                "SELECT COUNT(*) AS n FROM operator_notes WHERE user_id=%s",
-                (user_id,),
-            ).fetchone()
+            outbox = conn.execute("SELECT COUNT(*) AS n FROM outbox_messages WHERE delivery_key=%s", (delivery,)).fetchone()
+            notes = conn.execute("SELECT COUNT(*) AS n FROM operator_notes WHERE user_id=%s", (user_id,)).fetchone()
+            operations = conn.execute("SELECT COUNT(*) AS n FROM operator_operations WHERE operation_id=%s", (operation_id,)).fetchone()
         assert outbox["n"] == 1
         assert notes["n"] == 1
+        assert operations["n"] == 1
     finally:
         _cleanup(user_id, operation_id)
 
 
+def test_operator_operation_collision_is_rejected():
+    user_id = str(900000000000 + uuid.uuid4().int % 999999999)
+    other_user = str(900000000000 + uuid.uuid4().int % 999999999)
+    operation_id = uuid.uuid4().hex
+    crm = PostgresOperatorCRM(DB_URL)
+    try:
+        crm.queue_message(user_id, "Первое сообщение", "operator-1", operation_id=operation_id)
+        with pytest.raises(ValueError, match="operation_id collision"):
+            crm.queue_message(other_user, "Другое сообщение", "operator-1", operation_id=operation_id)
+    finally:
+        _cleanup(user_id, operation_id)
+        with psycopg.connect(DB_URL) as conn:
+            conn.execute("DELETE FROM operator_cases WHERE user_id=%s", (other_user,))
+
+
 def test_operator_invalid_input_never_writes():
     crm = PostgresOperatorCRM(DB_URL)
-    user_id = ""
     with pytest.raises(ValueError):
         crm.queue_message("not-a-max-user", "hello", "operator", operation_id=uuid.uuid4().hex)
 
