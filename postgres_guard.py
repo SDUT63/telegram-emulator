@@ -18,6 +18,7 @@ REQUIRED_MIGRATIONS = {
     "005_outbox_retention.sql",
     "006_operator_crm.sql",
     "007_operator_operations.sql",
+    "008_privacy_outbox.sql",
 }
 
 
