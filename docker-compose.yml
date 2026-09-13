@@ -4,7 +4,7 @@ services:
     environment:
       POSTGRES_DB: ${POSTGRES_DB-sdut}
       POSTGRES_USER: ${POSTGRES_USER-sdut}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
@@ -16,7 +16,7 @@ services:
   migrate:
     build: .
     environment:
-      SDUT_DATABASE_URL: postgresql://${POSTGRES_USER-sdut}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB-sdut}
+      SDUT_DATABASE_URL: ${SDUT_DATABASE_URL:?SDUT_DATABASE_URL is required}
     depends_on:
       postgres:
         condition: service_healthy
@@ -25,13 +25,13 @@ services:
   survey-bot:
     build: .
     environment:
-      MAX_BOT_TOKEN: ${MAX_BOT_TOKEN}
-      MAX_WEBHOOK_URL: ${MAX_WEBHOOK_URL}
-      MAX_WEBHOOK_SECRET: ${MAX_WEBHOOK_SECRET}
+      MAX_BOT_TOKEN: ${MAX_BOT_TOKEN:?MAX_BOT_TOKEN is required}
+      MAX_WEBHOOK_URL: ${MAX_WEBHOOK_URL:?MAX_WEBHOOK_URL is required}
+      MAX_WEBHOOK_SECRET: ${MAX_WEBHOOK_SECRET:?MAX_WEBHOOK_SECRET is required}
       MAX_WEBHOOK_PATH: ${MAX_WEBHOOK_PATH-/max}
       MAX_WEBHOOK_HOST: 0.0.0.0
       MAX_WEBHOOK_PORT: 8080
-      SDUT_DATABASE_URL: postgresql://${POSTGRES_USER-sdut}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB-sdut}
+      SDUT_DATABASE_URL: ${SDUT_DATABASE_URL:?SDUT_DATABASE_URL is required}
     ports:
       - "8080:8080"
     depends_on:
