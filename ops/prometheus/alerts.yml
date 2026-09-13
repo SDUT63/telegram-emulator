@@ -28,6 +28,15 @@ groups:
           summary: "SDUT MAX outbound queue is growing"
           description: "More than 100 pending outbound messages have remained for 10 minutes."
 
+      - alert: SDUTOutboxProviderFailures
+        expr: increase(sdut_outbox_delivery_failures_total[10m]) > 10
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "SDUT MAX provider delivery failures are elevated"
+          description: "More than 10 outbound delivery failures occurred in the last 10 minutes."
+
       - alert: SDUTServiceRestartLoop
         expr: sdut_process_uptime_seconds < 300
         for: 10m
