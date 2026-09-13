@@ -1,4 +1,4 @@
-from max_laptop_pilot_v2 import LaptopSurvey, consent_rows, rows
+from max_laptop_pilot_v2 import LaptopSurvey, consent_rows, rows, START_GUIDE
 from survey_questions import CHECKPOINT_ID, QUESTIONS
 
 
@@ -6,6 +6,18 @@ def test_full_consent_has_return_button():
     actions = [action for row in consent_rows(True) for _, action in row]
     assert "c:back" in actions
     assert "c:full" not in actions
+
+
+def test_consent_offers_help_before_data_entry():
+    actions = [action for row in consent_rows(False) for _, action in row]
+    assert "h" in actions
+    assert "Что можно написать" in [label for row in consent_rows(False) for label, _ in row]
+    assert "помощь" in START_GUIDE
+
+
+def test_full_consent_offers_help_too():
+    actions = [action for row in consent_rows(True) for _, action in row]
+    assert "h" in actions
 
 
 def test_short_completed_offers_detailed_continuation(tmp_path):
