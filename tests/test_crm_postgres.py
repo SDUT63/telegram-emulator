@@ -19,6 +19,7 @@ OPERATOR = OperatorPrincipal("operator-1", "operator")
 def _cleanup(user_id: str, operation_id: str) -> None:
     with psycopg.connect(DB_URL) as conn:
         conn.execute("DELETE FROM outbox_messages WHERE delivery_key=%s", (f"crm:{operation_id}:out:0",))
+        conn.execute("DELETE FROM operator_operations WHERE operation_id=%s", (operation_id,))
         conn.execute("DELETE FROM operator_cases WHERE user_id=%s", (user_id,))
 
 
