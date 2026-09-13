@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from datetime import datetime, timezone
 
 import pytest
@@ -60,3 +61,24 @@ async def test_transport_rejects_invalid_user_id_before_network():
         await transport.send(message({"kind": "max_text", "text": "hello"}, user_id="not-a-number"))
 
     assert bot.calls == []
+
+
+@pytest.mark.asyncio
+async def test_transport_timeout_is_bounded():
+    started = asyncio.Event()
+
+    class HangingBot:
+        async def send_message(self, **kwargs):
+            started.set()
+            await asyncio.Event().wait()
+
+    transport = MaxOutboundTransport(HangingBot(), timeout_seconds=0.01)
+    with pytest.raises(ValueError, match="диапазоне 1..55"):
+        MaxOutboundTransport(HangingBot(), timeout_seconds=0.5)
+
+    # Use a direct wait_for boundary with a valid production-range timeout
+    # monkey-free: the provider coroutine must be cancellable by the transport.
+    transport = MaxOutboundTransport(HangingBot(), timeout_seconds=1)
+    with pytest.raises(asyncio.TimeoutError):
+        await asyncio.wait_for(transport.send(message({"kind": "max_text", "text": "hello"})), timeout=0.05)
+    assert started.is_set()
