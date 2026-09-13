@@ -15,6 +15,7 @@ from max_production_dispatcher import build_dispatcher
 from production_privacy import ProductionPrivacySurvey
 from storage_postgres import TransactionalPersistentSeen
 from metrics import METRICS
+from scripts.check_outbound_paths import require_clean
 
 log = logging.getLogger("сдут-бот")
 DEFAULT_PATH = "/max"
@@ -87,6 +88,7 @@ def validate_settings(url, secret, path):
 
 async def main():
     configure_logging()
+    require_clean()
     if not (os.getenv("SDUT_DATABASE_URL") or "").strip():
         raise SystemExit("MAX Webhook остановлен: SDUT_DATABASE_URL не задан")
     token = read_token()
