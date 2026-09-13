@@ -58,7 +58,12 @@ def build_dispatcher(survey,seen=None):
         incoming=(getattr(body,"text",None) or "").strip();files=files_of(body)
         async def mutate():
             normalized=incoming.casefold().strip(" ?!.")
-            if normalized in DELETION_WORDS:survey.delete_user(uid);return
+            if normalized in DELETION_WORDS:
+                # Keep deletion inside the same event transaction. Its payload
+                # is marked as a deletion so the commit path cannot write an
+                # audit/outbox record after the user's data has been purged.
+                survey._mutate(uid,"message",{"kind":"delete"},lambda: survey.delete_user(uid),None)
+                return
             if normalized in ASK_WORDS:survey.handle_navigation_event(uid,"map",[])
             else:survey.handle_message_event(uid,incoming,files)
         await _with_event_id(event_key,mutate)
