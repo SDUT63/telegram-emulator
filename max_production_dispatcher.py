@@ -127,7 +127,6 @@ def build_dispatcher(survey, seen=None):
             parts = payload.split(":")
             action = parts[0] if parts else ""
             args = parts[1:]
-            await acknowledge(event)
             if action == "map":
                 survey.handle_navigation_event(uid, "map", [])
                 return
@@ -154,7 +153,12 @@ def build_dispatcher(survey, seen=None):
                 return
             log.info("%s: unknown callback action rejected", uid)
 
+        # The provider acknowledgement is deliberately outside the database
+        # transaction. A slow/failing network acknowledgement must never hold
+        # the user's PostgreSQL locks. If acknowledgement fails, MAX may retry;
+        # the same provider callback ID is already deduplicated at the DB boundary.
         await _with_event_id(callback_id, mutate)
+        await acknowledge(event)
 
     return dp
 
