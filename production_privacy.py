@@ -14,8 +14,7 @@ class ProductionPrivacySurvey(UserDeletionMixin, DurableProductionPostgresSurvey
         conn.execute("INSERT INTO deleted_event_tombstones(event_id,event_type,event_hash) SELECT event_id,event_type,event_hash FROM processed_events WHERE user_id=%s ON CONFLICT(event_id) DO UPDATE SET event_type=EXCLUDED.event_type,event_hash=EXCLUDED.event_hash,deleted_at=CURRENT_TIMESTAMP",(uid,))
         conn.execute("DELETE FROM outbox_messages WHERE user_id=%s",(uid,))
         conn.execute("DELETE FROM audit_events WHERE user_id=%s",(uid,))
-        conn.execute("DELETE FROM processed_events WHERE user_id=%s",(uid,))
-        conn.execute("DELETE FROM event_leases WHERE event_id IN (SELECT event_id FROM deleted_event_tombstones WHERE deleted_at >= CURRENT_TIMESTAMP)")
+        conn.execute("WITH removed AS (DELETE FROM processed_events WHERE user_id=%s RETURNING event_id) DELETE FROM event_leases WHERE event_id IN (SELECT event_id FROM removed)",(uid,))
         conn.execute("DELETE FROM operator_cases WHERE user_id=%s",(uid,))
         conn.execute("DELETE FROM survey_state WHERE user_id=%s",(uid,))
     def erase(self,user_id:str)->str:
