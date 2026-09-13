@@ -43,6 +43,17 @@ def _event_id(value: object) -> str | None:
     return value or None
 
 
+def _fingerprint_event(prefix: str, *parts: object) -> str | None:
+    normalized = []
+    for part in parts:
+        value = _event_id(part)
+        if value is None:
+            return None
+        normalized.append(value)
+    raw = "|".join(normalized)
+    return f"{prefix}:" + hashlib.sha256(raw.encode("utf-8")).hexdigest()
+
+
 def _callback_event_id(event, callback_id: str, user_id: str) -> str | None:
     """Build a retry-stable callback event identity.
 
@@ -52,16 +63,30 @@ def _callback_event_id(event, callback_id: str, user_id: str) -> str | None:
     exposes the event timestamp rather than a unique callback event ID, so the
     production boundary fingerprints the event's stable fields instead.
     """
-    timestamp = _event_id(getattr(event, "timestamp", None))
-    if timestamp is None:
-        return None
     message = getattr(event, "message", None)
     body = getattr(message, "body", None)
     message_id = _event_id(getattr(body, "mid", None) or getattr(message, "mid", None)) or ""
     chat_id = _event_id(getattr(event, "chat_id", None)) or ""
     payload = _event_id(getattr(getattr(event, "callback", None), "payload", None)) or ""
-    raw = "|".join((user_id, chat_id, message_id, callback_id, payload, timestamp))
-    return "callback:" + hashlib.sha256(raw.encode("utf-8")).hexdigest()
+    return _fingerprint_event(
+        "callback",
+        user_id,
+        chat_id,
+        message_id,
+        callback_id,
+        payload,
+        getattr(event, "timestamp", None),
+    )
+
+
+def _started_event_id(event, user_id: str) -> str | None:
+    """Fingerprint bot_started because MAX does not expose a unique event ID."""
+    return _fingerprint_event(
+        "bot_started",
+        user_id,
+        getattr(event, "chat_id", None),
+        getattr(event, "timestamp", None),
+    )
 
 
 async def _with_event_id(event_id: str, handler) -> object:
@@ -97,9 +122,9 @@ def build_dispatcher(survey, seen=None):
     async def on_started(event: BotStarted) -> None:
         _, user_id = event.get_ids()
         uid = str(user_id)
-        event_key = _event_id(getattr(event, "event_id", None) or getattr(event, "id", None))
+        event_key = _started_event_id(event, uid)
         if event_key is None:
-            log.error("%s: BotStarted without provider event ID rejected", uid)
+            log.error("%s: BotStarted without stable event fields rejected", uid)
             return
 
         async def mutate() -> None:
@@ -139,7 +164,7 @@ def build_dispatcher(survey, seen=None):
             return
         event_key = _callback_event_id(event, callback_id, uid)
         if event_key is None:
-            log.error("%s: callback without event timestamp rejected", uid)
+            log.error("%s: callback without stable event fields rejected", uid)
             return
         payload = (getattr(callback, "payload", None) or "")
         if len(payload) > 512:
@@ -184,4 +209,4 @@ def build_dispatcher(survey, seen=None):
     return dp
 
 
-__all__ = ["build_dispatcher", "_resolve_article_callback", "_callback_event_id"]
+__all__ = ["build_dispatcher", "_resolve_article_callback", "_callback_event_id", "_started_event_id"]
