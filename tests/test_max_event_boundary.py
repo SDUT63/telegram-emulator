@@ -17,6 +17,44 @@ def test_provider_event_id_normalization_rejects_missing_values():
     assert dispatcher._event_id(123) == "123"
 
 
+def test_callback_event_identity_does_not_equal_button_id():
+    class Event:
+        timestamp = 1000
+        chat_id = 77
+        message = type("Message", (), {"body": type("Body", (), {"mid": "m-1"})()})()
+        callback = type("Callback", (), {"payload": "c:y"})()
+
+    first = dispatcher._callback_event_id(Event(), "button-1", "42")
+    assert first is not None
+    assert first.startswith("callback:")
+    assert first != "button-1"
+
+
+def test_callback_event_identity_is_stable_for_webhook_retry():
+    class Event:
+        timestamp = 1000
+        chat_id = 77
+        message = type("Message", (), {"body": type("Body", (), {"mid": "m-1"})()})()
+        callback = type("Callback", (), {"payload": "c:y"})()
+
+    first = dispatcher._callback_event_id(Event(), "button-1", "42")
+    retry = dispatcher._callback_event_id(Event(), "button-1", "42")
+    assert first == retry
+
+
+def test_callback_event_identity_changes_for_a_later_legitimate_click():
+    class Event:
+        chat_id = 77
+        message = type("Message", (), {"body": type("Body", (), {"mid": "m-1"})()})()
+        callback = type("Callback", (), {"payload": "c:y"})()
+
+    first_event = Event()
+    first_event.timestamp = 1000
+    second_event = Event()
+    second_event.timestamp = 1001
+    assert dispatcher._callback_event_id(first_event, "button-1", "42") != dispatcher._callback_event_id(second_event, "button-1", "42")
+
+
 def test_with_event_id_binds_provider_id_for_transaction_boundary():
     seen = []
 
