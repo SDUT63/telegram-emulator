@@ -28,7 +28,7 @@ def test_survey_reply_and_outbox_commit_together():
 
     assert reply
     queue = PostgresOutbox()
-    with queue._connect(queue.db_url) as conn:
+    with queue._connect() as conn:
         row = conn.execute(
             "SELECT delivery_key,user_id,payload,status FROM outbox_messages WHERE delivery_key=%s",
             (delivery_key(event_id),),
@@ -57,7 +57,7 @@ def test_message_with_attachment_is_atomic_and_queues_two_intents():
 
     assert result
     queue = PostgresOutbox()
-    with queue._connect(queue.db_url) as conn:
+    with queue._connect() as conn:
         rows = conn.execute(
             "SELECT delivery_key,payload,status FROM outbox_messages "
             "WHERE delivery_key IN (%s,%s) ORDER BY delivery_key",
@@ -78,7 +78,7 @@ def test_message_with_attachment_is_atomic_and_queues_two_intents():
     assert processed["event_hash"]
     assert state is not None
 
-    with queue._connect(queue.db_url) as conn:
+    with queue._connect() as conn:
         audit = conn.execute(
             "SELECT event_json FROM audit_events WHERE user_id=%s ORDER BY id DESC LIMIT 1", (user_id,)
         ).fetchone()
@@ -125,7 +125,7 @@ def test_callback_transition_and_reply_are_one_event():
 
     assert reply
     queue = PostgresOutbox()
-    with queue._connect(queue.db_url) as conn:
+    with queue._connect() as conn:
         processed = conn.execute(
             "SELECT event_type FROM processed_events WHERE event_id=%s", (callback_event,)
         ).fetchone()
@@ -162,7 +162,7 @@ def test_navigation_event_is_durable_and_does_not_change_answers():
 
     assert reply
     queue = PostgresOutbox()
-    with queue._connect(queue.db_url) as conn:
+    with queue._connect() as conn:
         row = conn.execute(
             "SELECT payload,status FROM outbox_messages WHERE delivery_key=%s", (delivery_key(nav_event),)
         ).fetchone()
@@ -195,7 +195,7 @@ def test_survey_failure_rolls_back_outbox_and_state():
         _TX_EVENT.reset(token)
 
     queue = PostgresOutbox()
-    with queue._connect(queue.db_url) as conn:
+    with queue._connect() as conn:
         outbox = conn.execute("SELECT 1 FROM outbox_messages WHERE delivery_key=%s", (delivery_key(event_id),)).fetchone()
         state = conn.execute("SELECT 1 FROM survey_state WHERE user_id=%s", (user_id,)).fetchone()
 
@@ -219,6 +219,6 @@ def test_duplicate_event_does_not_create_second_reply():
     assert second == ""
 
     queue = PostgresOutbox()
-    with queue._connect(queue.db_url) as conn:
+    with queue._connect() as conn:
         rows = conn.execute("SELECT COUNT(*) AS n FROM outbox_messages WHERE delivery_key=%s", (delivery_key(event_id),)).fetchone()
     assert rows["n"] == 1

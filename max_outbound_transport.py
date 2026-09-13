@@ -82,19 +82,42 @@ class MaxOutboundTransport:
         payload = message.payload
         if not isinstance(payload, dict):
             raise ValueError("outbox payload должен быть JSON-объектом")
-        if payload.get("kind") != "max_text":
+        if payload.get("kind") not in ("max_text", "max_edit"):
             raise ValueError(f"неизвестный тип outbox payload: {payload.get('kind')!r}")
         text = payload.get("text")
         if not isinstance(text, str) or not text:
             raise ValueError("outbox payload должен содержать непустой text")
         if len(text) > MAX_TEXT_LIMIT:
             raise ValueError("outbox text слишком длинный")
+        if payload.get("kind") == "max_edit":
+            target = payload.get("message_id")
+            if not isinstance(target, str) or not target:
+                raise ValueError("max_edit payload должен содержать message_id")
         return payload
 
     async def send(self, message: OutboxMessage) -> None:
         """Perform exactly one bounded provider request for the claimed intent."""
         payload = self._validate(message)
         attachments = _markup(payload.get("keyboard_rows"))
+        if payload["kind"] == "max_edit":
+            try:
+                await asyncio.wait_for(
+                    self._bot.edit_message(
+                        message_id=payload["message_id"],
+                        text=payload["text"],
+                        attachments=[attachments] if attachments else None,
+                    ),
+                    timeout=self.timeout_seconds,
+                )
+                return
+            except asyncio.TimeoutError:
+                # The lease bounds the attempt; retrying the edit is safe and
+                # idempotent, so let the outbox schedule it rather than sending.
+                raise
+            except Exception:  # noqa: BLE001
+                # The screen is gone, too old, or not editable. Silence would be
+                # worse than an extra message: fall through and send a new one.
+                pass
         kwargs = {"text": payload["text"], "attachments": [attachments] if attachments else None}
         if message.chat_id is not None:
             kwargs["chat_id"] = message.chat_id

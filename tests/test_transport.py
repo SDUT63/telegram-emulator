@@ -105,20 +105,26 @@ def test_в_журнал_не_пишутся_ответы():
 
 # ------------------------------------------------- вебхук
 
+# Публичный адрес и внутренний порт слушателя проверяются раздельно:
+# validate_public_url отвечает за то, что видит MAX, а диапазон внутреннего
+# порта — за то, что слушает приложение за обратным прокси.
+
 def test_вебхук_требует_https():
     import max_webhook
-    беды = max_webhook.check_settings("http://bot.example.ru/max", 8443)
+    беды = max_webhook.validate_public_url("http://bot.example.ru/max", "/max")
     assert any("https" in b for b in беды)
 
 
 def test_вебхук_отсекает_неподдерживаемый_порт():
     import max_webhook
-    беды = max_webhook.check_settings("https://bot.example.ru/max", 5000)
-    assert any("5000" in b for b in беды)
-    assert max_webhook.check_settings("https://bot.example.ru/max", 8443) == []
-    assert max_webhook.check_settings("https://bot.example.ru/max", 20000) == []
+    беды = max_webhook.validate_public_url("https://bot.example.ru:5000/max", "/max")
+    assert any("443" in b for b in беды)
+    # Порт по умолчанию и явный 443 — единственные допустимые для MAX.
+    assert max_webhook.validate_public_url("https://bot.example.ru/max", "/max") == []
+    assert max_webhook.validate_public_url("https://bot.example.ru:443/max", "/max") == []
 
 
 def test_вебхук_требует_адрес():
     import max_webhook
-    assert max_webhook.check_settings("", 443)
+    assert max_webhook.validate_public_url("", "/max")
+    assert max_webhook.validate_settings("", "секрет-длиннее-пяти", "/max")

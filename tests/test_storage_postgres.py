@@ -53,7 +53,7 @@ def test_postgres_bot_started_does_not_reset_existing_case(postgres_dsn):
         survey.state[user_id]["answers"]["marker"] = "must-survive"
         survey.save()
         second = survey.start(user_id)
-        assert "must-survive" in survey.state[user_id]["answers"]
+        assert survey.state[user_id]["answers"]["marker"] == "must-survive"
         assert second
     finally:
         _cleanup(survey, user_id)

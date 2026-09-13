@@ -44,14 +44,19 @@ def _validate_lease_budget(queue: PostgresOutbox, transport: MaxOutboundTranspor
 
 
 def _claim_still_deliverable(queue: PostgresOutbox, message_id: int, user_id: str) -> bool:
-    """Revalidate a claim after acquiring the user lock."""
+    """Revalidate a claim after acquiring the user lock.
+
+    A deletion committed between claim and send invalidates the claim — except
+    for the farewell row, which is the deletion confirmation itself and is the
+    one message a purged user is still owed.
+    """
     with psycopg.connect(queue.db_url, row_factory=dict_row) as conn:
         row = conn.execute(
             """
             SELECT 1 FROM outbox_messages o
             LEFT JOIN deleted_users d ON d.user_id=o.user_id
             WHERE o.id=%s AND o.status='sending' AND o.locked_by=%s
-              AND o.user_id=%s AND d.user_id IS NULL
+              AND o.user_id=%s AND (d.user_id IS NULL OR o.farewell)
             """,
             (message_id, queue.worker_id, str(user_id)),
         ).fetchone()

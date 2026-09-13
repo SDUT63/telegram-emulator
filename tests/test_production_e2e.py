@@ -41,12 +41,25 @@ def _cleanup(survey, user_id: str, event_ids: list[str]) -> None:
             conn.execute("DELETE FROM processed_events WHERE event_id=%s", (event_id,))
 
 
+def _drain(queue) -> None:
+    """Deliver everything already queued, so a test measures only its own event.
+
+    start() legitimately queues a greeting; without draining it first, a
+    one-message claim would hand the test that row instead of the reply.
+    """
+    while asyncio.run(deliver_once(FakeMaxBot(), queue=queue)):
+        pass
+
+
 def test_production_e2e_state_to_max_is_durable(postgres_dsn):
-    user_id = f"pytest-e2e-{uuid.uuid4().hex}"
+    # MAX addresses recipients by numeric id; the transport refuses anything
+    # else when no chat_id is present, so the fixture must look like production.
+    user_id = str(abs(hash(uuid.uuid4().hex)) % 10**9)
     event_id = f"pytest-e2e-event-{uuid.uuid4().hex}"
     survey = DurableProductionPostgresSurvey(db_url=postgres_dsn, list_options=False)
     try:
         survey.start(user_id)
+        _drain(PostgresOutbox(db_url=postgres_dsn))
         token = _TX_EVENT.set(event_id)
         try:
             reply = survey.handle(user_id, "help")
@@ -80,11 +93,12 @@ def test_production_e2e_state_to_max_is_durable(postgres_dsn):
 
 
 def test_production_e2e_network_failure_is_retriable(postgres_dsn):
-    user_id = f"pytest-e2e-retry-{uuid.uuid4().hex}"
+    user_id = str(abs(hash(uuid.uuid4().hex)) % 10**9)
     event_id = f"pytest-e2e-retry-event-{uuid.uuid4().hex}"
     survey = DurableProductionPostgresSurvey(db_url=postgres_dsn, list_options=False)
     try:
         survey.start(user_id)
+        _drain(PostgresOutbox(db_url=postgres_dsn))
         token = _TX_EVENT.set(event_id)
         try:
             assert survey.handle(user_id, "help")

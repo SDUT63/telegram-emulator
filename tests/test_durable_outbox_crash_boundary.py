@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import asyncio
+from contextlib import contextmanager
 from types import SimpleNamespace
 
+import durable_outbox_worker
 from durable_outbox_worker import deliver_once
 
 
@@ -35,6 +37,10 @@ class MarkSentFailsQueue:
         assert limit == 1
         return list(self.claimed)
 
+    @contextmanager
+    def user_delivery_lock(self, user_id: str):
+        yield
+
     def mark_sent(self, message_id: int) -> None:
         self.mark_sent_calls += 1
         raise RuntimeError("simulated DB failure after MAX accepted the request")
@@ -48,8 +54,11 @@ class ShortLeaseQueue(MarkSentFailsQueue):
     lease_seconds = 34
 
 
-def test_mark_sent_failure_does_not_immediately_resend() -> None:
+def test_mark_sent_failure_does_not_immediately_resend(monkeypatch) -> None:
     """The crash boundary is at-least-once, but one worker pass must not resend."""
+    # The double is not backed by PostgreSQL; claim revalidation is covered by
+    # the deletion-race tests that do use a real database.
+    monkeypatch.setattr(durable_outbox_worker, "_claim_still_deliverable", lambda *_: True)
     bot = FakeBot()
     queue = MarkSentFailsQueue()
 

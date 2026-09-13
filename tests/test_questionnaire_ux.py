@@ -10,7 +10,13 @@ T = TypeVar("T")
 
 
 class InMemoryProductionSurvey(ProductionPostgresSurvey):
-    """Deterministic unit-test seam: keep production restart logic, skip DB I/O."""
+    """Deterministic unit-test seam: keep production restart logic, skip DB I/O.
+
+    Built with __new__, so every attribute the Survey contract reads has to be
+    declared here rather than inherited from __init__.
+    """
+
+    list_options = False
 
     def _mutate(
         self,

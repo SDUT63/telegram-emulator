@@ -78,6 +78,25 @@ def validate_public_url(url, expected_path):
     return problems
 
 
+def metrics_authorized(authorization: str | None) -> bool:
+    """Gate /metrics when a token is configured.
+
+    The listener is loopback-only by default, but a reverse proxy may forward
+    /metrics from a monitoring network. SDUT_METRICS_TOKEN is documented as the
+    protection for that case, so it has to be enforced here rather than only in
+    the deployment notes. Unset means "no token configured" — the endpoint then
+    relies on network placement alone, as before.
+    """
+    expected = (os.getenv("SDUT_METRICS_TOKEN") or "").strip()
+    if not expected:
+        return True
+    offered = (authorization or "").strip()
+    prefix = "Bearer "
+    if not offered.startswith(prefix):
+        return False
+    return secrets.compare_digest(offered[len(prefix):], expected)
+
+
 def validate_settings(url, secret, path):
     problems = validate_public_url(url, path)
     problems.extend(validate_secret(secret))
@@ -150,7 +169,9 @@ async def main():
                 storage_ok = False
             return web.json_response({"ready": storage_ok, "storage": "PostgreSQL"}, status=200 if storage_ok else 503)
 
-        async def metrics(_):
+        async def metrics(request: web.Request):
+            if not metrics_authorized(request.headers.get("Authorization")):
+                return web.json_response({"error": "unauthorized"}, status=401)
             try:
                 stats = survey.outbox.stats()
                 for status, count in stats.items():

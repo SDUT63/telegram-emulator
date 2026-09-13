@@ -45,3 +45,19 @@ def test_webhook_does_not_offer_a_sqlite_production_fallback():
     source = open(max_webhook.__file__, encoding="utf-8").read()
     assert "SQLiteSurvey" not in source
     assert "SDUT_DATABASE_URL" in source
+
+
+def test_metrics_open_when_no_token_configured(monkeypatch):
+    import max_webhook
+    monkeypatch.delenv("SDUT_METRICS_TOKEN", raising=False)
+    assert max_webhook.metrics_authorized(None) is True
+
+
+def test_metrics_requires_configured_token(monkeypatch):
+    import max_webhook
+    monkeypatch.setenv("SDUT_METRICS_TOKEN", "monitoring-secret")
+    assert max_webhook.metrics_authorized("Bearer monitoring-secret") is True
+    assert max_webhook.metrics_authorized("Bearer wrong") is False
+    assert max_webhook.metrics_authorized("monitoring-secret") is False
+    assert max_webhook.metrics_authorized(None) is False
+    assert max_webhook.metrics_authorized("") is False

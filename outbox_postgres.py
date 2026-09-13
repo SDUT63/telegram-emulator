@@ -39,7 +39,13 @@ class PostgresOutbox:
   if max_attempts<1: raise ValueError("max_attempts must be >= 1")
   self.db_url=db_url or database_url(); self.lease_seconds=lease_seconds; self.max_attempts=max_attempts; self.worker_id=worker_id or f"{socket.gethostname()}:{os.getpid()}:{uuid.uuid4().hex[:8]}"
  def _connect(self): return _connect(self.db_url)
- def enqueue(self,*,delivery_key,user_id,payload,chat_id=None,conn=None):
+ def enqueue(self,*,delivery_key,user_id,payload,chat_id=None,conn=None,farewell=False):
+  """Persist one outbound intent.
+
+  farewell=True is reserved for the deletion confirmation, the single message
+  a purged user is still owed. It bypasses the deleted-user gate because the
+  purge that blocks every other delivery is exactly what it reports.
+  """
   key=str(delivery_key).strip(); uid=str(user_id).strip()
   if not key: raise ValueError("delivery_key must not be empty")
   if not uid: raise ValueError("user_id must not be empty")
@@ -51,13 +57,13 @@ class PostgresOutbox:
   def ask(sql,params):
    with connection.cursor(row_factory=dict_row) as cur: return cur.execute(sql,params).fetchone()
   try:
-   if ask("SELECT 1 FROM deleted_users WHERE user_id=%s",(uid,)) is not None: raise RuntimeError("cannot enqueue outbound message for deleted user")
+   if not farewell and ask("SELECT 1 FROM deleted_users WHERE user_id=%s",(uid,)) is not None: raise RuntimeError("cannot enqueue outbound message for deleted user")
    tombstone=ask("SELECT payload_sha256 FROM outbox_delivery_tombstones WHERE delivery_key=%s",(key,))
    if tombstone is not None:
     if str(tombstone["payload_sha256"])!=digest: raise ValueError(f"delivery_key collision for {key!r}: retained outbound intent differs")
     if own: connection.commit()
     return 0
-   row=ask("INSERT INTO outbox_messages(delivery_key,user_id,chat_id,payload,payload_sha256) VALUES(%s,%s,%s,%s,%s) ON CONFLICT(delivery_key) DO NOTHING RETURNING id",(key,uid,chat_id,Jsonb(payload),digest))
+   row=ask("INSERT INTO outbox_messages(delivery_key,user_id,chat_id,payload,payload_sha256,farewell) VALUES(%s,%s,%s,%s,%s,%s) ON CONFLICT(delivery_key) DO NOTHING RETURNING id",(key,uid,chat_id,Jsonb(payload),digest,bool(farewell)))
    if row: message_id=int(row["id"])
    else:
     existing=ask("SELECT id,user_id,chat_id,payload,payload_sha256 FROM outbox_messages WHERE delivery_key=%s",(key,))
@@ -93,7 +99,7 @@ class PostgresOutbox:
     if attempts>=self.max_attempts:
      digest=str(row["payload_sha256"] or payload_sha256(dict(row["payload"]))); conn.execute("UPDATE outbox_messages SET status='dead',payload=%s,payload_sha256=%s,user_id=NULL,chat_id=NULL,locked_at=NULL,locked_by=NULL,last_error=COALESCE(last_error,'worker lease expired') WHERE id=%s AND status='sending'",(Jsonb(_REDACTED_PAYLOAD),digest,int(row["id"])))
     else: conn.execute("UPDATE outbox_messages SET status='pending',locked_at=NULL,locked_by=NULL WHERE id=%s AND status='sending'",(int(row["id"]),))
-   rows=conn.execute("WITH picked AS (SELECT o.id FROM outbox_messages o LEFT JOIN deleted_users d ON d.user_id=o.user_id WHERE o.status='pending' AND o.available_at<=CURRENT_TIMESTAMP AND d.user_id IS NULL ORDER BY o.id FOR UPDATE OF o SKIP LOCKED LIMIT %s) UPDATE outbox_messages o SET status='sending',locked_at=%s,locked_by=%s,attempts=o.attempts+1 FROM picked WHERE o.id=picked.id RETURNING o.*",(limit,now,self.worker_id)).fetchall()
+   rows=conn.execute("WITH picked AS (SELECT o.id FROM outbox_messages o LEFT JOIN deleted_users d ON d.user_id=o.user_id WHERE o.status='pending' AND o.available_at<=CURRENT_TIMESTAMP AND (d.user_id IS NULL OR o.farewell) ORDER BY o.id FOR UPDATE OF o SKIP LOCKED LIMIT %s) UPDATE outbox_messages o SET status='sending',locked_at=%s,locked_by=%s,attempts=o.attempts+1 FROM picked WHERE o.id=picked.id RETURNING o.*",(limit,now,self.worker_id)).fetchall()
    return [self._row(row) for row in rows]
  def mark_sent(self,message_id):
   with _connect(self.db_url) as conn:

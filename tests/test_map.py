@@ -303,13 +303,14 @@ def test_без_анкеты_кнопки_возврата_нет():
 
 def test_кнопка_карты_не_спорит_с_моими_ответами():
     """«m» — это «Мои ответы» в анкете. Карта не имеет права его забрать."""
-    import re
-    исходник = open(os.path.join(os.path.dirname(os.path.dirname(
-        os.path.abspath(__file__))), "max_bot.py"), encoding="utf-8").read()
-    действия = set(re.findall(r'payload="([a-z]+)"', исходник))
-    assert "map" in действия
-    # «Мои ответы» на законченной анкете остались на своём месте
-    assert '("Мои ответы", "m")' in исходник
+    from max_production_dispatcher import DELETION_WORDS  # noqa: F401  (модуль грузится)
+    import max_production_dispatcher as dispatcher
+
+    исходник = open(dispatcher.__file__, encoding="utf-8").read()
+    # Карта и «Мои ответы» — разные ветки разбора, ни одна не поглощает другую.
+    assert 'action=="map"' in исходник
+    assert '"m"' in исходник
+    assert 'action in {"c","a","s","d","b","n","m"}' in исходник
 
 
 def test_на_экране_согласия_есть_дорога_мимо_порога():
@@ -369,17 +370,53 @@ def test_листание_карты_переписывает_сообщение
 
     Человек прокручивает десять одинаковых меню и не понимает, какое
     живое. Карта обязана вести себя как вкладки внутри одного сообщения.
+
+    В production экран переписывает не обработчик, а durable-воркер: намерение
+    «переписать вот это сообщение» попадает в очередь вместе с состоянием.
     """
-    тело = ИСХОДНИК_БОТА.split("async def листать", 1)[1].split("\n        if action")[0]
-    assert "event.edit(" in тело, "карта должна переписывать сообщение"
-    # И не молчать, если переписать не вышло
-    assert "_отправить(" in тело, "нет запасного пути, если правка не прошла"
-    assert тело.index("event.edit(") < тело.index("_отправить(")
+    import asyncio
+    from datetime import datetime, timezone
+
+    from max_outbound_transport import MaxOutboundTransport
+    from outbox_postgres import OutboxMessage
+
+    class Бот:
+        def __init__(self):
+            self.правки, self.отправки = [], []
+
+        async def edit_message(self, **kwargs):
+            self.правки.append(kwargs)
+
+        async def send_message(self, **kwargs):
+            self.отправки.append(kwargs)
+
+    намерение = OutboxMessage(
+        id=1, delivery_key="e:out:0", user_id="123", chat_id=None,
+        payload={"kind": "max_edit", "message_id": "mid-1", "text": "экран карты", "keyboard_rows": []},
+        status="sending", attempts=1, available_at=datetime.now(timezone.utc), last_error=None,
+    )
+
+    бот = Бот()
+    asyncio.run(MaxOutboundTransport(бот).send(намерение))
+    assert len(бот.правки) == 1, "карта должна переписывать сообщение"
+    assert бот.отправки == [], "переписанный экран не дублируется новым сообщением"
+
+    class БотБезЭкрана(Бот):
+        async def edit_message(self, **kwargs):
+            raise RuntimeError("сообщение удалено или слишком старое")
+
+    запасной = БотБезЭкрана()
+    asyncio.run(MaxOutboundTransport(запасной).send(намерение))
+    assert len(запасной.отправки) == 1, "нет запасного пути, если правка не прошла"
 
 
-@pytest.mark.parametrize("действие", ['action == "map"', 'action == "v"',
-                                      'action == "k"'])
+@pytest.mark.parametrize("действие", ['action=="map"', 'action=="v"', 'action=="k"'])
 def test_все_кнопки_карты_листают_а_не_шлют(действие):
-    кусок = ИСХОДНИК_БОТА.split(действие, 1)[1].split("return", 1)[0]
-    assert "листать(" in кусок, действие
-    assert "меню_тем(" not in кусок and "await статья(" not in кусок
+    """Все три кнопки карты идут одним durable-путём навигации."""
+    import max_production_dispatcher as dispatcher
+
+    исходник = open(dispatcher.__file__, encoding="utf-8").read()
+    кусок = исходник.split(действие, 1)[1].split("return", 1)[0]
+    assert "handle_navigation_event(" in кусок, действие
+    # Обработчик не разговаривает с MAX напрямую — это делает воркер очереди.
+    assert "send_message" not in кусок and "edit_message" not in кусок

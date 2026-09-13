@@ -5,7 +5,7 @@ import uuid
 
 import pytest
 
-from production_outbox import DurableProductionPostgresSurvey
+from production_outbox import DurableProductionPostgresSurvey, _message_fingerprint
 from storage_postgres import _TX_EVENT, _event_hash
 
 
@@ -79,7 +79,9 @@ def test_deleted_event_tombstone_blocks_late_replay_after_deletion(postgres_dsn)
     user_id = f"pytest-deleted-replay-{uuid.uuid4().hex}"
     event_id = f"pytest-deleted-replay-event-{uuid.uuid4().hex}"
     survey = DurableProductionPostgresSurvey(db_url=postgres_dsn, list_options=False)
-    payload = {"kind": "message", "has_files": False, "fingerprint": "synthetic"}
+    # Tombstone must carry the hash production actually computes for this
+    # message, otherwise the replay looks like an event_id collision instead.
+    payload = {"kind": "message", "has_files": False, "fingerprint": _message_fingerprint("help", [])}
     event_hash = _event_hash("message", payload)
     try:
         with survey._connect() as conn:
@@ -112,9 +114,11 @@ def test_transaction_failure_rolls_back_processed_event_and_allows_provider_retr
             raise RuntimeError("simulated database commit-path failure")
         return original_save(conn, uid)
 
+    # start() legitimately saves state; arm the injected failure only after it,
+    # so the failure lands on the event under test rather than on setup.
+    survey.start(user_id)
     survey._save_user = fail_once
     try:
-        survey.start(user_id)
         with pytest.raises(RuntimeError, match="simulated database commit-path failure"):
             _with_event(event_id, lambda: survey.handle_message_event(user_id, "help"))
 

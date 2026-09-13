@@ -4,6 +4,7 @@ from __future__ import annotations
 import hashlib
 import logging
 from max_ui import ASK_WORDS, files_of
+from production_outbox import _OUTBOX_EDIT_TARGET
 from storage_postgres import _TX_EVENT
 log=logging.getLogger("сдут-бот")
 DELETION_WORDS={"удалить","удалите","удалить данные","удалите данные","удалить мои данные","удалите мои данные","удалить анкету","удалите анкету","удалить мои данные и анкету","удалите мои данные и анкету","сотри","сотрите","сотри данные","сотрите данные","забудь меня","забудьте меня","/delete","/удалить"}
@@ -76,6 +77,9 @@ def build_dispatcher(survey,seen=None):
         if _deleted_replay(survey,event_key):await acknowledge(event);return
         payload=getattr(callback,"payload",None) or ""
         if len(payload)>512:log.warning("callback rejected: payload exceeds 512 bytes");return
+        # The screen the button sits on. Map navigation rewrites it in place so
+        # browsing topics behaves like tabs instead of burying the chat.
+        source_message=_event_id(getattr(getattr(getattr(event,"message",None),"body",None),"mid",None))
         async def mutate():
             parts=payload.split(":");action=parts[0] if parts else "";args=parts[1:]
             if action=="map":survey.handle_navigation_event(uid,"map",[]);return
@@ -89,6 +93,11 @@ def build_dispatcher(survey,seen=None):
             if action=="c" and args[:1]==["full"]:survey.handle_navigation_event(uid,"cfull",[]);return
             if action in {"c","a","s","d","b","n","m"}:survey.handle_callback_event(uid,action,args);return
             log.info("unknown callback action rejected")
-        await _with_event_id(event_key,mutate);await acknowledge(event)
+        token=_OUTBOX_EDIT_TARGET.set(source_message)
+        try:
+            await _with_event_id(event_key,mutate)
+        finally:
+            _OUTBOX_EDIT_TARGET.reset(token)
+        await acknowledge(event)
     return dp
 __all__=["build_dispatcher","_resolve_article_callback","_callback_event_id","_started_event_id"]

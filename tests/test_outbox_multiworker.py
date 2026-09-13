@@ -18,7 +18,7 @@ def postgres_dsn():
     return dsn
 
 
-def test_two_workers_claim_distinct_rows(postgres_dsn):
+def test_two_workers_claim_distinct_rows(postgres_dsn, clean_outbox):
     user_id = f"pytest-multiworker-{uuid.uuid4().hex}"
     keys = [delivery_key(f"pytest-multiworker-event-{uuid.uuid4().hex}") for _ in range(8)]
     queue_a = PostgresOutbox(db_url=postgres_dsn, worker_id=f"pytest-a-{uuid.uuid4().hex}")

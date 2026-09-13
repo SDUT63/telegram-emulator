@@ -9,7 +9,7 @@ import weakref
 from typing import Any, Callable, TypeVar
 import fallback
 import knowledge
-from chatbot_survey import CONSENT_SHORT, Survey
+from chatbot_survey import CONSENT_SHORT, ERASED, Survey
 from outbox_postgres import PostgresOutbox, delivery_key
 from production_storage import ProductionPostgresSurvey
 from storage_postgres import _TX_CONNECTION, _TX_EVENT, _TX_USER, _TX_ACCEPTED
@@ -17,6 +17,10 @@ from max_ui import FILES_TAKEN, СПРАВКА_ПОДПИСЬ, article_screen, b
 T = TypeVar("T")
 _OUTBOX_RESULT: contextvars.ContextVar[Any] = contextvars.ContextVar("sdut_outbox_result", default=None)
 _OUTBOX_KEYBOARD: contextvars.ContextVar[Any] = contextvars.ContextVar("sdut_outbox_keyboard", default=None)
+# Message the pressed button lives on. Browsing the topic map rewrites that one
+# screen instead of stacking a new message per tap; the durable payload carries
+# the target so the worker, not the handler, talks to MAX.
+_OUTBOX_EDIT_TARGET: contextvars.ContextVar[str | None] = contextvars.ContextVar("sdut_outbox_edit_target", default=None)
 
 
 def _message_fingerprint(text: str, files: list[dict[str, Any]]) -> str:
@@ -28,11 +32,17 @@ def _keyboard_rows(survey: ProductionPostgresSurvey, user_id: str) -> list[list[
     return questionnaire_keyboard(survey, str(user_id))
 
 
-def _enqueue_text(outbox: PostgresOutbox, conn, survey: ProductionPostgresSurvey, user_id: str, event_id: str, text: str, ordinal: int = 0, keyboard_rows: list[list[list[str]]] | None = None) -> None:
+def _enqueue_text(outbox: PostgresOutbox, conn, survey: ProductionPostgresSurvey, user_id: str, event_id: str, text: str, ordinal: int = 0, keyboard_rows: list[list[list[str]]] | None = None, farewell: bool = False, edit_message_id: str | None = None) -> None:
     if not text:
         return
     rows = keyboard_rows if keyboard_rows is not None else _keyboard_rows(survey, user_id)
-    outbox.enqueue(delivery_key=delivery_key(event_id, ordinal=ordinal), user_id=str(user_id), payload={"kind": "max_text", "text": str(text), "keyboard_rows": rows}, conn=conn)
+    payload: dict[str, Any] = {"kind": "max_text", "text": str(text), "keyboard_rows": rows}
+    if edit_message_id:
+        # Same durable guarantees, one extra instruction: replace this screen
+        # rather than append one. The worker falls back to sending when the
+        # target is gone, so a stale button never leaves the person in silence.
+        payload = {"kind": "max_edit", "message_id": str(edit_message_id), "text": str(text), "keyboard_rows": rows}
+    outbox.enqueue(delivery_key=delivery_key(event_id, ordinal=ordinal), user_id=str(user_id), payload=payload, conn=conn, farewell=farewell)
 
 
 class DurableProductionPostgresSurvey(ProductionPostgresSurvey):
@@ -224,8 +234,16 @@ class DurableProductionPostgresSurvey(ProductionPostgresSurvey):
             keyboard = _OUTBOX_KEYBOARD.get()
             event_id = _TX_EVENT.get()
             outbox = PostgresOutbox(db_url=self.db_url)
+            if is_deletion and event_id:
+                # The purge wiped this user's queue and raised the delivery
+                # gate. Queue the one message they are still owed — a constant
+                # confirmation, carrying no answers — in the same transaction,
+                # so it is durable exactly when the deletion is. The keyboard is
+                # empty on purpose: there is no state left to offer buttons for.
+                _enqueue_text(outbox, conn, self, str(user_id), event_id, ERASED, 0, [], farewell=True)
             if not is_deletion and isinstance(result, str) and result and event_id:
-                _enqueue_text(outbox, conn, self, str(user_id), event_id, result, 0, keyboard)
+                edit_target = _OUTBOX_EDIT_TARGET.get() if event_type == "navigation" else None
+                _enqueue_text(outbox, conn, self, str(user_id), event_id, result, 0, keyboard, edit_message_id=edit_target)
             if not is_deletion and payload and payload.get("has_files") and event_id:
                 _enqueue_text(outbox, conn, self, str(user_id), event_id, FILES_TAKEN, 1)
             conn.commit()
