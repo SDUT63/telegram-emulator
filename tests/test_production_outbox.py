@@ -6,6 +6,7 @@ import uuid
 import pytest
 
 from outbox_postgres import PostgresOutbox, delivery_key
+from max_ui import FILES_TAKEN
 from production_outbox import DurableProductionPostgresSurvey
 from storage_postgres import _TX_EVENT
 
@@ -222,3 +223,30 @@ def test_duplicate_event_does_not_create_second_reply():
     with queue._connect() as conn:
         rows = conn.execute("SELECT COUNT(*) AS n FROM outbox_messages WHERE delivery_key=%s", (delivery_key(event_id),)).fetchone()
     assert rows["n"] == 1
+
+
+def test_file_without_text_is_an_answer_not_an_empty_message():
+    """Присланная справка — это ответ. «Напишите ответ текстом» здесь ложь."""
+    survey = DurableProductionPostgresSurvey()
+    queue = PostgresOutbox()
+    user_id = str(abs(hash(uuid.uuid4().hex)) % 10**9)
+    event_id = f"pytest-file-only-{uuid.uuid4().hex}"
+    files = [{"kind": "file", "name": "справка.pdf", "url": "https://max.ru/f/9", "size": 2048}]
+
+    survey.start(user_id)
+    token = _TX_EVENT.set(event_id)
+    try:
+        survey.handle_message_event(user_id, "", files)
+    finally:
+        _TX_EVENT.reset(token)
+
+    with queue._connect() as conn:
+        rows = conn.execute(
+            "SELECT payload->>'text' AS text FROM outbox_messages WHERE delivery_key LIKE %s ORDER BY id",
+            (f"{event_id}:out:%",),
+        ).fetchall()
+    texts = [str(row["text"]) for row in rows]
+
+    assert any(FILES_TAKEN in t for t in texts), "человек должен увидеть, что файл принят"
+    assert not any("Напишите ответ текстом" in t for t in texts), "файл — это ответ, а не пустое сообщение"
+    assert (survey.state.get(user_id) or {}).get("messages"), "файл не записан в обращение"

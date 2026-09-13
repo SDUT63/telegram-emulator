@@ -97,6 +97,13 @@ class DurableProductionPostgresSurvey(ProductionPostgresSurvey):
         normalized_files = list(files or [])
         payload = {"kind": "message", "has_files": bool(normalized_files), "fingerprint": _message_fingerprint(normalized_text, normalized_files)}
         def mutate() -> str:
+            if normalized_files and not normalized_text:
+                # Справка или фотография — это ответ, а не пустое сообщение.
+                # Отвечать «напишите ответ текстом» здесь значит сказать
+                # человеку, что он ничего не прислал. Подтверждение приёма
+                # файла уходит отдельным сообщением и несёт те же кнопки.
+                Survey.note_message(self, uid, "", normalized_files)
+                return ""
             result = Survey.handle(self, uid, normalized_text)
             if normalized_files:
                 Survey.note_message(self, uid, "" if not result else normalized_text, normalized_files)

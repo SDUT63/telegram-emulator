@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from chatbot_survey import ALREADY_DONE, CONSENT_NO, CONSENT_SHORT, HELP, RESUMED
 from max_laptop_pilot_v2 import LaptopSurvey, markup, rows
+from max_ui import FILES_TAKEN
 
 START_GUIDE = """Как пользоваться ботом:
 
@@ -93,6 +94,7 @@ def build_dispatcher(survey):
         uid = str(user_id)
         body = event.message.body
         text = ((body.text if body else None) or "").strip()
+        files = old._files_of(body)
         normalized = text.casefold().strip(" ?!.")
         if normalized in old.ASK_WORDS:
             if normalized in {"темы", "покажи темы", "список тем"} and uid in survey.state:
@@ -100,9 +102,17 @@ def build_dispatcher(survey):
             else:
                 await send(event.bot, chat_id, uid, HELP, visible_rows(survey, uid))
             return
-        reply = survey.handle(uid, text)
+
+        # Справка, выписка, фотография — обычная часть разговора здесь.
+        # Файл надо принять и показать это, а не отвечать «напишите текстом»,
+        # как будто человек ничего не присылал.
+        if files:
+            survey.note_message(uid, text, files)
+        reply = survey.handle(uid, text) if text else ""
         if reply:
             await send(event.bot, chat_id, uid, reply, visible_rows(survey, uid))
+        if files:
+            await send(event.bot, chat_id, uid, FILES_TAKEN, visible_rows(survey, uid))
 
     @dp.message_callback()
     async def callback(event):
