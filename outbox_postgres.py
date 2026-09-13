@@ -45,17 +45,22 @@ class PostgresOutbox:
   if not uid: raise ValueError("user_id must not be empty")
   if not isinstance(payload,dict): raise TypeError("payload must be a dict")
   digest=payload_sha256(payload); own=conn is None; connection=conn or _connect(self.db_url)
+  # The caller's transaction connection owns the row factory, and the
+  # production state connection uses tuple_row. Read every row through an
+  # explicit dict cursor so enqueue works on any caller's connection.
+  def ask(sql,params):
+   with connection.cursor(row_factory=dict_row) as cur: return cur.execute(sql,params).fetchone()
   try:
-   if connection.execute("SELECT 1 FROM deleted_users WHERE user_id=%s",(uid,)).fetchone() is not None: raise RuntimeError("cannot enqueue outbound message for deleted user")
-   tombstone=connection.execute("SELECT payload_sha256 FROM outbox_delivery_tombstones WHERE delivery_key=%s",(key,)).fetchone()
+   if ask("SELECT 1 FROM deleted_users WHERE user_id=%s",(uid,)) is not None: raise RuntimeError("cannot enqueue outbound message for deleted user")
+   tombstone=ask("SELECT payload_sha256 FROM outbox_delivery_tombstones WHERE delivery_key=%s",(key,))
    if tombstone is not None:
     if str(tombstone["payload_sha256"])!=digest: raise ValueError(f"delivery_key collision for {key!r}: retained outbound intent differs")
     if own: connection.commit()
     return 0
-   row=connection.execute("INSERT INTO outbox_messages(delivery_key,user_id,chat_id,payload,payload_sha256) VALUES(%s,%s,%s,%s,%s) ON CONFLICT(delivery_key) DO NOTHING RETURNING id",(key,uid,chat_id,Jsonb(payload),digest)).fetchone()
+   row=ask("INSERT INTO outbox_messages(delivery_key,user_id,chat_id,payload,payload_sha256) VALUES(%s,%s,%s,%s,%s) ON CONFLICT(delivery_key) DO NOTHING RETURNING id",(key,uid,chat_id,Jsonb(payload),digest))
    if row: message_id=int(row["id"])
    else:
-    existing=connection.execute("SELECT id,user_id,chat_id,payload,payload_sha256 FROM outbox_messages WHERE delivery_key=%s",(key,)).fetchone()
+    existing=ask("SELECT id,user_id,chat_id,payload,payload_sha256 FROM outbox_messages WHERE delivery_key=%s",(key,))
     if existing is None: raise RuntimeError("outbox insert disappeared unexpectedly")
     existing_payload=existing["payload"]
     if isinstance(existing_payload,str): existing_payload=json.loads(existing_payload)

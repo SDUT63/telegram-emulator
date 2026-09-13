@@ -32,7 +32,7 @@ def _enqueue_text(outbox: PostgresOutbox, conn, survey: ProductionPostgresSurvey
     if not text:
         return
     rows = keyboard_rows if keyboard_rows is not None else _keyboard_rows(survey, user_id)
-    outbox.enqueue(delivery_key(event_id, ordinal=ordinal), str(user_id), {"kind": "max_text", "text": str(text), "keyboard_rows": rows}, conn=conn)
+    outbox.enqueue(delivery_key=delivery_key(event_id, ordinal=ordinal), user_id=str(user_id), payload={"kind": "max_text", "text": str(text), "keyboard_rows": rows}, conn=conn)
 
 
 class DurableProductionPostgresSurvey(ProductionPostgresSurvey):
