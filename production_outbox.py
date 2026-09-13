@@ -70,7 +70,10 @@ class DurableProductionPostgresSurvey(ProductionPostgresSurvey):
         payload = {"kind": "message", "has_files": bool(normalized_files), "fingerprint": _message_fingerprint(normalized_text, normalized_files)}
         def mutate() -> str:
             result = Survey.handle(self, uid, normalized_text)
-            if normalized_files: Survey.note_message(self, uid, normalized_text, normalized_files)
+            # Survey.handle already records free-form/unrecognized text. When
+            # an attachment is present, persist attachment metadata separately
+            # but do not duplicate the same text in the conversation journal.
+            if normalized_files: Survey.note_message(self, uid, "" if not result else normalized_text, normalized_files)
             if result or not normalized_text: return result
             return self._reference_reply(uid, normalized_text)
         return self._mutate(uid, "message", payload, mutate, "")
@@ -105,8 +108,7 @@ class DurableProductionPostgresSurvey(ProductionPostgresSurvey):
             if action == "c":
                 if args[:1] == ["back"]:
                     if self.stage(uid) != "consent": return ""
-                    _OUTBOX_KEYBOARD.set(consent_keyboard(full=False))
-                    return CONSENT_SHORT
+                    _OUTBOX_KEYBOARD.set(consent_keyboard(full=False)); return CONSENT_SHORT
                 if self.stage(uid) != "consent": return ""
                 return self.grant_consent(uid) if args[:1] == ["y"] else self.refuse_consent(uid)
             if action == "a" and len(args) == 2:
