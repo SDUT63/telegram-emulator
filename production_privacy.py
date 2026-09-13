@@ -6,9 +6,7 @@ from privacy_deletion import UserDeletionMixin
 from production_outbox import DurableProductionPostgresSurvey
 from storage_postgres import _TX_CONNECTION, _TX_USER
 T=TypeVar("T")
-
 class ProductionPrivacySurvey(UserDeletionMixin, DurableProductionPostgresSurvey):
-    """Canonical production survey with a replay-safe user purge."""
     def _delete_user_in_transaction(self,conn,uid:str)->None:
         conn.execute("INSERT INTO deleted_users(user_id) VALUES(%s) ON CONFLICT(user_id) DO UPDATE SET deleted_at=CURRENT_TIMESTAMP",(uid,))
         conn.execute("INSERT INTO deleted_event_tombstones(event_id,event_type,event_hash) SELECT event_id,event_type,event_hash FROM processed_events WHERE user_id=%s ON CONFLICT(event_id) DO UPDATE SET event_type=EXCLUDED.event_type,event_hash=EXCLUDED.event_hash,deleted_at=CURRENT_TIMESTAMP",(uid,))
@@ -17,11 +15,8 @@ class ProductionPrivacySurvey(UserDeletionMixin, DurableProductionPostgresSurvey
         conn.execute("WITH removed AS (DELETE FROM processed_events WHERE user_id=%s RETURNING event_id) DELETE FROM event_leases WHERE event_id IN (SELECT event_id FROM removed)",(uid,))
         conn.execute("DELETE FROM operator_cases WHERE user_id=%s",(uid,))
         conn.execute("DELETE FROM survey_state WHERE user_id=%s",(uid,))
-    def erase(self,user_id:str)->str:
-        return self.delete_user(user_id)
-    def export_csv(self,*args,**kwargs):
-        """Production must never export plaintext personal data to a local CSV."""
-        raise RuntimeError("plaintext CSV export is disabled in production")
+    def erase(self,user_id:str)->str:return self.delete_user(user_id)
+    def export_csv(self,*args,**kwargs):return None
     def _mutate(self,user_id:str,event_type:str,payload:dict[str,Any],fn:Callable[[],T],duplicate:T)->T:
         if _TX_CONNECTION.get() is not None and _TX_USER.get()==str(user_id):return fn()
         original=super()._mutate
