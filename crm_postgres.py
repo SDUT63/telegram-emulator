@@ -1,15 +1,9 @@
 #!/usr/bin/env python3
-"""Transactional PostgreSQL CRM for operators.
-
-The legacy ``crm_store.py`` is file-based and remains only for pilot/legacy
-use. Production operator state lives in PostgreSQL. Operator outbound messages
-are inserted into the canonical ``outbox_messages`` table in the same database
-transaction as the CRM mutation and are delivered by the existing
-``MaxOutboundTransport``/durable outbox worker.
-"""
+"""Transactional PostgreSQL CRM for operators."""
 from __future__ import annotations
 
 import hashlib
+import json
 import re
 from contextlib import contextmanager
 from typing import Any, Iterator
@@ -28,86 +22,58 @@ _USER_ID = re.compile(r"^[0-9]{1,64}$")
 def _database_url() -> str:
     import os
     value = (os.getenv("SDUT_DATABASE_URL") or "").strip()
-    if not value:
-        raise RuntimeError("SDUT_DATABASE_URL не задан")
+    if not value: raise RuntimeError("SDUT_DATABASE_URL не задан")
     return value
 
 
 def _user_id(value: str) -> str:
     result = str(value).strip()
-    if not _USER_ID.fullmatch(result):
-        raise ValueError("user_id должен содержать только цифры")
+    if not _USER_ID.fullmatch(result): raise ValueError("user_id должен содержать только цифры")
     return result
 
 
 def _who(value: str) -> str:
     result = str(value).strip()
-    if not result or len(result) > 128:
-        raise ValueError("operator identity должна быть непустой и не длиннее 128 символов")
+    if not result or len(result) > 128: raise ValueError("operator identity должна быть непустой и не длиннее 128 символов")
     return result
 
 
 def _text(value: str) -> str:
     result = str(value)
-    if not result.strip():
-        raise ValueError("текст не должен быть пустым")
-    if len(result) > _MAX_TEXT:
-        raise ValueError("текст сообщения слишком длинный")
+    if not result.strip(): raise ValueError("текст не должен быть пустым")
+    if len(result) > _MAX_TEXT: raise ValueError("текст сообщения слишком длинный")
     return result
 
 
 def _payload_digest(payload: dict[str, Any]) -> str:
-    canonical = repr(sorted(payload.items())).encode("utf-8", errors="replace")
+    canonical = json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"), default=str).encode("utf-8")
     return hashlib.sha256(canonical).hexdigest()
 
 
 class PostgresOperatorCRM:
-    """Atomic case, note, call and operator-message operations."""
-
     def __init__(self, db_url: str | None = None) -> None:
-        self.db_url = db_url or _database_url()
-        self.outbox = PostgresOutbox(self.db_url)
+        self.db_url = db_url or _database_url(); self.outbox = PostgresOutbox(self.db_url)
 
     @contextmanager
     def _transaction(self) -> Iterator[Any]:
-        with psycopg.connect(self.db_url, row_factory=dict_row) as conn:
-            yield conn
+        with psycopg.connect(self.db_url, row_factory=dict_row) as conn: yield conn
 
     @staticmethod
     def _ensure_case(conn: Any, user_id: str) -> None:
-        conn.execute(
-            """
-            INSERT INTO operator_cases(user_id)
-            VALUES (%s)
-            ON CONFLICT(user_id) DO NOTHING
-            """,
-            (user_id,),
-        )
+        conn.execute("INSERT INTO operator_cases(user_id) VALUES (%s) ON CONFLICT(user_id) DO NOTHING", (user_id,))
 
     def get_case(self, user_id: str) -> dict[str, Any] | None:
         uid = _user_id(user_id)
         with self._transaction() as conn:
-            row = conn.execute(
-                "SELECT user_id,status,assigned,created_at,updated_at FROM operator_cases WHERE user_id=%s",
-                (uid,),
-            ).fetchone()
+            row = conn.execute("SELECT user_id,status,assigned,created_at,updated_at FROM operator_cases WHERE user_id=%s", (uid,)).fetchone()
         return dict(row) if row else None
 
     def set_status(self, user_id: str, status: str, who: str) -> dict[str, Any]:
         uid, operator = _user_id(user_id), _who(who)
-        if status not in STATUSES:
-            raise ValueError(f"неизвестный статус: {status}")
+        if status not in STATUSES: raise ValueError(f"неизвестный статус: {status}")
         with self._transaction() as conn:
             self._ensure_case(conn, uid)
-            row = conn.execute(
-                """
-                UPDATE operator_cases
-                   SET status=%s, updated_at=CURRENT_TIMESTAMP
-                 WHERE user_id=%s
-                 RETURNING user_id,status,assigned,created_at,updated_at
-                """,
-                (status, uid),
-            ).fetchone()
+            row = conn.execute("UPDATE operator_cases SET status=%s, updated_at=CURRENT_TIMESTAMP WHERE user_id=%s RETURNING user_id,status,assigned,created_at,updated_at", (status, uid)).fetchone()
             conn.execute("INSERT INTO operator_notes(user_id,who,text,system) VALUES(%s,%s,%s,TRUE)", (uid, operator, f"Статус: {status}"))
         return dict(row)
 
@@ -115,15 +81,7 @@ class PostgresOperatorCRM:
         uid, operator = _user_id(user_id), _who(who)
         with self._transaction() as conn:
             self._ensure_case(conn, uid)
-            row = conn.execute(
-                """
-                UPDATE operator_cases
-                   SET assigned=%s, updated_at=CURRENT_TIMESTAMP
-                 WHERE user_id=%s
-                 RETURNING user_id,status,assigned,created_at,updated_at
-                """,
-                (operator, uid),
-            ).fetchone()
+            row = conn.execute("UPDATE operator_cases SET assigned=%s, updated_at=CURRENT_TIMESTAMP WHERE user_id=%s RETURNING user_id,status,assigned,created_at,updated_at", (operator, uid)).fetchone()
             conn.execute("INSERT INTO operator_notes(user_id,who,text,system) VALUES(%s,%s,%s,TRUE)", (uid, operator, "Взял в работу"))
         return dict(row)
 
@@ -137,70 +95,36 @@ class PostgresOperatorCRM:
 
     def mark_call(self, user_id: str, stage: int, who: str) -> None:
         uid, operator = _user_id(user_id), _who(who)
-        if stage not in CALL_STAGES:
-            raise ValueError(f"неизвестный этап контрольного звонка: {stage}")
+        if stage not in CALL_STAGES: raise ValueError(f"неизвестный этап контрольного звонка: {stage}")
         with self._transaction() as conn:
             self._ensure_case(conn, uid)
-            conn.execute(
-                """
-                INSERT INTO operator_calls(user_id,stage,who)
-                VALUES(%s,%s,%s)
-                ON CONFLICT(user_id,stage) DO UPDATE SET who=EXCLUDED.who, created_at=CURRENT_TIMESTAMP
-                """,
-                (uid, stage, operator),
-            )
+            conn.execute("INSERT INTO operator_calls(user_id,stage,who) VALUES(%s,%s,%s) ON CONFLICT(user_id,stage) DO UPDATE SET who=EXCLUDED.who, created_at=CURRENT_TIMESTAMP", (uid, stage, operator))
             conn.execute("INSERT INTO operator_notes(user_id,who,text,system) VALUES(%s,%s,%s,TRUE)", (uid, operator, f"Контрольный звонок через {stage} дней — сделан"))
             conn.execute("UPDATE operator_cases SET updated_at=CURRENT_TIMESTAMP WHERE user_id=%s", (uid,))
 
     def undo_call(self, user_id: str, stage: int) -> None:
         uid = _user_id(user_id)
-        if stage not in CALL_STAGES:
-            raise ValueError(f"неизвестный этап контрольного звонка: {stage}")
+        if stage not in CALL_STAGES: raise ValueError(f"неизвестный этап контрольного звонка: {stage}")
         with self._transaction() as conn:
-            conn.execute("DELETE FROM operator_calls WHERE user_id=%s AND stage=%s", (uid, stage))
-            conn.execute("UPDATE operator_cases SET updated_at=CURRENT_TIMESTAMP WHERE user_id=%s", (uid,))
+            conn.execute("DELETE FROM operator_calls WHERE user_id=%s AND stage=%s", (uid, stage)); conn.execute("UPDATE operator_cases SET updated_at=CURRENT_TIMESTAMP WHERE user_id=%s", (uid,))
 
     def queue_message(self, user_id: str, text: str, who: str, *, operation_id: str, keyboard_rows: list[list[tuple[str, str]]] | None = None, chat_id: str | None = None) -> str:
-        """Atomically record an operator action and outbound intent.
-
-        The operation identity is durable independently of outbox retention.
-        Reusing an operation_id with different user or payload data is a hard
-        collision rather than a second outbound action.
-        """
         uid, operator, body = _user_id(user_id), _who(who), _text(text)
         op = str(operation_id).strip()
-        if not op or len(op) > 128:
-            raise ValueError("operation_id должен быть непустым и не длиннее 128 символов")
-        if keyboard_rows is not None and not isinstance(keyboard_rows, list):
-            raise ValueError("keyboard_rows должен быть списком")
+        if not op or len(op) > 128: raise ValueError("operation_id должен быть непустым и не длиннее 128 символов")
+        if keyboard_rows is not None and not isinstance(keyboard_rows, list): raise ValueError("keyboard_rows должен быть списком")
         delivery = f"crm:{op}:out:0"
         payload: dict[str, Any] = {"kind": "max_text", "source": "operator_crm", "text": body}
         if keyboard_rows: payload["keyboard_rows"] = keyboard_rows
         digest = _payload_digest(payload)
-
         with self._transaction() as conn:
             self._ensure_case(conn, uid)
-            existing = conn.execute(
-                "SELECT user_id,delivery_key,payload_sha256 FROM operator_operations WHERE operation_id=%s FOR UPDATE",
-                (op,),
-            ).fetchone()
+            existing = conn.execute("SELECT user_id,delivery_key,payload_sha256 FROM operator_operations WHERE operation_id=%s FOR UPDATE", (op,)).fetchone()
             if existing is not None:
-                if str(existing["user_id"]) != uid or str(existing["payload_sha256"]) != digest:
-                    raise ValueError(f"operation_id collision for {op!r}: operation data differs")
+                if str(existing["user_id"]) != uid or str(existing["payload_sha256"]) != digest: raise ValueError(f"operation_id collision for {op!r}: operation data differs")
                 return str(existing["delivery_key"])
-
-            inserted = conn.execute(
-                """
-                INSERT INTO operator_operations(operation_id,user_id,delivery_key,payload_sha256)
-                VALUES(%s,%s,%s,%s)
-                ON CONFLICT(operation_id) DO NOTHING
-                RETURNING delivery_key
-                """,
-                (op, uid, delivery, digest),
-            ).fetchone()
-            if inserted is None:
-                raise RuntimeError("operator operation disappeared unexpectedly")
-
+            inserted = conn.execute("INSERT INTO operator_operations(operation_id,user_id,delivery_key,payload_sha256) VALUES(%s,%s,%s,%s) ON CONFLICT(operation_id) DO NOTHING RETURNING delivery_key", (op, uid, delivery, digest)).fetchone()
+            if inserted is None: raise RuntimeError("operator operation disappeared unexpectedly")
             self.outbox.enqueue(delivery_key=delivery, user_id=uid, chat_id=chat_id, payload=payload, conn=conn)
             conn.execute("INSERT INTO operator_notes(user_id,who,text,system) VALUES(%s,%s,%s,FALSE)", (uid, operator, f"Сообщение отправлено в очередь: {body}"))
             conn.execute("UPDATE operator_cases SET updated_at=CURRENT_TIMESTAMP WHERE user_id=%s", (uid,))
