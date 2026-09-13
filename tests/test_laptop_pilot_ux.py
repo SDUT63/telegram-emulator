@@ -1,24 +1,36 @@
-from max_laptop_pilot_v2 import LaptopSurvey, consent_rows, rows
-from run_max import START_GUIDE
+from max_laptop_pilot_v2 import LaptopSurvey, rows
+from transparent_max_pilot import START_GUIDE, consent_keyboard
 from survey_questions import CHECKPOINT_ID, QUESTIONS
 
 
-def test_full_consent_has_return_button():
-    actions = [action for row in consent_rows(True) for _, action in row]
+def test_full_consent_has_return_and_help_buttons():
+    actions = [action for row in consent_keyboard(True) for _, action in row]
+    labels = [label for row in consent_keyboard(True) for label, _ in row]
     assert "c:back" in actions
     assert "c:full" not in actions
+    assert "h" in actions
+    assert "Что можно написать" in labels
 
 
 def test_consent_offers_help_before_data_entry():
-    actions = [action for row in consent_rows(False) for _, action in row]
+    actions = [action for row in consent_keyboard(False) for _, action in row]
+    labels = [label for row in consent_keyboard(False) for label, _ in row]
     assert "h" in actions
-    assert "Что можно написать" in [label for row in consent_rows(False) for label, _ in row]
+    assert "Что можно написать" in labels
     assert "помощь" in START_GUIDE
+    assert "темы" in START_GUIDE
+    assert "что умеешь" in START_GUIDE
 
 
-def test_full_consent_offers_help_too():
-    actions = [action for row in consent_rows(True) for _, action in row]
-    assert "h" in actions
+def test_help_keeps_transparent_consent_controls_visible():
+    from transparent_max_pilot import visible_rows
+
+    class ConsentStub:
+        def stage(self, user_id): return "consent"
+        def reading(self, user_id): return False
+
+    actions = [action for row in visible_rows(ConsentStub(), "42") for _, action in row]
+    assert actions == ["c:y", "c:full", "c:n", "map", "h"]
 
 
 def test_short_completed_offers_detailed_continuation(tmp_path):
