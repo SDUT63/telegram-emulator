@@ -1,10 +1,5 @@
 #!/usr/bin/env python3
-"""Durable PostgreSQL storage for the SDUT MAX bot.
-
-The production path provides exactly-once database state transitions for a
-known incoming event id. External MAX delivery still requires a durable
-outbound outbox/idempotency layer.
-"""
+"""Durable PostgreSQL storage for the SDUT MAX bot."""
 from __future__ import annotations
 
 import contextvars
@@ -146,6 +141,23 @@ class TransactionalPostgresSurvey(PostgresSurvey):
             self.state[str(user_id)] = copy.deepcopy(current)
             self._loaded_snapshot[str(user_id)] = copy.deepcopy(current)
             event_hash = _event_hash(event_type, payload)
+
+            # Privacy deletion is a replay boundary, not an advisory check.
+            # Check the tombstone under the same per-user transaction lock used
+            # for state mutation, so deletion and a delayed webhook cannot race.
+            deleted_tombstone = conn.execute(
+                "SELECT event_type,event_hash FROM deleted_event_tombstones WHERE event_id=%s FOR UPDATE",
+                (event_id,),
+            ).fetchone()
+            if deleted_tombstone is not None:
+                old_type, old_hash = deleted_tombstone
+                if str(old_type) != event_type or str(old_hash) != event_hash:
+                    raise RuntimeError(f"event_id collision: deleted tombstone {event_id!r} has different event data")
+                conn.rollback()
+                conn.close()
+                _TX_ACCEPTED.set(False)
+                return None, False
+
             existing = conn.execute("SELECT user_id,event_type,event_hash FROM processed_events WHERE event_id=%s FOR UPDATE", (event_id,)).fetchone()
             if existing is not None:
                 old_user, old_type, old_hash = existing
@@ -264,9 +276,6 @@ class TransactionalPostgresSurvey(PostgresSurvey):
 class TransactionalPersistentSeen:
     """Dispatcher adapter; durable event claim happens in the same transaction."""
     def fresh(self, key: str | None) -> bool:
-        # MAX should normally supply an id. When it does not, use a unique
-        # synthetic id so the state mutation is still transactional instead of
-        # silently changing only the in-memory object.
         _TX_EVENT.set((key or "").strip() or f"synthetic:{uuid.uuid4().hex}")
         return True
 
