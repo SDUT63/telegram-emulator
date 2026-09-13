@@ -9,8 +9,8 @@ transaction as the CRM mutation and are delivered by the existing
 """
 from __future__ import annotations
 
+import hashlib
 import re
-import uuid
 from contextlib import contextmanager
 from typing import Any, Iterator
 
@@ -54,6 +54,11 @@ def _text(value: str) -> str:
     if len(result) > _MAX_TEXT:
         raise ValueError("текст сообщения слишком длинный")
     return result
+
+
+def _payload_digest(payload: dict[str, Any]) -> str:
+    canonical = repr(sorted(payload.items())).encode("utf-8", errors="replace")
+    return hashlib.sha256(canonical).hexdigest()
 
 
 class PostgresOperatorCRM:
@@ -103,10 +108,7 @@ class PostgresOperatorCRM:
                 """,
                 (status, uid),
             ).fetchone()
-            conn.execute(
-                "INSERT INTO operator_notes(user_id,who,text,system) VALUES(%s,%s,%s,TRUE)",
-                (uid, operator, f"Статус: {status}"),
-            )
+            conn.execute("INSERT INTO operator_notes(user_id,who,text,system) VALUES(%s,%s,%s,TRUE)", (uid, operator, f"Статус: {status}"))
         return dict(row)
 
     def assign(self, user_id: str, who: str) -> dict[str, Any]:
@@ -122,24 +124,15 @@ class PostgresOperatorCRM:
                 """,
                 (operator, uid),
             ).fetchone()
-            conn.execute(
-                "INSERT INTO operator_notes(user_id,who,text,system) VALUES(%s,%s,%s,TRUE)",
-                (uid, operator, "Взял в работу"),
-            )
+            conn.execute("INSERT INTO operator_notes(user_id,who,text,system) VALUES(%s,%s,%s,TRUE)", (uid, operator, "Взял в работу"))
         return dict(row)
 
     def add_note(self, user_id: str, text: str, who: str) -> int:
         uid, operator, note = _user_id(user_id), _who(who), _text(text)
         with self._transaction() as conn:
             self._ensure_case(conn, uid)
-            row = conn.execute(
-                "INSERT INTO operator_notes(user_id,who,text) VALUES(%s,%s,%s) RETURNING id",
-                (uid, operator, note),
-            ).fetchone()
-            conn.execute(
-                "UPDATE operator_cases SET updated_at=CURRENT_TIMESTAMP WHERE user_id=%s",
-                (uid,),
-            )
+            row = conn.execute("INSERT INTO operator_notes(user_id,who,text) VALUES(%s,%s,%s) RETURNING id", (uid, operator, note)).fetchone()
+            conn.execute("UPDATE operator_cases SET updated_at=CURRENT_TIMESTAMP WHERE user_id=%s", (uid,))
         return int(row["id"])
 
     def mark_call(self, user_id: str, stage: int, who: str) -> None:
@@ -152,19 +145,12 @@ class PostgresOperatorCRM:
                 """
                 INSERT INTO operator_calls(user_id,stage,who)
                 VALUES(%s,%s,%s)
-                ON CONFLICT(user_id,stage) DO UPDATE
-                    SET who=EXCLUDED.who, created_at=CURRENT_TIMESTAMP
+                ON CONFLICT(user_id,stage) DO UPDATE SET who=EXCLUDED.who, created_at=CURRENT_TIMESTAMP
                 """,
                 (uid, stage, operator),
             )
-            conn.execute(
-                "INSERT INTO operator_notes(user_id,who,text,system) VALUES(%s,%s,%s,TRUE)",
-                (uid, operator, f"Контрольный звонок через {stage} дней — сделан"),
-            )
-            conn.execute(
-                "UPDATE operator_cases SET updated_at=CURRENT_TIMESTAMP WHERE user_id=%s",
-                (uid,),
-            )
+            conn.execute("INSERT INTO operator_notes(user_id,who,text,system) VALUES(%s,%s,%s,TRUE)", (uid, operator, f"Контрольный звонок через {stage} дней — сделан"))
+            conn.execute("UPDATE operator_cases SET updated_at=CURRENT_TIMESTAMP WHERE user_id=%s", (uid,))
 
     def undo_call(self, user_id: str, stage: int) -> None:
         uid = _user_id(user_id)
@@ -174,22 +160,12 @@ class PostgresOperatorCRM:
             conn.execute("DELETE FROM operator_calls WHERE user_id=%s AND stage=%s", (uid, stage))
             conn.execute("UPDATE operator_cases SET updated_at=CURRENT_TIMESTAMP WHERE user_id=%s", (uid,))
 
-    def queue_message(
-        self,
-        user_id: str,
-        text: str,
-        who: str,
-        *,
-        operation_id: str,
-        keyboard_rows: list[list[tuple[str, str]]] | None = None,
-        chat_id: str | None = None,
-    ) -> str:
-        """Atomically record the operator action and its outbound intent.
+    def queue_message(self, user_id: str, text: str, who: str, *, operation_id: str, keyboard_rows: list[list[tuple[str, str]]] | None = None, chat_id: str | None = None) -> str:
+        """Atomically record an operator action and outbound intent.
 
-        ``operation_id`` is the caller's idempotency key. Retrying the same
-        command therefore cannot create a second outbound message. The key is
-        deliberately not generated inside this method: an HTTP/UI retry must
-        reuse the original operation identity.
+        The operation identity is durable independently of outbox retention.
+        Reusing an operation_id with different user or payload data is a hard
+        collision rather than a second outbound action.
         """
         uid, operator, body = _user_id(user_id), _who(who), _text(text)
         op = str(operation_id).strip()
@@ -198,54 +174,43 @@ class PostgresOperatorCRM:
         if keyboard_rows is not None and not isinstance(keyboard_rows, list):
             raise ValueError("keyboard_rows должен быть списком")
         delivery = f"crm:{op}:out:0"
-        payload: dict[str, Any] = {
-            "kind": "max_text",
-            "source": "operator_crm",
-            "text": body,
-        }
-        if keyboard_rows:
-            payload["keyboard_rows"] = keyboard_rows
+        payload: dict[str, Any] = {"kind": "max_text", "source": "operator_crm", "text": body}
+        if keyboard_rows: payload["keyboard_rows"] = keyboard_rows
+        digest = _payload_digest(payload)
 
         with self._transaction() as conn:
             self._ensure_case(conn, uid)
             existing = conn.execute(
-                "SELECT id FROM outbox_messages WHERE delivery_key=%s",
-                (delivery,),
+                "SELECT user_id,delivery_key,payload_sha256 FROM operator_operations WHERE operation_id=%s FOR UPDATE",
+                (op,),
             ).fetchone()
-            self.outbox.enqueue(
-                delivery_key=delivery,
-                user_id=uid,
-                chat_id=chat_id,
-                payload=payload,
-                conn=conn,
-            )
-            conn.execute(
+            if existing is not None:
+                if str(existing["user_id"]) != uid or str(existing["payload_sha256"]) != digest:
+                    raise ValueError(f"operation_id collision for {op!r}: operation data differs")
+                return str(existing["delivery_key"])
+
+            inserted = conn.execute(
                 """
-                INSERT INTO operator_notes(user_id,who,text,system)
-                VALUES(%s,%s,%s,FALSE)
+                INSERT INTO operator_operations(operation_id,user_id,delivery_key,payload_sha256)
+                VALUES(%s,%s,%s,%s)
+                ON CONFLICT(operation_id) DO NOTHING
+                RETURNING delivery_key
                 """,
-                (uid, operator, f"Сообщение отправлено в очередь: {body}"),
-            )
+                (op, uid, delivery, digest),
+            ).fetchone()
+            if inserted is None:
+                raise RuntimeError("operator operation disappeared unexpectedly")
+
+            self.outbox.enqueue(delivery_key=delivery, user_id=uid, chat_id=chat_id, payload=payload, conn=conn)
+            conn.execute("INSERT INTO operator_notes(user_id,who,text,system) VALUES(%s,%s,%s,FALSE)", (uid, operator, f"Сообщение отправлено в очередь: {body}"))
             conn.execute("UPDATE operator_cases SET updated_at=CURRENT_TIMESTAMP WHERE user_id=%s", (uid,))
-            if existing:
-                return delivery
         return delivery
 
     def notes(self, user_id: str, *, limit: int = 100) -> list[dict[str, Any]]:
         uid = _user_id(user_id)
-        if not 1 <= limit <= 1000:
-            raise ValueError("limit должен быть от 1 до 1000")
+        if not 1 <= limit <= 1000: raise ValueError("limit должен быть от 1 до 1000")
         with self._transaction() as conn:
-            rows = conn.execute(
-                """
-                SELECT id,user_id,who,text,system,created_at
-                  FROM operator_notes
-                 WHERE user_id=%s
-                 ORDER BY id DESC
-                 LIMIT %s
-                """,
-                (uid, limit),
-            ).fetchall()
+            rows = conn.execute("SELECT id,user_id,who,text,system,created_at FROM operator_notes WHERE user_id=%s ORDER BY id DESC LIMIT %s", (uid, limit)).fetchall()
         return [dict(row) for row in rows]
 
 
