@@ -1,0 +1,9 @@
+# Install for the service account running the bot.
+# Replace /opt/sdut with the deployed checkout and provide credentials via a
+# protected environment file, systemd credentials, or another secret manager.
+
+# PostgreSQL backup: every day at 02:30 UTC.
+30 2 * * * . /opt/sdut/.env-backup && /opt/sdut/ops/backup_postgres.sh >>/var/log/sdut-backup.log 2>&1
+
+# Privacy coordination/replay tombstone retention: every day at 03:15 UTC.
+15 3 * * * . /opt/sdut/.env-backup && python /opt/sdut/ops/purge_privacy.py >>/var/log/sdut-privacy-retention.log 2>&1
