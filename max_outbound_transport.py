@@ -7,11 +7,27 @@ Retry state, idempotency and crash recovery remain in the PostgreSQL outbox.
 """
 from __future__ import annotations
 
+import asyncio
+import os
 from typing import Any
 
 from outbox_postgres import OutboxMessage
 
 MAX_TEXT_LIMIT = 32000
+DEFAULT_SEND_TIMEOUT_SECONDS = 30
+
+
+def _send_timeout_seconds() -> float:
+    raw = (os.getenv("SDUT_MAX_SEND_TIMEOUT_SECONDS") or "").strip()
+    if not raw:
+        return float(DEFAULT_SEND_TIMEOUT_SECONDS)
+    try:
+        value = float(raw)
+    except ValueError as exc:
+        raise ValueError("SDUT_MAX_SEND_TIMEOUT_SECONDS должен быть числом") from exc
+    if not 1 <= value <= 55:
+        raise ValueError("SDUT_MAX_SEND_TIMEOUT_SECONDS должен быть в диапазоне 1..55")
+    return value
 
 
 def _markup(rows: Any):
@@ -53,8 +69,13 @@ def _markup(rows: Any):
 class MaxOutboundTransport:
     """Send one durable outbound intent through the MAX API."""
 
-    def __init__(self, bot) -> None:
+    def __init__(self, bot, *, timeout_seconds: float | None = None) -> None:
         self._bot = bot
+        self.timeout_seconds = (
+            _send_timeout_seconds() if timeout_seconds is None else float(timeout_seconds)
+        )
+        if not 1 <= self.timeout_seconds <= 55:
+            raise ValueError("timeout_seconds должен быть в диапазоне 1..55")
 
     @staticmethod
     def _validate(message: OutboxMessage) -> dict[str, Any]:
@@ -71,7 +92,7 @@ class MaxOutboundTransport:
         return payload
 
     async def send(self, message: OutboxMessage) -> None:
-        """Perform exactly one provider request for the claimed intent."""
+        """Perform exactly one bounded provider request for the claimed intent."""
         payload = self._validate(message)
         attachments = _markup(payload.get("keyboard_rows"))
         kwargs = {"text": payload["text"], "attachments": [attachments] if attachments else None}
@@ -82,7 +103,10 @@ class MaxOutboundTransport:
                 kwargs["user_id"] = int(message.user_id)
             except (TypeError, ValueError) as exc:
                 raise ValueError("outbox user_id должен быть числовым, если chat_id отсутствует") from exc
-        await self._bot.send_message(**kwargs)
+        await asyncio.wait_for(
+            self._bot.send_message(**kwargs),
+            timeout=self.timeout_seconds,
+        )
 
 
-__all__ = ["MaxOutboundTransport", "MAX_TEXT_LIMIT"]
+__all__ = ["MaxOutboundTransport", "MAX_TEXT_LIMIT", "DEFAULT_SEND_TIMEOUT_SECONDS"]
