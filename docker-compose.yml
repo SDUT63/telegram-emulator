@@ -1,21 +1,48 @@
-version: '3.8'
-
 services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB-sdut}
+      POSTGRES_USER: ${POSTGRES_USER-sdut}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER:-sdut} -d $${POSTGRES_DB:-sdut}"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+    restart: unless-stopped
+  migrate:
+    build: .
+    environment:
+      SDUT_DATABASE_URL: postgresql://${POSTGRES_USER-sdut}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB-sdut}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command: ["python", "scripts/migrate_postgres.py"]
+    restart: "no"
   survey-bot:
     build: .
-    ports:
-      - "5000:5000"
     environment:
-      MAX_ACCESS_TOKEN: ${MAX_ACCESS_TOKEN:-}
-      MAX_SKILL_ID: ${MAX_SKILL_ID:-}
-      DEBUG: ${DEBUG:-False}
-      PORT: 5000
-      ADMIN_TOKEN: ${ADMIN_TOKEN:-admin123}
-    volumes:
-      - ./survey_responses.json:/app/survey_responses.json
+      MAX_BOT_TOKEN: ${MAX_BOT_TOKEN}
+      MAX_WEBHOOK_URL: ${MAX_WEBHOOK_URL}
+      MAX_WEBHOOK_SECRET: ${MAX_WEBHOOK_SECRET}
+      MAX_WEBHOOK_PATH: ${MAX_WEBHOOK_PATH-/max}
+      MAX_WEBHOOK_HOST: 0.0.0.0
+      MAX_WEBHOOK_PORT: 8080
+      SDUT_DATABASE_URL: postgresql://${POSTGRES_USER-sdut}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB-sdut}
+    ports:
+      - "8080:8080"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
-      interval: 10s
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/ready', timeout=3)"]
+      interval: 15s
       timeout: 5s
       retries: 3
+      start_period: 20s
+volumes:
+  postgres_data:
