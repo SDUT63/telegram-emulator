@@ -28,6 +28,33 @@ def visible_rows(survey, user_id):
     return rows(survey, uid)
 
 
+async def browse(event, chat_id, user_id, screen, survey, missing=""):
+    """Показать экран карты на месте нажатой кнопки.
+
+    Листать карту новыми сообщениями — значит завалить чат: человек
+    прокручивает десяток одинаковых меню и не понимает, какое живое.
+    Экран переписывается поверх того, где нажали, и карта ведёт себя как
+    вкладки внутри одного сообщения.
+
+    Если переписать не вышло — сообщение удалили или оно слишком старое, —
+    отправляем новым. Молчания быть не должно.
+    """
+    import legacy_max_bot as old
+
+    uid = str(user_id)
+    if screen is None:
+        if missing:
+            old.log.info("%s: %s", uid, missing)
+        screen = old.экран_карты(survey, uid)
+    survey.understood(uid)
+    text, markup_ = screen
+    try:
+        await event.edit(text=text, attachments=[markup_] if markup_ else None, raise_if_not_exists=False)
+    except Exception as error:  # noqa: BLE001
+        old.log.debug("экран не переписался, шлём новым: %s", type(error).__name__)
+        await old._отправить(event.bot, chat_id, uid, text, markup_)
+
+
 async def send(bot, chat_id, user_id, text, keyboard=None):
     args = {"text": text, "attachments": [markup(keyboard)] if keyboard else None}
     if chat_id is not None:
@@ -96,12 +123,15 @@ def build_dispatcher(survey):
             await send(event.bot, chat_id, uid, reply, visible_rows(survey, uid)); return
         if action == "h":
             await send(event.bot, chat_id, uid, HELP, visible_rows(survey, uid)); return
+        # Карта, ветвь и статья переписывают один экран, а не копят сообщения.
         if action == "map":
-            await old.меню_тем(event.bot, chat_id, uid, survey); return
+            await browse(event, chat_id, uid, old.экран_карты(survey, uid), survey); return
         if action == "v" and len(parts) >= 2:
-            await old.ветвь(event.bot, chat_id, uid, parts[1], int(parts[2]) if len(parts) > 2 and parts[2].isdigit() else 1, survey); return
+            page = int(parts[2]) if len(parts) > 2 and parts[2].isdigit() else 1
+            await browse(event, chat_id, uid, old.экран_ветви(parts[1], page, survey, uid), survey, f"ветвь {parts[1]} не найдена"); return
         if action == "k":
-            await old.статья(event.bot, chat_id, uid, parts[1] if len(parts) > 1 else "", survey); return
+            title = parts[1] if len(parts) > 1 else ""
+            await browse(event, chat_id, uid, old.экран_статьи(title, survey, uid), survey, "статья не найдена"); return
         if action == "q":
             text = survey.question_text(uid) if survey.current(uid) else survey.summary(uid)
             await send(event.bot, chat_id, uid, text, visible_rows(survey, uid)); return
@@ -128,15 +158,55 @@ def build_dispatcher(survey):
     return dp
 
 
+async def operator_queue(bot, poll_seconds: float = 2.0):
+    """Доставлять сообщения, которые оператор поставил в очередь в CRM.
+
+    CRM кладёт каждое сообщение отдельным файлом, бот их забирает. Без этой
+    задачи оператор видит «сообщение отправлено», а человек не получает
+    ничего — тихая потеря, которую в чате не видно.
+
+    Очередь не должна ронять бота: анкеты важнее, поэтому любая ошибка здесь
+    только логируется.
+    """
+    import asyncio
+
+    import crm_store
+    import legacy_max_bot as old
+
+    while True:
+        try:
+            for message in crm_store.pending_messages():
+                text = f"{message['text']}\n\n— {message['who']}, служба долговременного ухода"
+                try:
+                    await bot.send_message(
+                        user_id=int(message["user_id"]),
+                        text=text,
+                        attachments=old._outgoing_files(message),
+                    )
+                    crm_store.mark_sent(message)
+                    old.log.info("Оператор %s написал %s", message["who"], message["user_id"])
+                except Exception as error:  # noqa: BLE001
+                    crm_store.mark_sent(message, error=str(error))
+                    old.log.warning("Не отправилось %s: %s", message["user_id"], type(error).__name__)
+        except asyncio.CancelledError:
+            raise
+        except Exception as error:  # noqa: BLE001
+            old.log.warning("Очередь сообщений оператора: %s", type(error).__name__)
+        await asyncio.sleep(poll_seconds)
+
+
 async def main():
     import asyncio
     import legacy_max_bot as old
     from maxapi import Bot
     bot = Bot(old.read_token())
     survey = LaptopSurvey(list_options=False)
+    queue = asyncio.create_task(operator_queue(bot))
     try:
         await build_dispatcher(survey).start_polling(bot)
     finally:
+        queue.cancel()
+        await asyncio.gather(queue, return_exceptions=True)
         close = getattr(bot, "close_session", None)
         if close:
             result = close()

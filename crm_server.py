@@ -24,6 +24,7 @@ from __future__ import annotations
 import functools
 import os
 import secrets
+import uuid
 from datetime import datetime, timedelta
 from urllib.parse import quote
 
@@ -97,6 +98,41 @@ def login_page():
     return send_from_directory(CRM_DIR, "login.html")
 
 
+def _production_crm():
+    """Транзакционный CRM, если задана PostgreSQL. Иначе — ноутбучный пилот."""
+    if not (os.getenv("SDUT_DATABASE_URL") or "").strip():
+        return None
+    from crm_postgres import PostgresOperatorCRM
+
+    return PostgresOperatorCRM()
+
+
+def _principal():
+    from operator_auth import OperatorPrincipal
+
+    login = session.get("operator_login") or session.get("operator") or ""
+    return OperatorPrincipal(operator_id=str(login), role=str(session.get("operator_role") or "operator"))
+
+
+def send_to_person(user_id: str, text: str, files=None) -> str:
+    """Поставить сообщение оператора в очередь доставки.
+
+    В production очередь — durable outbox в PostgreSQL: её опрашивает тот же
+    воркер, что отправляет ответы анкеты. Файловая очередь там не читается
+    никем, и сообщение молча пропало бы, показав оператору «отправлено».
+
+    На ноутбуке очередь файловая, и её разбирает сам пилот.
+    """
+    production = _production_crm()
+    if production is None:
+        return store.queue_message(user_id, text, session["operator"], files)
+    if files:
+        raise ValueError("Вложения оператора пока доступны только в ноутбучном режиме")
+    operation_id = uuid.uuid4().hex
+    production.queue_message(user_id, text, _principal(), operation_id=operation_id)
+    return operation_id
+
+
 @app.post("/api/login")
 def api_login():
     data = request.get_json(silent=True) or {}
@@ -107,6 +143,8 @@ def api_login():
         return jsonify({"error": "Неверный логин или пароль"}), 401
     session.permanent = True
     session["operator"] = name
+    session["operator_login"] = (data.get("login") or "").strip()
+    session["operator_role"] = store.role_of(session["operator_login"])
     return jsonify({"operator": name})
 
 
@@ -308,8 +346,13 @@ def api_status(user_id: str):
     # гадать. Оператор может отключить уведомление для конкретного случая.
     notified = False
     if data.get("notify", True) and status in STATUS_NOTICE:
-        store.queue_message(user_id, STATUS_NOTICE[status], session["operator"])
-        notified = True
+        # Статус уже сменён. Если уведомить не вышло, об этом надо сказать
+        # оператору, а не молча оставить его в уверенности, что человек знает.
+        try:
+            send_to_person(user_id, STATUS_NOTICE[status])
+            notified = True
+        except (ValueError, PermissionError) as error:
+            return jsonify({"ok": True, "notified": False, "warning": str(error)})
     return jsonify({"ok": True, "notified": notified})
 
 
@@ -402,7 +445,12 @@ def api_reply(user_id: str):
     if not text:
         text = "Направляю файл."
 
-    message_id = store.queue_message(user_id, text, session["operator"], files)
+    try:
+        message_id = send_to_person(user_id, text, files)
+    except ValueError as error:
+        return jsonify({"error": str(error)}), 400
+    except PermissionError:
+        return jsonify({"error": "У вашей роли нет права писать человеку"}), 403
     return jsonify({"ok": True, "id": message_id, "files": len(files)})
 
 

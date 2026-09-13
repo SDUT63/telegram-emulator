@@ -86,10 +86,20 @@ def save_operators(data: dict[str, dict[str, str]]) -> None:
     _write(OPERATORS, data)
 
 
-def add_operator(login: str, name: str, password: str) -> None:
+def add_operator(login: str, name: str, password: str, role: str = "operator") -> None:
     data = load_operators()
-    data[login] = {"name": name, "password": hash_password(password)}
+    data[login] = {"name": name, "password": hash_password(password), "role": role}
     save_operators(data)
+
+
+def role_of(login: str) -> str:
+    """Роль оператора для RBAC.
+
+    Записи, созданные до появления ролей, поля не содержат: такой оператор
+    получает обычные права оператора, а не расширенные. Повышение роли —
+    осознанное действие администратора, а не следствие давности записи.
+    """
+    return str((load_operators().get(login) or {}).get("role") or "operator")
 
 
 def verify(login: str, password: str) -> str | None:
