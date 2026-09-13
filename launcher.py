@@ -131,7 +131,7 @@ def preflight() -> bool:
     try:
         import survey_questions
         checks.append(f"анкета: {len(survey_questions.QUESTIONS)} вопросов")
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         say(f"Ошибка анкеты: {exc}")
         return False
     try:
@@ -141,7 +141,7 @@ def preflight() -> bool:
             say(f"База знаний подозрительно мала: {len(data)} статей")
             return False
         checks.append(f"база знаний: {len(data)} статей")
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         say(f"Ошибка базы знаний: {exc}")
         return False
     try:
@@ -152,20 +152,20 @@ def preflight() -> bool:
         if chatbot_survey.consent_forms is not consent_forms:
             raise RuntimeError("модуль согласия подключён не тот")
         checks.append(f"согласие: версия {chatbot_survey.CONSENT_VERSION}")
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         say(f"Ошибка форм согласия: {exc}")
         return False
     try:
         import fallback
         checks.append(f"fallback: {fallback.ступеней(fallback.ВОПРОС)} ступеней")
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         say(f"Ошибка fallback: {exc}")
         return False
     try:
         import scale_731
         coverage = scale_731.покрытие()
         checks.append(f"шкала 731: {coverage['закрыто']}/{coverage['всего']}")
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         say(f"Ошибка шкалы 731: {exc}")
         return False
     for item in checks:
@@ -194,8 +194,10 @@ def normalize_mode(value: str | None) -> str:
     return aliases.get((value or "").strip().lower(), "bot")
 
 
-def main() -> int:
-    mode = normalize_mode(sys.argv[1] if len(sys.argv) > 1 else None)
+def main(arguments: list[str] | None = None) -> int:
+    """Run the launcher; an explicit argument list is accepted for tests/tools."""
+    argv = sys.argv[1:] if arguments is None else list(arguments)
+    mode = normalize_mode(argv[0] if argv else None)
     env_result = ensure_environment()
     if env_result != 0:
         return env_result
