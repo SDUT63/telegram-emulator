@@ -33,10 +33,16 @@ def _retention_seconds() -> int:
 
 
 async def deliver_once(bot, *, queue: PostgresOutbox | None = None) -> int:
-    """Claim and process one batch through the explicit MAX transport."""
+    """Claim and process one message through the explicit MAX transport.
+
+    One-message claims are intentional: a batch of N network calls can outlive
+    the lease of the first rows and let another worker deliver them again.
+    Parallelism is provided by multiple worker processes, not by one lease
+    covering an unbounded serial batch.
+    """
     queue = queue or PostgresOutbox()
     transport = MaxOutboundTransport(bot)
-    claimed = queue.claim()
+    claimed = queue.claim(limit=1)
     for message in claimed:
         try:
             await transport.send(message)
