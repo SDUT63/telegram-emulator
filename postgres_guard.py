@@ -17,6 +17,7 @@ REQUIRED_MIGRATIONS = {
     "004_outbox_messages.sql",
     "005_outbox_retention.sql",
     "006_operator_crm.sql",
+    "007_operator_operations.sql",
 }
 
 
