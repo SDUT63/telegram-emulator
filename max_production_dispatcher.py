@@ -5,9 +5,29 @@ Inbound handlers never call MAX send APIs. They only cross the durable
 PostgreSQL event boundary; the outbox worker owns external delivery.
 """
 from __future__ import annotations
+import hashlib
 import logging
 from max_ui import files_of, ASK_WORDS
 log = logging.getLogger("сдут-бот")
+
+
+def _resolve_article_callback(token: str) -> str | None:
+    """Resolve a short article callback against the canonical knowledge base."""
+    if not token.startswith("@"):
+        return token
+    digest = token[1:]
+    if len(digest) != 16 or any(ch not in "0123456789abcdef" for ch in digest):
+        return None
+    import knowledge
+    matches = [
+        article.заголовок
+        for article in knowledge.загрузить()
+        if hashlib.sha256(article.заголовок.encode("utf-8")).hexdigest()[:16] == digest
+    ]
+    if len(matches) != 1:
+        return None
+    return matches[0]
+
 
 def build_dispatcher(survey, seen):
     from maxapi import Dispatcher
@@ -56,7 +76,12 @@ def build_dispatcher(survey, seen):
         await acknowledge(event)
         if action == "map": survey.handle_navigation_event(uid, "map", []); return
         if action == "v" and args: survey.handle_navigation_event(uid, "v", args); return
-        if action == "k" and payload.startswith("k:"): survey.handle_navigation_event(uid, "k", [payload[2:]]); return
+        if action == "k" and payload.startswith("k:"):
+            title = _resolve_article_callback(payload[2:])
+            if title is None:
+                log.warning("%s: invalid or ambiguous knowledge callback rejected", uid)
+                return
+            survey.handle_navigation_event(uid, "k", [title]); return
         if action == "q": survey.handle_navigation_event(uid, "q", []); return
         if action == "c" and args[:1] == ["full"]: survey.handle_navigation_event(uid, "cfull", []); return
         if action in {"c", "a", "s", "d", "b", "n", "m"}:
