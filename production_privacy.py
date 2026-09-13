@@ -28,6 +28,10 @@ class ProductionPrivacySurvey(UserDeletionMixin, DurableProductionPostgresSurvey
         conn.execute("DELETE FROM operator_cases WHERE user_id=%s", (uid,))
         conn.execute("DELETE FROM survey_state WHERE user_id=%s", (uid,))
 
+    def erase(self, user_id: str) -> str:
+        """Legacy scenario hook: production deletion must use the durable purge."""
+        return self.delete_user(user_id)
+
     def _mutate(self, user_id: str, event_type: str, payload: dict[str, Any], fn: Callable[[], T], duplicate: T) -> T:
         """Clear the deletion gate atomically when a genuinely new event arrives."""
         if _TX_CONNECTION.get() is not None and _TX_USER.get() == str(user_id):
