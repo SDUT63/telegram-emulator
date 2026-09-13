@@ -5,6 +5,8 @@ import asyncio
 import logging
 import os
 import time
+import psycopg
+from psycopg.rows import dict_row
 from max_outbound_transport import MaxOutboundTransport
 from outbox_postgres import DEFAULT_SENT_RETENTION_SECONDS, PostgresOutbox
 log = logging.getLogger("сдут-бот")
@@ -26,14 +28,8 @@ def _validate_lease_budget(queue: PostgresOutbox, transport: MaxOutboundTranspor
         raise ValueError("outbox lease_seconds must be at least send timeout plus " + f"{LEASE_SAFETY_MARGIN_SECONDS}s safety margin ({required}s required, {queue.lease_seconds}s configured)")
 
 def _claim_still_deliverable(queue: PostgresOutbox, message_id: int, user_id: str) -> bool:
-    """Revalidate a claim after acquiring the user lock.
-
-    Claiming happens before the session advisory lock. A deletion can therefore
-    commit while a worker is waiting for that lock. Rechecking the row while
-    holding the lock closes that exact race: deletion either happened before
-    this check (row is gone) or must wait until delivery completes.
-    """
-    with queue._connect(queue.db_url) as conn:
+    """Revalidate a claim after acquiring the user lock."""
+    with psycopg.connect(queue.db_url, row_factory=dict_row) as conn:
         row = conn.execute("""
             SELECT 1 FROM outbox_messages o
             LEFT JOIN deleted_users d ON d.user_id=o.user_id
@@ -50,18 +46,15 @@ async def deliver_once(bot, *, queue: PostgresOutbox | None = None) -> int:
             log.error("MAX outbox #%s: claimed message has no recipient", message.id); continue
         with queue.user_delivery_lock(message.user_id):
             if not _claim_still_deliverable(queue, message.id, message.user_id):
-                log.info("MAX outbox #%s: claim invalidated by user deletion", message.id)
-                continue
-            try:
-                await transport.send(message)
+                log.info("MAX outbox #%s: claim invalidated by user deletion", message.id); continue
+            try: await transport.send(message)
             except Exception as error:  # noqa: BLE001
                 log.warning("MAX outbox #%s delivery failed (attempt %s): %s", message.id, message.attempts, type(error).__name__)
                 try: queue.mark_failed(message.id, error)
                 except Exception: log.exception("MAX outbox #%s: failure state could not be persisted", message.id)
             else:
                 try: queue.mark_sent(message.id)
-                except Exception:
-                    log.exception("MAX outbox #%s: sent state could not be persisted", message.id)
+                except Exception: log.exception("MAX outbox #%s: sent state could not be persisted", message.id)
     return len(claimed)
 
 async def run(bot, *, poll_seconds: float = POLL_SECONDS, prune_interval_seconds: float = PRUNE_INTERVAL_SECONDS) -> None:
