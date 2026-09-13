@@ -20,6 +20,14 @@ def consent_keyboard(full=False):
     return [[("Согласен, продолжим", "c:y")], [("Прочитать полностью", "c:full")], [("Не согласен", "c:n")], [("Просто почитать", "map")], [("Что можно написать", "h")]]
 
 
+def visible_rows(survey, user_id):
+    """Keep the active control surface visible after every help/navigation action."""
+    uid = str(user_id)
+    if survey.stage(uid) == "consent":
+        return consent_keyboard(bool(survey.reading(uid)))
+    return rows(survey, uid)
+
+
 async def send(bot, chat_id, user_id, text, keyboard=None):
     args = {"text": text, "attachments": [markup(keyboard)] if keyboard else None}
     if chat_id is not None:
@@ -50,8 +58,7 @@ def build_dispatcher(survey):
             text = CONSENT_NO
         else:
             text = START_GUIDE + "\n\n" + CONSENT_SHORT
-        keyboard = consent_keyboard(False) if survey.stage(uid) == "consent" else rows(survey, uid)
-        await send(event.bot, chat_id, uid, text, keyboard)
+        await send(event.bot, chat_id, uid, text, visible_rows(survey, uid))
 
     @dp.message_created()
     async def message(event):
@@ -64,11 +71,11 @@ def build_dispatcher(survey):
             if normalized in {"темы", "покажи темы", "список тем"} and uid in survey.state:
                 await old.меню_тем(event.bot, chat_id, uid, survey)
             else:
-                await send(event.bot, chat_id, uid, HELP, rows(survey, uid))
+                await send(event.bot, chat_id, uid, HELP, visible_rows(survey, uid))
             return
         reply = survey.handle(uid, text)
         if reply:
-            await send(event.bot, chat_id, uid, reply, rows(survey, uid))
+            await send(event.bot, chat_id, uid, reply, visible_rows(survey, uid))
 
     @dp.message_callback()
     async def callback(event):
@@ -86,9 +93,9 @@ def build_dispatcher(survey):
             await send(event.bot, chat_id, uid, CONSENT_SHORT, consent_keyboard(False)); return
         if action == "c" and parts[1:2] in (["y"], ["n"]):
             reply = survey.grant_consent(uid) if parts[1] == "y" else survey.refuse_consent(uid)
-            await send(event.bot, chat_id, uid, reply, rows(survey, uid)); return
+            await send(event.bot, chat_id, uid, reply, visible_rows(survey, uid)); return
         if action == "h":
-            await send(event.bot, chat_id, uid, HELP, rows(survey, uid)); return
+            await send(event.bot, chat_id, uid, HELP, visible_rows(survey, uid)); return
         if action == "map":
             await old.меню_тем(event.bot, chat_id, uid, survey); return
         if action == "v" and len(parts) >= 2:
@@ -97,26 +104,26 @@ def build_dispatcher(survey):
             await old.статья(event.bot, chat_id, uid, parts[1] if len(parts) > 1 else "", survey); return
         if action == "q":
             text = survey.question_text(uid) if survey.current(uid) else survey.summary(uid)
-            await send(event.bot, chat_id, uid, text, rows(survey, uid)); return
+            await send(event.bot, chat_id, uid, text, visible_rows(survey, uid)); return
         if action == "n":
-            await send(event.bot, chat_id, uid, survey.continue_detailed(uid), rows(survey, uid)); return
+            await send(event.bot, chat_id, uid, survey.continue_detailed(uid), visible_rows(survey, uid)); return
         if action == "r":
-            await send(event.bot, chat_id, uid, survey.restart_after_consent(uid), rows(survey, uid)); return
+            await send(event.bot, chat_id, uid, survey.restart_after_consent(uid), visible_rows(survey, uid)); return
         if action == "m":
-            await send(event.bot, chat_id, uid, survey.summary(uid), rows(survey, uid)); return
+            await send(event.bot, chat_id, uid, survey.summary(uid), visible_rows(survey, uid)); return
         if action == "b":
-            await send(event.bot, chat_id, uid, survey.handle(uid, "назад"), rows(survey, uid)); return
+            await send(event.bot, chat_id, uid, survey.handle(uid, "назад"), visible_rows(survey, uid)); return
         if action == "s":
-            await send(event.bot, chat_id, uid, survey.handle(uid, "далее"), rows(survey, uid)); return
+            await send(event.bot, chat_id, uid, survey.handle(uid, "далее"), visible_rows(survey, uid)); return
         if action == "a" and len(parts) == 3:
-            await send(event.bot, chat_id, uid, survey.answer_by_numbers(uid, [int(parts[2]) + 1]), rows(survey, uid)); return
+            await send(event.bot, chat_id, uid, survey.answer_by_numbers(uid, [int(parts[2]) + 1]), visible_rows(survey, uid)); return
         if action == "t" and len(parts) == 3:
             survey.toggle(uid, int(parts[1]), int(parts[2]))
-            await send(event.bot, chat_id, uid, survey.question_text(uid), rows(survey, uid)); return
+            await send(event.bot, chat_id, uid, survey.question_text(uid), visible_rows(survey, uid)); return
         if action == "d" and len(parts) == 2:
             picked = survey.picked(uid, int(parts[1]))
             reply = survey.answer_by_numbers(uid, [i + 1 for i in picked]) if picked else survey.handle(uid, "далее")
-            await send(event.bot, chat_id, uid, reply, rows(survey, uid))
+            await send(event.bot, chat_id, uid, reply, visible_rows(survey, uid))
 
     return dp
 
