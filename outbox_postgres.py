@@ -65,6 +65,24 @@ def payload_sha256(payload: dict[str, Any]) -> str:
     return hashlib.sha256(canonical).hexdigest()
 
 
+def safe_error_code(error: BaseException | str) -> str:
+    """Return a bounded, non-PII failure identifier for durable storage/logs.
+
+    Provider exception text is intentionally never persisted: SDKs and HTTP
+    clients may echo request bodies, user identifiers or response fragments.
+    The exception class plus a digest is enough for correlation without making
+    the outbox an accidental PII store.
+    """
+    if isinstance(error, BaseException):
+        class_name = type(error).__name__
+        raw = str(error)
+    else:
+        class_name = "ProviderError"
+        raw = str(error)
+    digest = hashlib.sha256(raw.encode("utf-8", errors="replace")).hexdigest()[:16]
+    return f"provider_error:{class_name}:{digest}"
+
+
 @dataclass(frozen=True)
 class OutboxMessage:
     id: int
@@ -92,12 +110,7 @@ class PostgresOutbox:
         self.worker_id = worker_id or f"{socket.gethostname()}:{os.getpid()}:{uuid.uuid4().hex[:8]}"
 
     def enqueue(self, *, delivery_key: str, user_id: str, payload: dict[str, Any], chat_id: str | None = None, conn=None) -> int:
-        """Persist one outbound intent, idempotently and collision-safely.
-
-        Reusing a delivery key for a different logical message is a programming
-        error and fails loudly. A matching retained tombstone is a historical
-        duplicate and is deliberately treated as a no-op.
-        """
+        """Persist one outbound intent, idempotently and collision-safely."""
         key = str(delivery_key).strip()
         uid = str(user_id).strip()
         if not key:
@@ -183,10 +196,6 @@ class PostgresOutbox:
             for row in stale:
                 attempts = int(row["attempts"])
                 if attempts >= self.max_attempts:
-                    # A stale delivery that exhausted its budget is terminal.
-                    # Redact its potentially sensitive response before making
-                    # it visible as dead; the digest remains the integrity
-                    # identity of the original outbound intent.
                     digest = str(row["payload_sha256"] or payload_sha256(dict(row["payload"])))
                     conn.execute(
                         """
@@ -247,9 +256,13 @@ class PostgresOutbox:
             if updated != 1:
                 raise RuntimeError(f"outbox message {message_id} is not owned by this worker")
 
-    def mark_failed(self, message_id: int, error: str) -> None:
-        """Return a failed message for retry or quarantine it as dead."""
-        safe_error = str(error)[:4000]
+    def mark_failed(self, message_id: int, error: BaseException | str) -> None:
+        """Return a failed message for retry or quarantine it as dead.
+
+        Only a bounded error code is stored; raw provider exception text is
+        never persisted because it may contain PII or request/response data.
+        """
+        safe_error = safe_error_code(error)
         with _connect(self.db_url) as conn:
             row = conn.execute(
                 "SELECT payload,payload_sha256,attempts FROM outbox_messages WHERE id=%s AND status='sending' AND locked_by=%s FOR UPDATE",
@@ -318,57 +331,44 @@ class PostgresOutbox:
         """Redact-and-tombstone old sent rows without reopening delivery keys.
 
         Tombstones are intentionally retained indefinitely: deleting them would
-        re-enable an old MAX event to create a new outbound delivery after a
-        long-retention cleanup. Their footprint is only the delivery key and
-        a 64-character digest.
+        allow an old delivery key to be reused after retention cleanup.
         """
-        if retention_seconds < 0:
-            raise ValueError("retention_seconds must be >= 0")
+        if retention_seconds < 1:
+            raise ValueError("retention_seconds must be >= 1")
         if limit < 1:
             raise ValueError("limit must be >= 1")
         with _connect(self.db_url) as conn:
             rows = conn.execute(
                 """
-                SELECT id,delivery_key,payload,payload_sha256
+                SELECT id,delivery_key,payload_sha256
                   FROM outbox_messages
                  WHERE status='sent'
-                   AND sent_at IS NOT NULL
                    AND sent_at < CURRENT_TIMESTAMP - (%s * INTERVAL '1 second')
                  ORDER BY id
-                 FOR UPDATE SKIP LOCKED
                  LIMIT %s
+                 FOR UPDATE SKIP LOCKED
                 """,
                 (retention_seconds, limit),
             ).fetchall()
-            if not rows:
-                return 0
-            ids: list[int] = []
             for row in rows:
-                digest = str(row["payload_sha256"] or payload_sha256(dict(row["payload"])))
-                existing = conn.execute(
-                    "SELECT payload_sha256 FROM outbox_delivery_tombstones WHERE delivery_key=%s FOR UPDATE",
-                    (str(row["delivery_key"]),),
-                ).fetchone()
-                if existing is not None:
-                    if str(existing["payload_sha256"]) != digest:
-                        raise ValueError(
-                            f"delivery_key collision for {row['delivery_key']!r}: tombstone digest differs"
-                        )
-                else:
-                    conn.execute(
-                        "INSERT INTO outbox_delivery_tombstones(delivery_key,payload_sha256) VALUES(%s,%s)",
-                        (str(row["delivery_key"]), digest),
-                    )
-                ids.append(int(row["id"]))
-            conn.execute("DELETE FROM outbox_messages WHERE id = ANY(%s)", (ids,))
-            return len(ids)
+                digest = str(row["payload_sha256"])
+                conn.execute(
+                    """
+                    INSERT INTO outbox_delivery_tombstones(delivery_key,payload_sha256)
+                    VALUES(%s,%s)
+                    ON CONFLICT(delivery_key) DO UPDATE
+                    SET payload_sha256=EXCLUDED.payload_sha256
+                    """,
+                    (row["delivery_key"], digest),
+                )
+                conn.execute("DELETE FROM outbox_messages WHERE id=%s AND status='sent'", (int(row["id"]),))
+            return len(rows)
 
     def stats(self) -> dict[str, int]:
         with _connect(self.db_url) as conn:
-            rows = conn.execute("SELECT status, COUNT(*) AS n FROM outbox_messages GROUP BY status").fetchall()
+            rows = conn.execute("SELECT status,COUNT(*) AS n FROM outbox_messages GROUP BY status").fetchall()
             tombstones = conn.execute("SELECT COUNT(*) AS n FROM outbox_delivery_tombstones").fetchone()
-        result = {"pending": 0, "sending": 0, "sent": 0, "dead": 0, "tombstones": 0}
-        result.update({str(row["status"]): int(row["n"]) for row in rows})
+        result = {str(row["status"]): int(row["n"]) for row in rows}
         result["tombstones"] = int(tombstones["n"])
         return result
 
@@ -378,8 +378,13 @@ class PostgresOutbox:
         if isinstance(payload, str):
             payload = json.loads(payload)
         return OutboxMessage(
-            id=int(row["id"]), delivery_key=str(row["delivery_key"]), user_id=str(row["user_id"]),
+            id=int(row["id"]),
+            delivery_key=str(row["delivery_key"]),
+            user_id=str(row["user_id"]),
             chat_id=str(row["chat_id"]) if row["chat_id"] is not None else None,
-            payload=dict(payload), status=str(row["status"]), attempts=int(row["attempts"]),
-            available_at=row["available_at"], last_error=row["last_error"],
+            payload=dict(payload),
+            status=str(row["status"]),
+            attempts=int(row["attempts"]),
+            available_at=row["available_at"],
+            last_error=str(row["last_error"]) if row["last_error"] is not None else None,
         )
