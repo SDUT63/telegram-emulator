@@ -86,7 +86,12 @@ def login_required(view):
             if request.path.startswith("/api/"):
                 return jsonify({"error": "Нужно войти"}), 401
             return redirect(url_for("login_page"))
-        return view(*args, **kwargs)
+        try:
+            return view(*args, **kwargs)
+        except PermissionError:
+            # Роль не позволяет это действие. Оператор должен видеть причину,
+            # а не пятисотую ошибку без объяснения.
+            return jsonify({"error": "У вашей роли нет прав на это действие"}), 403
 
     return wrapper
 
@@ -115,6 +120,40 @@ def _principal():
     return OperatorPrincipal(operator_id=str(login), role=str(session.get("operator_role") or "operator"))
 
 
+# Какая роль нужна для каждого действия. Один список на оба режима: правило
+# не должно зависеть от того, стоит ли за CRM PostgreSQL или файлы на ноутбуке.
+ТРЕБУЕМАЯ_РОЛЬ = {
+    "set_status": "operator",
+    "assign": "operator",
+    "add_note": "operator",
+    "mark_call": "operator",
+    "undo_call": "supervisor",   # отмена контрольного звонка стирает след работы
+    "queue_message": "operator",
+}
+
+
+def изменить(действие: str, *args, **kwargs):
+    """Выполнить изменение в CRM от имени вошедшего оператора.
+
+    Раньше сюда передавалось имя строкой, и права не проверялись вовсе:
+    любой вошедший мог сменить статус, назначить себя и отменить
+    контрольный звонок. Теперь действие проходит через OperatorPrincipal,
+    и роль проверяется до изменения — одинаково в production и на ноутбуке.
+    """
+    принципал = _principal()
+    принципал.require(ТРЕБУЕМАЯ_РОЛЬ[действие])
+
+    production = _production_crm()
+    if production is not None:
+        return getattr(production, действие)(*args, auth=принципал, **kwargs)
+
+    # Ноутбучный режим: хранилище файловое, но правило доступа то же.
+    # Файловое API помечает записи именем оператора, а не principal —
+    # кроме undo_call, который ничего не подписывает.
+    если_нужно_имя = () if действие == "undo_call" else (session["operator"],)
+    return getattr(store, действие)(*args, *если_нужно_имя, **kwargs)
+
+
 def send_to_person(user_id: str, text: str, files=None) -> str:
     """Поставить сообщение оператора в очередь доставки.
 
@@ -124,6 +163,9 @@ def send_to_person(user_id: str, text: str, files=None) -> str:
 
     На ноутбуке очередь файловая, и её разбирает сам пилот.
     """
+    принципал = _principal()
+    принципал.require(ТРЕБУЕМАЯ_РОЛЬ["queue_message"])
+
     production = _production_crm()
     if production is None:
         return store.queue_message(user_id, text, session["operator"], files)
@@ -357,7 +399,7 @@ def api_status(user_id: str):
     data = request.get_json(silent=True) or {}
     status = data.get("status", "")
     try:
-        store.set_status(user_id, status, session["operator"])
+        изменить("set_status", user_id, status)
     except ValueError as error:
         return jsonify({"error": str(error)}), 400
 
@@ -382,9 +424,9 @@ def api_call(user_id: str):
     which = str(data.get("which", ""))
     try:
         if data.get("done", True):
-            store.mark_call(user_id, which, session["operator"])
+            изменить("mark_call", user_id, which)
         else:
-            store.undo_call(user_id, which)
+            изменить("undo_call", user_id, which)
     except ValueError as error:
         return jsonify({"error": str(error)}), 400
     return jsonify({"ok": True})
@@ -416,7 +458,7 @@ def api_export():
 @app.post("/api/case/<user_id>/assign")
 @login_required
 def api_assign(user_id: str):
-    store.assign(user_id, session["operator"])
+    изменить("assign", user_id)
     return jsonify({"ok": True})
 
 
@@ -426,7 +468,7 @@ def api_note(user_id: str):
     text = ((request.get_json(silent=True) or {}).get("text") or "").strip()
     if not text:
         return jsonify({"error": "Пустая заметка"}), 400
-    store.add_note(user_id, text, session["operator"])
+    изменить("add_note", user_id, text)
     return jsonify({"ok": True})
 
 
