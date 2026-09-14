@@ -40,6 +40,7 @@ from flask import (
 )
 
 import crm_store as store
+from login_guard import ЗАЩИТА
 from chatbot_survey import Survey
 from survey_questions import QUESTIONS
 
@@ -136,15 +137,33 @@ def send_to_person(user_id: str, text: str, files=None) -> str:
 @app.post("/api/login")
 def api_login():
     data = request.get_json(silent=True) or {}
-    name = store.verify(
-        (data.get("login") or "").strip(), data.get("password") or ""
-    )
+    логин = (data.get("login") or "").strip()
+    адрес = request.remote_addr or "?"
+
+    # За этой дверью медицинские данные. Пароль без ограничения попыток —
+    # не защита: словарный пароль подбирается по сети за вечер, и никто
+    # об этом не узнает.
+    пауза = ЗАЩИТА.задержка(логин, адрес)
+    if пауза > 0:
+        return jsonify({
+            "error": f"Слишком много попыток. Попробуйте через {int(пауза) + 1} с.",
+        }), 429
+
+    name = store.verify(логин, data.get("password") or "")
     if not name:
-        return jsonify({"error": "Неверный логин или пароль"}), 401
+        задержка = ЗАЩИТА.неудача(логин, адрес)
+        # Логин и пароль не различаются в ответе: иначе перебор сначала
+        # находит существующие логины, а потом уже пароли к ним.
+        ответ = {"error": "Неверный логин или пароль"}
+        if задержка > 0:
+            ответ["error"] += f" Следующая попытка через {int(задержка) + 1} с."
+        return jsonify(ответ), 401
+
+    ЗАЩИТА.успех(логин, адрес)
     session.permanent = True
     session["operator"] = name
-    session["operator_login"] = (data.get("login") or "").strip()
-    session["operator_role"] = store.role_of(session["operator_login"])
+    session["operator_login"] = логин
+    session["operator_role"] = store.role_of(логин)
     return jsonify({"operator": name})
 
 
