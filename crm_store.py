@@ -188,14 +188,25 @@ def add_note(user_id: str, text: str, who: str) -> dict[str, Any]:
     return _update(user_id, change)
 
 
-def save_file(user_id: str, filename: str, data: bytes) -> dict[str, Any]:
-    """Store an operator attachment under a server-generated filename."""
+def check_file(filename: str, data: bytes) -> str:
+    """Проверить вложение и вернуть безопасное короткое имя.
+
+    Вынесено отдельно от записи: в production файл не попадает на локальный
+    диск вообще — он уходит в очередь содержимым, — но проверки те же.
+    """
     короткое = os.path.basename(filename or "").strip() or "файл"
     расширение = os.path.splitext(короткое)[1].lower()
     if расширение not in FILE_TYPES:
         raise ValueError(f"такие файлы не отправляем: {расширение or 'без расширения'}")
     if len(data) > FILE_LIMIT:
         raise ValueError("файл больше 10 МБ — его не примет и мессенджер")
+    return короткое
+
+
+def save_file(user_id: str, filename: str, data: bytes) -> dict[str, Any]:
+    """Store an operator attachment under a server-generated filename."""
+    короткое = check_file(filename, data)
+    расширение = os.path.splitext(короткое)[1].lower()
 
     os.makedirs(FILES_DIR, exist_ok=True)
     path = os.path.join(FILES_DIR, uuid.uuid4().hex + расширение)

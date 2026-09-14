@@ -65,7 +65,7 @@ def _claim_still_deliverable(queue: PostgresOutbox, message_id: int, user_id: st
 
 async def deliver_once(bot, *, queue: PostgresOutbox | None = None) -> int:
     queue = queue or PostgresOutbox()
-    transport = MaxOutboundTransport(bot)
+    transport = MaxOutboundTransport(bot, attachments_for=queue.attachments_for)
     _validate_lease_budget(queue, transport)
     claimed = queue.claim(limit=1)
     for message in claimed:

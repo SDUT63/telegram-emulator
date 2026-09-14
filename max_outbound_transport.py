@@ -8,7 +8,10 @@ Retry state, idempotency and crash recovery remain in the PostgreSQL outbox.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import os
+import tempfile
+from pathlib import Path
 from typing import Any
 
 from outbox_postgres import OutboxMessage
@@ -66,11 +69,38 @@ def _markup(rows: Any):
     return keyboard.as_markup() if rows else None
 
 
+
+@contextlib.contextmanager
+def _materialised(attachments: list[dict[str, Any]]):
+    """Выложить вложения во временные файлы на время одной отправки.
+
+    MAX принимает файл путём, а содержимое хранится в базе: у воркера нет
+    общего диска с CRM. Временный каталог удаляется в любом случае — копия
+    медицинского документа не должна пережить отправку даже при сбое.
+    """
+    if not attachments:
+        yield []
+        return
+    from maxapi.types.input_media import InputMedia
+
+    with tempfile.TemporaryDirectory(prefix="sdut-outbox-") as directory:
+        media = []
+        for ordinal, item in enumerate(attachments):
+            name = os.path.basename(str(item.get("name") or "")) or f"файл-{ordinal}"
+            path = Path(directory) / f"{ordinal:02d}-{name}"
+            path.write_bytes(bytes(item.get("content") or b""))
+            media.append(InputMedia(str(path)))
+        yield media
+
+
 class MaxOutboundTransport:
     """Send one durable outbound intent through the MAX API."""
 
-    def __init__(self, bot, *, timeout_seconds: float | None = None) -> None:
+    def __init__(self, bot, *, timeout_seconds: float | None = None, attachments_for=None) -> None:
         self._bot = bot
+        # Как достать содержимое вложений для одного намерения. Транспорт не
+        # ходит в базу сам: очередь остаётся единственным владельцем хранения.
+        self._attachments_for = attachments_for
         self.timeout_seconds = (
             _send_timeout_seconds() if timeout_seconds is None else float(timeout_seconds)
         )
@@ -118,18 +148,21 @@ class MaxOutboundTransport:
                 # The screen is gone, too old, or not editable. Silence would be
                 # worse than an extra message: fall through and send a new one.
                 pass
-        kwargs = {"text": payload["text"], "attachments": [attachments] if attachments else None}
-        if message.chat_id is not None:
-            kwargs["chat_id"] = message.chat_id
-        else:
-            try:
-                kwargs["user_id"] = int(message.user_id)
-            except (TypeError, ValueError) as exc:
-                raise ValueError("outbox user_id должен быть числовым, если chat_id отсутствует") from exc
-        await asyncio.wait_for(
-            self._bot.send_message(**kwargs),
-            timeout=self.timeout_seconds,
-        )
+        files = list(self._attachments_for(message.delivery_key)) if self._attachments_for else []
+        with _materialised(files) as media:
+            outgoing = ([attachments] if attachments else []) + media
+            kwargs = {"text": payload["text"], "attachments": outgoing or None}
+            if message.chat_id is not None:
+                kwargs["chat_id"] = message.chat_id
+            else:
+                try:
+                    kwargs["user_id"] = int(message.user_id)
+                except (TypeError, ValueError) as exc:
+                    raise ValueError("outbox user_id должен быть числовым, если chat_id отсутствует") from exc
+            await asyncio.wait_for(
+                self._bot.send_message(**kwargs),
+                timeout=self.timeout_seconds,
+            )
 
 
 __all__ = ["MaxOutboundTransport", "MAX_TEXT_LIMIT", "DEFAULT_SEND_TIMEOUT_SECONDS"]

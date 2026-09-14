@@ -25,6 +25,7 @@ class FakeQueue:
         return [message] if message is not None else []
     @contextmanager
     def user_delivery_lock(self,user_id): yield
+    def attachments_for(self,delivery_key): return []
     def mark_failed(self,message_id,error): self.failed.append((message_id,error))
     def mark_sent(self,message_id): self.sent.append(message_id)
 

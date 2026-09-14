@@ -13,6 +13,7 @@ DEFAULT_LEASE_SECONDS=60
 DEFAULT_MAX_ATTEMPTS=12
 DEFAULT_BATCH_SIZE=20
 DEFAULT_SENT_RETENTION_SECONDS=30*24*60*60
+MAX_ATTACHMENT_BYTES=10*1024*1024
 _REDACTED_PAYLOAD={"kind":"redacted"}
 def database_url():
  value=(os.getenv("SDUT_DATABASE_URL") or "").strip()
@@ -39,12 +40,17 @@ class PostgresOutbox:
   if max_attempts<1: raise ValueError("max_attempts must be >= 1")
   self.db_url=db_url or database_url(); self.lease_seconds=lease_seconds; self.max_attempts=max_attempts; self.worker_id=worker_id or f"{socket.gethostname()}:{os.getpid()}:{uuid.uuid4().hex[:8]}"
  def _connect(self): return _connect(self.db_url)
- def enqueue(self,*,delivery_key,user_id,payload,chat_id=None,conn=None,farewell=False):
+ def enqueue(self,*,delivery_key,user_id,payload,chat_id=None,conn=None,farewell=False,attachments=None):
   """Persist one outbound intent.
 
   farewell=True is reserved for the deletion confirmation, the single message
   a purged user is still owed. It bypasses the deleted-user gate because the
   purge that blocks every other delivery is exactly what it reports.
+
+  attachments carry operator files as [{"name": str, "content": bytes}]. They
+  are written in the same transaction as the intent, so a file is queued
+  exactly when its message is, and they cascade away with the row: delivered,
+  dead, or purged with the user.
   """
   key=str(delivery_key).strip(); uid=str(user_id).strip()
   if not key: raise ValueError("delivery_key must not be empty")
@@ -74,6 +80,7 @@ class PostgresOutbox:
     same_payload=str(existing["user_id"])==uid and existing_chat==chat_id and (str(existing_digest)==digest if existing_digest else dict(existing_payload)==payload)
     if not same_payload: raise ValueError(f"delivery_key collision for {key!r}: existing outbound intent differs")
     message_id=int(existing["id"])
+   self._store_attachments(connection, key, attachments)
    if own: connection.commit()
    return message_id
   except Exception:
@@ -81,6 +88,37 @@ class PostgresOutbox:
    raise
   finally:
    if own: connection.close()
+ @staticmethod
+ def _store_attachments(connection,delivery_key,attachments) -> None:
+  """Записать вложения рядом с намерением, в той же транзакции."""
+  for ordinal,item in enumerate(attachments or []):
+   name=str(item.get("name") or "").strip()
+   content=item.get("content")
+   if not name: raise ValueError("вложение должно иметь имя файла")
+   if not isinstance(content,(bytes,bytearray)) or not content: raise ValueError(f"вложение {name!r} пустое")
+   if len(content)>MAX_ATTACHMENT_BYTES: raise ValueError(f"вложение {name!r} больше {MAX_ATTACHMENT_BYTES // (1024*1024)} МБ")
+   connection.execute(
+    "INSERT INTO outbox_attachments(delivery_key,ordinal,filename,content,sha256) VALUES(%s,%s,%s,%s,%s) "
+    "ON CONFLICT(delivery_key,ordinal) DO NOTHING",
+    (delivery_key,ordinal,name,bytes(content),hashlib.sha256(bytes(content)).hexdigest()),
+   )
+
+ def attachments_for(self,delivery_key) -> list[dict[str,Any]]:
+  """Вложения одного намерения. Пустой список, если их нет."""
+  with _connect(self.db_url) as conn:
+   rows=conn.execute("SELECT filename,content,sha256 FROM outbox_attachments WHERE delivery_key=%s ORDER BY ordinal",(str(delivery_key),)).fetchall()
+  return [{"name":str(r["filename"]),"content":bytes(r["content"]),"sha256":str(r["sha256"])} for r in rows]
+
+ def drop_attachments(self,delivery_key) -> int:
+  """Убрать вложения, не трогая строку очереди.
+
+  Документ человека не должен пережить доставку: строка остаётся как
+  tombstone идемпотентности, содержимое файла — нет.
+  """
+  with _connect(self.db_url) as conn:
+   removed=conn.execute("DELETE FROM outbox_attachments WHERE delivery_key=%s",(str(delivery_key),)).rowcount
+  return int(removed)
+
  @contextmanager
  def user_delivery_lock(self,user_id):
   uid=str(user_id)
@@ -98,6 +136,7 @@ class PostgresOutbox:
     attempts=int(row["attempts"])
     if attempts>=self.max_attempts:
      digest=str(row["payload_sha256"] or payload_sha256(dict(row["payload"]))); conn.execute("UPDATE outbox_messages SET status='dead',payload=%s,payload_sha256=%s,user_id=NULL,chat_id=NULL,locked_at=NULL,locked_by=NULL,last_error=COALESCE(last_error,'worker lease expired') WHERE id=%s AND status='sending'",(Jsonb(_REDACTED_PAYLOAD),digest,int(row["id"])))
+     conn.execute("DELETE FROM outbox_attachments WHERE delivery_key=(SELECT delivery_key FROM outbox_messages WHERE id=%s)",(int(row["id"]),))
     else: conn.execute("UPDATE outbox_messages SET status='pending',locked_at=NULL,locked_by=NULL WHERE id=%s AND status='sending'",(int(row["id"]),))
    rows=conn.execute("WITH picked AS (SELECT o.id FROM outbox_messages o LEFT JOIN deleted_users d ON d.user_id=o.user_id WHERE o.status='pending' AND o.available_at<=CURRENT_TIMESTAMP AND (d.user_id IS NULL OR o.farewell) ORDER BY o.id FOR UPDATE OF o SKIP LOCKED LIMIT %s) UPDATE outbox_messages o SET status='sending',locked_at=%s,locked_by=%s,attempts=o.attempts+1 FROM picked WHERE o.id=picked.id RETURNING o.*",(limit,now,self.worker_id)).fetchall()
    return [self._row(row) for row in rows]
@@ -107,6 +146,9 @@ class PostgresOutbox:
    if row is None: raise RuntimeError(f"outbox message {message_id} is not owned by this worker")
    digest=str(row["payload_sha256"] or payload_sha256(dict(row["payload"])))
    if conn.execute("UPDATE outbox_messages SET status='sent',sent_at=CURRENT_TIMESTAMP,locked_at=NULL,locked_by=NULL,last_error=NULL,user_id=NULL,chat_id=NULL,payload=%s,payload_sha256=%s WHERE id=%s AND status='sending' AND locked_by=%s",(Jsonb(_REDACTED_PAYLOAD),digest,message_id,self.worker_id)).rowcount!=1: raise RuntimeError(f"outbox message {message_id} is not owned by this worker")
+   # Доставлено — документ человека больше не наш. Строка остаётся
+   # tombstone'ом идемпотентности, содержимое файла уходит вместе с payload.
+   conn.execute("DELETE FROM outbox_attachments WHERE delivery_key=(SELECT delivery_key FROM outbox_messages WHERE id=%s)",(message_id,))
  def mark_failed(self,message_id,error):
   safe_error=safe_error_code(error)
   with _connect(self.db_url) as conn:
@@ -115,6 +157,7 @@ class PostgresOutbox:
    attempts=int(row["attempts"])
    if attempts>=self.max_attempts:
     digest=str(row["payload_sha256"] or payload_sha256(dict(row["payload"]))); conn.execute("UPDATE outbox_messages SET status='dead',payload=%s,payload_sha256=%s,last_error=%s,user_id=NULL,chat_id=NULL,locked_at=NULL,locked_by=NULL WHERE id=%s AND status='sending' AND locked_by=%s",(Jsonb(_REDACTED_PAYLOAD),digest,safe_error,message_id,self.worker_id))
+    conn.execute("DELETE FROM outbox_attachments WHERE delivery_key=(SELECT delivery_key FROM outbox_messages WHERE id=%s)",(message_id,))
    else:
     delay=min(3600,2**min(attempts,10)); conn.execute("UPDATE outbox_messages SET status='pending',available_at=CURRENT_TIMESTAMP+(%s*INTERVAL '1 second'),last_error=%s,locked_at=NULL,locked_by=NULL WHERE id=%s AND status='sending' AND locked_by=%s",(delay,safe_error,message_id,self.worker_id))
  def recover_stale(self):
@@ -124,6 +167,7 @@ class PostgresOutbox:
     attempts=int(row["attempts"])
     if attempts>=self.max_attempts:
      digest=str(row["payload_sha256"] or payload_sha256(dict(row["payload"]))); conn.execute("UPDATE outbox_messages SET status='dead',payload=%s,payload_sha256=%s,user_id=NULL,chat_id=NULL,locked_at=NULL,locked_by=NULL,last_error=COALESCE(last_error,'worker lease expired') WHERE id=%s AND status='sending'",(Jsonb(_REDACTED_PAYLOAD),digest,int(row["id"])))
+     conn.execute("DELETE FROM outbox_attachments WHERE delivery_key=(SELECT delivery_key FROM outbox_messages WHERE id=%s)",(int(row["id"]),))
     else: conn.execute("UPDATE outbox_messages SET status='pending',locked_at=NULL,locked_by=NULL WHERE id=%s AND status='sending'",(int(row["id"]),))
    return len(rows)
  def prune_sent(self,*,retention_seconds=DEFAULT_SENT_RETENTION_SECONDS,limit=500):

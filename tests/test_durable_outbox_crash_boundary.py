@@ -24,6 +24,7 @@ class MarkSentFailsQueue:
         self.claimed = [
             SimpleNamespace(
                 id=17,
+                delivery_key="crash-boundary:out:0",
                 attempts=1,
                 user_id="42",
                 chat_id=None,
@@ -40,6 +41,9 @@ class MarkSentFailsQueue:
     @contextmanager
     def user_delivery_lock(self, user_id: str):
         yield
+
+    def attachments_for(self, delivery_key: str):
+        return []
 
     def mark_sent(self, message_id: int) -> None:
         self.mark_sent_calls += 1

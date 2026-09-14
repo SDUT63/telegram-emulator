@@ -180,7 +180,14 @@ class PostgresOperatorCRM:
         operation_id: str,
         keyboard_rows: list[list[tuple[str, str]]] | None = None,
         chat_id: str | None = None,
+        attachments: list[dict[str, Any]] | None = None,
     ) -> str:
+        """Поставить сообщение оператора в очередь доставки.
+
+        Вложения передаются содержимым, а не путём: воркер живёт в другом
+        процессе и, в production, на другой машине. Файл попадает в очередь
+        той же транзакцией, что и текст, — доставится либо всё, либо ничего.
+        """
         operator = _principal(auth, "operator")
         uid, body = _user_id(user_id), _text(text)
         op = str(operation_id).strip()
@@ -192,6 +199,13 @@ class PostgresOperatorCRM:
         payload: dict[str, Any] = {"kind": "max_text", "source": "operator_crm", "text": body}
         if keyboard_rows:
             payload["keyboard_rows"] = keyboard_rows
+        if attachments:
+            # Отпечаток файлов входит в digest операции: повтор того же
+            # operation_id с другими вложениями — это столкновение, а не дубль.
+            payload["attachments"] = [
+                {"name": str(a.get("name") or ""), "sha256": hashlib.sha256(bytes(a.get("content") or b"")).hexdigest()}
+                for a in attachments
+            ]
         digest = _payload_digest(payload)
         with self._transaction() as conn:
             self._ensure_case(conn, uid)
@@ -217,6 +231,7 @@ class PostgresOperatorCRM:
                 chat_id=chat_id,
                 payload=payload,
                 conn=conn,
+                attachments=attachments,
             )
             conn.execute(
                 "INSERT INTO operator_notes(user_id,who,text,system) VALUES(%s,%s,%s,FALSE)",

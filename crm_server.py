@@ -126,10 +126,10 @@ def send_to_person(user_id: str, text: str, files=None) -> str:
     production = _production_crm()
     if production is None:
         return store.queue_message(user_id, text, session["operator"], files)
-    if files:
-        raise ValueError("Вложения оператора пока доступны только в ноутбучном режиме")
     operation_id = uuid.uuid4().hex
-    production.queue_message(user_id, text, _principal(), operation_id=operation_id)
+    production.queue_message(
+        user_id, text, _principal(), operation_id=operation_id, attachments=files or None
+    )
     return operation_id
 
 
@@ -425,11 +425,18 @@ def api_reply(user_id: str):
     else:
         text = ((request.get_json(silent=True) or {}).get("text") or "").strip()
 
+    # В production вложение не ложится на диск веб-процесса: оно уходит в
+    # очередь содержимым и живёт только в базе, пока не доставлено.
+    в_базу = _production_crm() is not None
     files = []
     try:
         for item in request.files.getlist("files"):
             data = item.read()
-            if data:
+            if not data:
+                continue
+            if в_базу:
+                files.append({"name": store.check_file(item.filename or "", data), "content": data})
+            else:
                 files.append(store.save_file(user_id, item.filename or "", data))
     except ValueError as error:
         return jsonify({"error": str(error)}), 400
