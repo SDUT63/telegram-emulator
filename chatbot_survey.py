@@ -565,6 +565,39 @@ class Survey:
         self.save()
         return self._ask(user_id, 0)
 
+
+    def _тревога(self, user_id: str, text: str) -> str | None:
+        """Экстренный ответ, если в сообщении есть признак угрозы жизни.
+
+        Сообщение при этом не считается ответом на вопрос анкеты: человек
+        писал не про анкету. Поэтому к экстренному тексту добавляется тот же
+        вопрос — разговор не теряется и не сбрасывается.
+
+        Пометка уходит оператору: такой случай должен быть виден в CRM,
+        даже если человек потом не дозаполнил анкету.
+        """
+        import emergency
+
+        сигнал = emergency.распознать(text)
+        if сигнал is None:
+            return None
+
+        person = self.state.get(user_id)
+        if person is not None:
+            пометки = person.setdefault("alerts", [])
+            if сигнал.пометка not in пометки:
+                пометки.append(сигнал.пометка)
+            person["acked"] = datetime.now().isoformat(timespec="seconds")
+            self.save()
+
+        ответ = сигнал.ответ
+        if self.stage(user_id) == "consent":
+            return ответ + "\n\n" + "—" * 20 + "\n\n" + CONSENT_SHORT
+        место = self.current(user_id)
+        if место:
+            return ответ + "\n\n" + "—" * 20 + "\n\n" + self.question_text(user_id)
+        return ответ
+
     def handle(self, user_id: str, text: str) -> str:
         text = (text or "").strip()
         low = text.lower()
@@ -580,6 +613,13 @@ class Survey:
         # человек имеет на это право, а лишний экран — препятствие.
         if low in ERASE_WORDS:
             return self.erase(user_id)
+
+        # Угроза жизни идёт раньше всего: раньше согласия, раньше разбора
+        # ответа, раньше базы знаний. Человек, у которого кто-то не дышит,
+        # не должен получить «Напишите номер ответа — от 1 до 3».
+        тревога = self._тревога(user_id, text)
+        if тревога:
+            return тревога
 
         # До согласия анкеты не существует. Никакие другие слова здесь
         # не обрабатываются — иначе получится, что мы что-то собираем
