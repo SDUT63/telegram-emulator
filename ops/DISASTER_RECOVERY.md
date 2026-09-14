@@ -6,9 +6,11 @@ PostgreSQL is the production source of truth. SQLite and local CSV files are not
 
 ## Backup
 
-Run `ops/backup_postgres.sh` at least daily on infrastructure outside the application container. The dump is written with mode `0600` and is validated with `pg_restore --list` before publication.
+Run `ops/backup_postgres.sh` at least daily on infrastructure outside the application container. The dump is validated with `pg_restore --list`, then encrypted (AES-256-CBC, PBKDF2, 600 000 iterations) and written with mode `0600` as `sdut_<stamp>.dump.enc`. The plaintext dump is shredded immediately; it never persists on disk.
 
-Backups must be encrypted at rest by the backup/storage layer and copied to a separate failure domain. The repository does not contain credentials or encryption keys.
+The passphrase is supplied through `SDUT_BACKUP_PASSPHRASE_FILE`. Without it the script stops rather than leaving an unencrypted copy of everyone's answers on disk. Keep that file at mode `0400`, outside the backup directory and outside the repository — a key stored beside what it protects is not a key.
+
+Backups must still be copied to a separate failure domain. The repository contains no credentials or keys.
 
 Recommended baseline until a formal institutional policy is approved:
 
@@ -21,6 +23,9 @@ Recommended baseline until a formal institutional policy is approved:
 The 14-day value is an operational baseline, **not a legal retention decision for personal data**.
 
 ## Restore
+
+`ops/restore_postgres.sh` reads `.dump.enc` directly: it decrypts into a `0600` temporary file, restores, applies migrations, and shreds the temporary file on exit — including on failure. A wrong passphrase fails the restore instead of continuing.
+
 
 `ops/restore_postgres.sh` requires an explicit `SDUT_RESTORE_DATABASE_URL` and refuses to restore implicitly into the source database. Restore into an isolated PostgreSQL instance first, then apply migrations and run the acceptance checks before any production cutover.
 
