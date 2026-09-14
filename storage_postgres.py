@@ -45,6 +45,27 @@ def _event_hash(event_type: str, payload: dict[str, Any] | None) -> str:
     return hashlib.sha256(raw).hexdigest()
 
 
+def _влить(цель: Any, источник: Any) -> None:
+    """Сделать `цель` равной `источнику`, сохранив все объекты внутри.
+
+    Не только сам словарь состояния, но и его части — answers, history,
+    alerts, messages — передаются анкете по ссылке. Замена любой из них
+    новым объектом осиротила бы ссылку, которую кто-то уже держит.
+    Поэтому содержимое переливается вглубь, а не присваивается.
+    """
+    if isinstance(цель, dict) and isinstance(источник, dict):
+        for ключ in [к for к in цель if к not in источник]:
+            del цель[ключ]
+        for ключ, значение in источник.items():
+            прежнее = цель.get(ключ)
+            if isinstance(прежнее, (dict, list)) and isinstance(значение, type(прежнее)):
+                _влить(прежнее, значение)
+            else:
+                цель[ключ] = значение
+    elif isinstance(цель, list) and isinstance(источник, list):
+        цель[:] = источник
+
+
 class PostgresSurvey(Survey):
     def __init__(self, db_url: str | None = None, *, list_options: bool = False) -> None:
         self.db_url = db_url or database_url()
@@ -109,8 +130,34 @@ class PostgresSurvey(Survey):
                     if key not in after and key in merged and _canonical(merged[key]) == _canonical(before[key]):
                         merged.pop(key, None)
         conn.execute("INSERT INTO survey_state(user_id,state_json,updated_at) VALUES(%s,%s,CURRENT_TIMESTAMP) ON CONFLICT(user_id) DO UPDATE SET state_json=EXCLUDED.state_json, updated_at=EXCLUDED.updated_at", (user_id, Jsonb(merged)))
-        self.state[user_id] = merged
+        self._adopt(user_id, merged)
         self._loaded_snapshot[user_id] = copy.deepcopy(merged)
+
+    def _adopt(self, user_id: str, merged: dict[str, Any]) -> None:
+        """Принять сохранённое состояние, не подменяя объект в self.state.
+
+        Раньше здесь стояло `self.state[user_id] = merged` — новый
+        словарь вместо прежнего. Анкета в это время держит ссылку на
+        прежний: `_accept` берёт `person = self._person(user_id)` и
+        меняет его по шагам. Любое сохранение в середине `_accept`
+        осиротляло эту ссылку, и всё, что записывалось дальше — ответ
+        на вопрос, номер шага, история, — уходило в никуда.
+
+        Середина `_accept` наступала не в теории: `understood()`
+        сбрасывает счётчик непонимания и сохраняет. То есть ломалось
+        ровно там, где человек сначала ошибся, а потом ответил верно.
+        Его верный ответ не записывался, а бот показывал следующий
+        вопрос — и следующий ответ ложился в карточку на место
+        предыдущего. Молча, без единой ошибки в логах.
+
+        Поэтому содержимое переносится в тот же объект: у ссылки,
+        которую держит анкета, не должно быть способа устареть.
+        """
+        живое = self.state.get(user_id)
+        if isinstance(живое, dict):
+            _влить(живое, merged)
+        else:
+            self.state[user_id] = merged
 
     def mark_event_once(self, event_id: str) -> bool:
         return PersistentSeen(db_url=self.db_url).fresh(event_id)

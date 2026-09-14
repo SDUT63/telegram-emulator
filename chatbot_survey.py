@@ -1074,7 +1074,7 @@ class Survey:
         if kind == "choice":
             options: list[str] = question["options"]
             if question.get("multi"):
-                return self._check_multi(options, text)
+                return self._check_multi(question, text)
             return self._check_one(question, text)
 
         if not question.get("required", True) and text.lower() in NO_WORDS:
@@ -1120,9 +1120,19 @@ class Survey:
         человека. Записанная догадка читается координатором как факт,
         и ошибиться в ней дороже, чем не угадать.
         """
+        попадания = Survey._попадания(ид, options, text)
+
+        # Осталось больше одного — значит, человек назвал разное
+        # («я сиделка, обращаюсь о своей маме»). Догадка, записанная как
+        # факт, хуже отсутствия догадки: пусть ответ уйдёт его словами.
+        return next(iter(попадания)) if len(попадания) == 1 else None
+
+    @staticmethod
+    def _попадания(ид: str, options: list[str], text: str) -> dict[str, str]:
+        """Варианты, на которые человек указал словами, и чем указал."""
         словарь = survey_questions.СИНОНИМЫ.get(ид)
         if not словарь:
-            return None
+            return {}
 
         # «ё» люди пишут через «е», знаки препинания ставят как придётся.
         низом = re.sub(r"[^а-яa-z0-9]+", " ", text.lower().replace("ё", "е"))
@@ -1154,22 +1164,37 @@ class Survey:
         # «Не знает» попадает и в «знает» тоже: короткая основа сидит
         # внутри длинной. Это не спор двух вариантов, а ложное попадание
         # короткой — её и убираем. Отрицание так побеждает утверждение.
-        точнее = {
+        return {
             имя: основа
             for имя, основа in подошли.items()
             if not any(основа != другая and основа in другая
                        for другая in подошли.values())
         }
 
-        # Осталось больше одного — значит, человек назвал разное
-        # («нужна сиделка, я соцработник»). Догадка, записанная как факт,
-        # хуже отсутствия догадки: пусть ответ уйдёт его словами.
-        return next(iter(точнее)) if len(точнее) == 1 else None
+    @staticmethod
+    def _отмеченное_словами(ид: str, options: list[str], text: str) -> list[str]:
+        """Всё, что человек перечислил в одной фразе.
+
+        Для вопроса с несколькими отметками спор вариантов — не беда,
+        а норма: «пролежень и запор» — это два ответа, а не
+        двусмысленность.
+        """
+        отмечено = [имя for имя in options
+                    if имя in Survey._попадания(ид, options, text)]
+
+        # Вариант «Ничего из этого нет» отменяет остальные отметки — так
+        # он устроен и в кнопках. Но если человек назвал что-то ещё
+        # («ничего такого, только запор»), названное точнее отрицания.
+        названное = [имя for имя in отмечено if not имя.lower().startswith("ничего")]
+        return названное or отмечено
 
     @staticmethod
-    def _check_multi(options: list[str], text: str) -> tuple[bool, str, str]:
+    def _check_multi(question: dict[str, Any], text: str) -> tuple[bool, str, str]:
+        options: list[str] = question["options"]
         raw = [p.strip() for p in re.split(r"[,\s;]+", text) if p.strip()]
         chosen: list[str] = []
+        споткнулись = ""
+
         for part in raw:
             if part.isdigit():
                 number = int(part)
@@ -1179,13 +1204,32 @@ class Survey:
             else:
                 match = [o for o in options if o.lower() == part.lower()]
                 if not match:
-                    return False, "", (
-                        f"Не понял «{part}». Напишите номера через запятую, "
-                        "например: 1, 3"
-                    )
+                    споткнулись = споткнулись or part
+                    continue
                 name = match[0]
             if name not in chosen:
                 chosen.append(name)
+
+        # Разбор по словам не годится для этого вопроса целиком: подпись
+        # «Рана, краснота» человек не наберёт — её разрежет собственная
+        # запятая. Поэтому фраза читается ещё раз целиком, живой речью:
+        # «пролежень и запор» — это две отметки.
+        if споткнулись or not chosen:
+            словами = Survey._отмеченное_словами(question.get("id", ""), options, text)
+            if словами:
+                for name in словами:
+                    if name not in chosen:
+                        chosen.append(name)
+                # Порядок отметок — как в списке вопроса, а не как
+                # в речи: так координатор читает карточку одинаково.
+                chosen.sort(key=options.index)
+                return True, "; ".join(chosen), ""
+
+        if споткнулись:
+            return False, "", (
+                f"Не понял «{споткнулись}». Напишите номера через запятую, "
+                "например: 1, 3"
+            )
         if not chosen:
             return False, "", "Напишите хотя бы один номер."
         return True, "; ".join(chosen), ""
