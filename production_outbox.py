@@ -151,7 +151,7 @@ class DurableProductionPostgresSurvey(ProductionPostgresSurvey):
         payload = {"kind": "callback", "action": action, "args": args}
         def mutate() -> str:
             spot = self.current(uid)
-            if action in {"a", "s", "d"} and args and (not spot or str(spot[0]) != args[0]):
+            if action in {"a", "s", "d", "t"} and args and (not spot or str(spot[0]) != args[0]):
                 return ""
             if action == "c":
                 if args[:1] == ["back"]:
@@ -186,6 +186,22 @@ class DurableProductionPostgresSurvey(ProductionPostgresSurvey):
                         return ""
                     return self.handle(uid, "далее")
                 return self.answer_by_numbers(uid, [picked_index + 1 for picked_index in picked])
+            if action == "t" and len(args) == 2:
+                # Множественный выбор: «тревожные признаки» — пролежни, одышка,
+                # боль. Клавиатура шлёт именно t:<шаг>:<вариант>, и без этой
+                # ветки нажатие не делало ничего: человек не мог отметить
+                # ничего из того, ради чего этот вопрос и задан.
+                if not spot:
+                    return ""
+                try:
+                    index = int(args[1])
+                except ValueError:
+                    return ""
+                if index < 0 or index >= len(spot[1].get("options", [])):
+                    return ""
+                self.toggle(uid, int(args[0]), index)
+                _OUTBOX_KEYBOARD.set(questionnaire_keyboard(self, uid))
+                return self.question_text(uid)
             if action == "b":
                 return self.handle(uid, "назад")
             if action == "n":

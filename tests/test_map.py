@@ -306,11 +306,16 @@ def test_кнопка_карты_не_спорит_с_моими_ответам�
     from max_production_dispatcher import DELETION_WORDS  # noqa: F401  (модуль грузится)
     import max_production_dispatcher as dispatcher
 
+    import re
+
     исходник = open(dispatcher.__file__, encoding="utf-8").read()
     # Карта и «Мои ответы» — разные ветки разбора, ни одна не поглощает другую.
     assert 'action=="map"' in исходник
-    assert '"m"' in исходник
-    assert 'action in {"c","a","s","d","b","n","m"}' in исходник
+    набор = re.search(r'action in \{([^}]*)\}', исходник)
+    assert набор, "не нашли набор действий анкеты"
+    действия = {кусок.strip().strip('"') for кусок in набор.group(1).split(",")}
+    assert "m" in действия, "«Мои ответы» должны остаться кнопкой анкеты"
+    assert "map" not in действия, "карта не должна попадать в разбор ответов анкеты"
 
 
 def test_на_экране_согласия_есть_дорога_мимо_порога():

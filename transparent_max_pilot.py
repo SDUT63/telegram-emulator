@@ -67,6 +67,19 @@ async def send(bot, chat_id, user_id, text, keyboard=None):
     await bot.send_message(**args)
 
 
+async def устаревшая_кнопка(event, chat_id, user_id, survey):
+    """Ответить на нажатие с экрана, который уже не актуален.
+
+    Молчание здесь читается как поломка, а применить такой ответ нельзя:
+    он относится к другому вопросу. Показываем, где человек находится
+    сейчас, — и разговор продолжается с правильного места.
+    """
+    uid = str(user_id)
+    место = survey.current(uid)
+    текст = survey.question_text(uid) if место else survey.summary(uid)
+    await send(event.bot, chat_id, uid, "Это кнопка с прошлого экрана — вот вопрос, на котором мы остановились.\n\n" + текст, visible_rows(survey, uid))
+
+
 def build_dispatcher(survey):
     from maxapi import Dispatcher
     import legacy_max_bot as old
@@ -162,12 +175,35 @@ def build_dispatcher(survey):
             await send(event.bot, chat_id, uid, survey.summary(uid), visible_rows(survey, uid)); return
         if action == "b":
             await send(event.bot, chat_id, uid, survey.handle(uid, "назад"), visible_rows(survey, uid)); return
+
+        # Дальше идут кнопки ответа. Каждая несёт номер своего вопроса, и он
+        # обязан совпасть с текущим: сообщения в чате остаются, человек может
+        # пролистать вверх и нажать вчерашнюю кнопку. Без этой проверки ответ
+        # записывался бы в тот вопрос, который открыт сейчас, — координатор
+        # получил бы чужое «Утром» в графе «когда звонить».
+        if action in {"a", "s", "d", "t"}:
+            место = survey.current(uid)
+            свой = место is not None and len(parts) > 1 and parts[1].isdigit() and место[0] == int(parts[1])
+            if not свой:
+                await устаревшая_кнопка(event, chat_id, uid, survey)
+                return
+
         if action == "s":
             await send(event.bot, chat_id, uid, survey.handle(uid, "далее"), visible_rows(survey, uid)); return
         if action == "a" and len(parts) == 3:
-            await send(event.bot, chat_id, uid, survey.answer_by_numbers(uid, [int(parts[2]) + 1]), visible_rows(survey, uid)); return
+            варианты = место[1].get("options") or []
+            номер = int(parts[2]) if parts[2].isdigit() else -1
+            if not 0 <= номер < len(варианты):
+                await устаревшая_кнопка(event, chat_id, uid, survey)
+                return
+            await send(event.bot, chat_id, uid, survey.answer_by_numbers(uid, [номер + 1]), visible_rows(survey, uid)); return
         if action == "t" and len(parts) == 3:
-            survey.toggle(uid, int(parts[1]), int(parts[2]))
+            варианты = место[1].get("options") or []
+            номер = int(parts[2]) if parts[2].isdigit() else -1
+            if not 0 <= номер < len(варианты):
+                await устаревшая_кнопка(event, chat_id, uid, survey)
+                return
+            survey.toggle(uid, int(parts[1]), номер)
             await send(event.bot, chat_id, uid, survey.question_text(uid), visible_rows(survey, uid)); return
         if action == "d" and len(parts) == 2:
             picked = survey.picked(uid, int(parts[1]))
