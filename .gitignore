@@ -50,12 +50,10 @@ logs/
 .Spotlight-V100
 .Trashes
 ehthumbs.db
-Thumbs.db
 
 # Node.js (for future frontend development)
 node_modules/
 npm-debug.log*
-yarn-debug.log*
 yarn-error.log*
 
 # Temporary files
@@ -71,8 +69,8 @@ __pycache__/
 *.pyc
 examples/__pycache__/
 bot_offset_*.txt
+
 # Чат-бот СДУТ: ключ доступа и персональные данные обратившихся.
-# Эти файлы не должны попадать в репозиторий ни при каких условиях.
 token.txt
 survey_responses.json
 survey_responses.json.tmp
@@ -81,11 +79,11 @@ survey_responses.csv
 demo_responses.json
 demo_responses.csv
 
-# Свой список доверенных сертификатов — у каждого компьютера он свой
+# Сертификаты и секрет вебхука — локальная инфраструктура, не репозиторий.
 certs.pem
+.webhook_secret
 
 # CRM оператора: пароли, заметки о людях, очередь сообщений.
-# Всё это персональные данные и секреты — в репозиторий не попадает.
 operators.json
 crm_data.json
 .crm_secret
@@ -93,7 +91,6 @@ outbox/
 
 # Выгрузки в Excel: там имена, телефоны и состояние людей
 *.xlsx
-# Кроме проектных документов — в них данных людей нет
 !docs/*.xlsx
 
 # Шрифт для сборки мануала: кэш, качается заново за секунду
@@ -102,7 +99,8 @@ webapp/инструкция/_шрифт.css
 # Модель: счётчик расходов и кэш ответов — рабочие файлы, не исходники
 ai_budget.json
 ai_cache.json
-# Ключи от облака. В репозиторий не попадают никогда.
+
+# Ключи от облака
 .env
 ai_keys.txt
 

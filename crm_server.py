@@ -24,6 +24,7 @@ from __future__ import annotations
 import functools
 import os
 import secrets
+import uuid
 from datetime import datetime, timedelta
 from urllib.parse import quote
 
@@ -39,6 +40,7 @@ from flask import (
 )
 
 import crm_store as store
+from login_guard import ЗАЩИТА
 from chatbot_survey import Survey
 from survey_questions import QUESTIONS
 
@@ -84,7 +86,12 @@ def login_required(view):
             if request.path.startswith("/api/"):
                 return jsonify({"error": "Нужно войти"}), 401
             return redirect(url_for("login_page"))
-        return view(*args, **kwargs)
+        try:
+            return view(*args, **kwargs)
+        except PermissionError:
+            # Роль не позволяет это действие. Оператор должен видеть причину,
+            # а не пятисотую ошибку без объяснения.
+            return jsonify({"error": "У вашей роли нет прав на это действие"}), 403
 
     return wrapper
 
@@ -97,16 +104,108 @@ def login_page():
     return send_from_directory(CRM_DIR, "login.html")
 
 
+def _production_crm():
+    """Транзакционный CRM, если задана PostgreSQL. Иначе — ноутбучный пилот."""
+    if not (os.getenv("SDUT_DATABASE_URL") or "").strip():
+        return None
+    from crm_postgres import PostgresOperatorCRM
+
+    return PostgresOperatorCRM()
+
+
+def _principal():
+    from operator_auth import OperatorPrincipal
+
+    login = session.get("operator_login") or session.get("operator") or ""
+    return OperatorPrincipal(operator_id=str(login), role=str(session.get("operator_role") or "operator"))
+
+
+# Какая роль нужна для каждого действия. Один список на оба режима: правило
+# не должно зависеть от того, стоит ли за CRM PostgreSQL или файлы на ноутбуке.
+ТРЕБУЕМАЯ_РОЛЬ = {
+    "set_status": "operator",
+    "assign": "operator",
+    "add_note": "operator",
+    "mark_call": "operator",
+    "undo_call": "supervisor",   # отмена контрольного звонка стирает след работы
+    "queue_message": "operator",
+}
+
+
+def изменить(действие: str, *args, **kwargs):
+    """Выполнить изменение в CRM от имени вошедшего оператора.
+
+    Раньше сюда передавалось имя строкой, и права не проверялись вовсе:
+    любой вошедший мог сменить статус, назначить себя и отменить
+    контрольный звонок. Теперь действие проходит через OperatorPrincipal,
+    и роль проверяется до изменения — одинаково в production и на ноутбуке.
+    """
+    принципал = _principal()
+    принципал.require(ТРЕБУЕМАЯ_РОЛЬ[действие])
+
+    production = _production_crm()
+    if production is not None:
+        return getattr(production, действие)(*args, auth=принципал, **kwargs)
+
+    # Ноутбучный режим: хранилище файловое, но правило доступа то же.
+    # Файловое API помечает записи именем оператора, а не principal —
+    # кроме undo_call, который ничего не подписывает.
+    если_нужно_имя = () if действие == "undo_call" else (session["operator"],)
+    return getattr(store, действие)(*args, *если_нужно_имя, **kwargs)
+
+
+def send_to_person(user_id: str, text: str, files=None) -> str:
+    """Поставить сообщение оператора в очередь доставки.
+
+    В production очередь — durable outbox в PostgreSQL: её опрашивает тот же
+    воркер, что отправляет ответы анкеты. Файловая очередь там не читается
+    никем, и сообщение молча пропало бы, показав оператору «отправлено».
+
+    На ноутбуке очередь файловая, и её разбирает сам пилот.
+    """
+    принципал = _principal()
+    принципал.require(ТРЕБУЕМАЯ_РОЛЬ["queue_message"])
+
+    production = _production_crm()
+    if production is None:
+        return store.queue_message(user_id, text, session["operator"], files)
+    operation_id = uuid.uuid4().hex
+    production.queue_message(
+        user_id, text, _principal(), operation_id=operation_id, attachments=files or None
+    )
+    return operation_id
+
+
 @app.post("/api/login")
 def api_login():
     data = request.get_json(silent=True) or {}
-    name = store.verify(
-        (data.get("login") or "").strip(), data.get("password") or ""
-    )
+    логин = (data.get("login") or "").strip()
+    адрес = request.remote_addr or "?"
+
+    # За этой дверью медицинские данные. Пароль без ограничения попыток —
+    # не защита: словарный пароль подбирается по сети за вечер, и никто
+    # об этом не узнает.
+    пауза = ЗАЩИТА.задержка(логин, адрес)
+    if пауза > 0:
+        return jsonify({
+            "error": f"Слишком много попыток. Попробуйте через {int(пауза) + 1} с.",
+        }), 429
+
+    name = store.verify(логин, data.get("password") or "")
     if not name:
-        return jsonify({"error": "Неверный логин или пароль"}), 401
+        задержка = ЗАЩИТА.неудача(логин, адрес)
+        # Логин и пароль не различаются в ответе: иначе перебор сначала
+        # находит существующие логины, а потом уже пароли к ним.
+        ответ = {"error": "Неверный логин или пароль"}
+        if задержка > 0:
+            ответ["error"] += f" Следующая попытка через {int(задержка) + 1} с."
+        return jsonify(ответ), 401
+
+    ЗАЩИТА.успех(логин, адрес)
     session.permanent = True
     session["operator"] = name
+    session["operator_login"] = логин
+    session["operator_role"] = store.role_of(логин)
     return jsonify({"operator": name})
 
 
@@ -300,7 +399,7 @@ def api_status(user_id: str):
     data = request.get_json(silent=True) or {}
     status = data.get("status", "")
     try:
-        store.set_status(user_id, status, session["operator"])
+        изменить("set_status", user_id, status)
     except ValueError as error:
         return jsonify({"error": str(error)}), 400
 
@@ -308,8 +407,13 @@ def api_status(user_id: str):
     # гадать. Оператор может отключить уведомление для конкретного случая.
     notified = False
     if data.get("notify", True) and status in STATUS_NOTICE:
-        store.queue_message(user_id, STATUS_NOTICE[status], session["operator"])
-        notified = True
+        # Статус уже сменён. Если уведомить не вышло, об этом надо сказать
+        # оператору, а не молча оставить его в уверенности, что человек знает.
+        try:
+            send_to_person(user_id, STATUS_NOTICE[status])
+            notified = True
+        except (ValueError, PermissionError) as error:
+            return jsonify({"ok": True, "notified": False, "warning": str(error)})
     return jsonify({"ok": True, "notified": notified})
 
 
@@ -320,9 +424,9 @@ def api_call(user_id: str):
     which = str(data.get("which", ""))
     try:
         if data.get("done", True):
-            store.mark_call(user_id, which, session["operator"])
+            изменить("mark_call", user_id, which)
         else:
-            store.undo_call(user_id, which)
+            изменить("undo_call", user_id, which)
     except ValueError as error:
         return jsonify({"error": str(error)}), 400
     return jsonify({"ok": True})
@@ -354,7 +458,7 @@ def api_export():
 @app.post("/api/case/<user_id>/assign")
 @login_required
 def api_assign(user_id: str):
-    store.assign(user_id, session["operator"])
+    изменить("assign", user_id)
     return jsonify({"ok": True})
 
 
@@ -364,7 +468,7 @@ def api_note(user_id: str):
     text = ((request.get_json(silent=True) or {}).get("text") or "").strip()
     if not text:
         return jsonify({"error": "Пустая заметка"}), 400
-    store.add_note(user_id, text, session["operator"])
+    изменить("add_note", user_id, text)
     return jsonify({"ok": True})
 
 
@@ -382,11 +486,18 @@ def api_reply(user_id: str):
     else:
         text = ((request.get_json(silent=True) or {}).get("text") or "").strip()
 
+    # В production вложение не ложится на диск веб-процесса: оно уходит в
+    # очередь содержимым и живёт только в базе, пока не доставлено.
+    в_базу = _production_crm() is not None
     files = []
     try:
         for item in request.files.getlist("files"):
             data = item.read()
-            if data:
+            if not data:
+                continue
+            if в_базу:
+                files.append({"name": store.check_file(item.filename or "", data), "content": data})
+            else:
                 files.append(store.save_file(user_id, item.filename or "", data))
     except ValueError as error:
         return jsonify({"error": str(error)}), 400
@@ -402,7 +513,12 @@ def api_reply(user_id: str):
     if not text:
         text = "Направляю файл."
 
-    message_id = store.queue_message(user_id, text, session["operator"], files)
+    try:
+        message_id = send_to_person(user_id, text, files)
+    except ValueError as error:
+        return jsonify({"error": str(error)}), 400
+    except PermissionError:
+        return jsonify({"error": "У вашей роли нет права писать человеку"}), 403
     return jsonify({"ok": True, "id": message_id, "files": len(files)})
 
 

@@ -1,198 +1,205 @@
 #!/usr/bin/env python3
-"""
-Боевая точка входа бота СДУТ: приём событий через вебхук.
-
-Зачем отдельный файл
---------------------
-max_bot.py забирает события сам (long polling). Это удобно на ноутбуке:
-не нужен ни публичный адрес, ни сертификат. Но для боевой среды MAX
-такой режим не предназначен — события хранятся ограниченное время, а
-скорость забора ограничена. Правильный режим — вебхук: MAX сам стучится
-на наш адрес, как только что-то произошло.
-
-Логика анкеты, клавиатуры и обработчики при этом те же самые. Здесь
-меняется ровно одно: откуда приходят события. Обработчики берутся из
-max_bot.build_dispatcher — ни строчки сценария не дублируется.
-
-Требования площадки (проверено по библиотеке maxapi 1.2.2)
-----------------------------------------------------------
-* только HTTPS, сертификат доверенного центра; самоподписанные и http
-  не принимаются с 25.05.2026;
-* слушать можно только порты 80, 8080, 443, 8443 и 16384–32383;
-* секрет 5–256 символов, латиница, цифры и дефис; MAX присылает его в
-  заголовке X-Max-Bot-Api-Secret, библиотека сверяет его сама
-  постоянным по времени сравнением и отвечает 403 при несовпадении;
-* отвечать нужно за 30 секунд, иначе доставка повторится — поэтому
-  тяжёлая работа не должна происходить в обработчике.
-
-Запуск
-------
-    export MAX_BOT_TOKEN=...
-    export MAX_WEBHOOK_URL=https://bot.example.ru/max
-    export MAX_WEBHOOK_SECRET=...            # если пусто — сгенерируется
-    python max_webhook.py
-
-Перед боевым переключением сначала снимите подписку с polling-режима:
-одновременно два режима работать не могут.
-"""
-
+"""MAX Webhook entrypoint for the SDUT bot."""
 from __future__ import annotations
-
 import asyncio
 import logging
 import os
+import re
 import secrets
-import sys
-
+from urllib.parse import urlsplit
 from aiohttp import web
-
-import max_bot
-from chatbot_survey import Survey
+from durable_outbox_worker import run as run_durable_outbox
+from logging_config import configure_logging
+from max_config import COMMANDS, read_token
+from max_production_dispatcher import build_dispatcher
+from production_privacy import ProductionPrivacySurvey
+from storage_postgres import TransactionalPersistentSeen
+from metrics import METRICS
+from scripts.check_outbound_paths import require_clean
 
 log = logging.getLogger("сдут-бот")
-
-# Порты, на которые MAX соглашается доставлять события. Список зашит в
-# требованиях площадки; попытка слушать 5000 приведёт к тому, что бот
-# подпишется, но не получит ни одного события — и это молчаливый отказ,
-# который потом ищут часами.
-ALLOWED_PORTS = {80, 8080, 443, 8443} | set(range(16384, 32384))
-
 DEFAULT_PATH = "/max"
+DEFAULT_HOST = "127.0.0.1"
+DEFAULT_PORT = 8080
+SECRET_RE = re.compile(r"^[A-Za-z0-9_-]{5,256}$")
 
 
-def read_secret() -> str:
-    """Секрет вебхука. Постоянный между перезапусками, иначе MAX отсеет нас."""
+def read_secret():
     value = (os.getenv("MAX_WEBHOOK_SECRET") or "").strip()
     if value:
         return value
-
-    here = os.path.dirname(os.path.abspath(__file__))
-    path = os.path.join(here, ".webhook_secret")
+    path = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".webhook_secret")
     if os.path.exists(path):
         with open(path, encoding="utf-8") as fh:
             saved = fh.read().strip()
             if saved:
                 return saved
-
-    fresh = secrets.token_hex(24)          # 48 знаков, только 0-9a-f
+    fresh = secrets.token_hex(24)
     with open(path, "w", encoding="utf-8") as fh:
         fh.write(fresh)
     try:
         os.chmod(path, 0o600)
     except OSError:
         pass
-    log.warning("Секрет вебхука создан заново и сохранён в .webhook_secret")
+    log.warning("MAX webhook secret generated locally")
     return fresh
 
 
-def check_settings(url: str, port: int) -> list[str]:
-    """Что не так с настройками. Пустой список — можно запускать."""
-    beef: list[str] = []
+def validate_secret(secret):
+    if not secret:
+        return ["не задан секрет вебхука"]
+    if not SECRET_RE.fullmatch(secret):
+        return ["MAX_WEBHOOK_SECRET имеет недопустимый формат"]
+    return []
+
+
+def validate_public_url(url, expected_path):
     if not url:
-        beef.append("не задан MAX_WEBHOOK_URL — адрес, на который MAX шлёт события")
-    elif not url.startswith("https://"):
-        beef.append(
-            "адрес должен начинаться с https:// — MAX не доставляет события "
-            "по http и не принимает самоподписанные сертификаты"
-        )
-    if port not in ALLOWED_PORTS:
-        beef.append(
-            f"порт {port} MAX не поддерживает. Разрешены 80, 8080, 443, 8443 "
-            "и диапазон 16384–32383"
-        )
-    return beef
+        return ["не задан MAX_WEBHOOK_URL — полный публичный HTTPS endpoint"]
+    problems = []
+    try:
+        parsed = urlsplit(url)
+        explicit_port = parsed.port
+    except ValueError:
+        return ["MAX_WEBHOOK_URL имеет некорректный формат"]
+    if parsed.scheme != "https":
+        problems.append("MAX_WEBHOOK_URL должен использовать https://")
+    if not parsed.hostname:
+        problems.append("MAX_WEBHOOK_URL должен содержать имя хоста")
+    if parsed.username or parsed.password:
+        problems.append("MAX_WEBHOOK_URL не должен содержать логин или пароль")
+    if explicit_port not in (None, 443):
+        problems.append("публичный Webhook MAX должен использовать порт 443")
+    if parsed.query or parsed.fragment:
+        problems.append("MAX_WEBHOOK_URL не должен содержать query или fragment")
+    path = parsed.path or "/"
+    if expected_path and path != expected_path:
+        problems.append("путь URL должен совпадать с MAX_WEBHOOK_PATH")
+    return problems
 
 
-async def main() -> None:
-    token = max_bot.read_token()
-    url = (os.getenv("MAX_WEBHOOK_URL") or "").strip().rstrip("/")
-    port = int(os.getenv("MAX_WEBHOOK_PORT", "8443"))
-    path = os.getenv("MAX_WEBHOOK_PATH", DEFAULT_PATH)
-    host = os.getenv("MAX_WEBHOOK_HOST", "0.0.0.0")  # noqa: S104 — за обратным прокси
+def metrics_authorized(authorization: str | None) -> bool:
+    """Gate /metrics when a token is configured.
 
-    problems = check_settings(url, port)
-    if problems:
-        print()
-        print("=" * 62)
-        print("  Вебхук не настроен:")
-        for line in problems:
-            print(f"    — {line}")
-        print()
-        print("  Пример:")
-        print("      export MAX_WEBHOOK_URL=https://bot.sdut63.ru/max")
-        print("      export MAX_WEBHOOK_PORT=8443")
-        print("=" * 62)
-        print()
-        sys.exit(1)
+    The listener is loopback-only by default, but a reverse proxy may forward
+    /metrics from a monitoring network. SDUT_METRICS_TOKEN is documented as the
+    protection for that case, so it has to be enforced here rather than only in
+    the deployment notes. Unset means "no token configured" — the endpoint then
+    relies on network placement alone, as before.
+    """
+    expected = (os.getenv("SDUT_METRICS_TOKEN") or "").strip()
+    if not expected:
+        return True
+    offered = (authorization or "").strip()
+    prefix = "Bearer "
+    if not offered.startswith(prefix):
+        return False
+    return secrets.compare_digest(offered[len(prefix):], expected)
 
-    from maxapi import Bot
-    from maxapi.webhook.aiohttp import AiohttpMaxWebhook
 
-    survey = Survey(list_options=False)
-    bot = Bot(token)
-    dp = max_bot.build_dispatcher(survey)
+def validate_settings(url, secret, path):
+    problems = validate_public_url(url, path)
+    problems.extend(validate_secret(secret))
+    if not path.startswith("/"):
+        problems.append("MAX_WEBHOOK_PATH должен начинаться с '/'")
+    return problems
+
+
+async def main():
+    configure_logging()
+    require_clean()
+    if not (os.getenv("SDUT_DATABASE_URL") or "").strip():
+        raise SystemExit("MAX Webhook остановлен: SDUT_DATABASE_URL не задан")
+    token = read_token()
+    public_url = (os.getenv("MAX_WEBHOOK_URL") or "").strip().rstrip("/")
+    path = (os.getenv("MAX_WEBHOOK_PATH") or DEFAULT_PATH).strip() or DEFAULT_PATH
+    host = (os.getenv("MAX_WEBHOOK_HOST") or DEFAULT_HOST).strip()
+    try:
+        port = int(os.getenv("MAX_WEBHOOK_PORT", str(DEFAULT_PORT)))
+    except ValueError:
+        raise SystemExit("MAX_WEBHOOK_PORT должен быть целым числом")
     secret = read_secret()
-
+    problems = validate_settings(public_url, secret, path)
+    if not 1 <= port <= 65535:
+        problems.append("MAX_WEBHOOK_PORT должен быть в диапазоне 1–65535")
+    if problems:
+        for problem in problems:
+            log.error("Webhook configuration error: %s", problem)
+        raise SystemExit(1)
+    from postgres_guard import require_migrations
     try:
-        me = await bot.get_me()
-    except Exception as error:  # noqa: BLE001
-        print(f"\n  Не удалось подключиться к MAX: {error}\n")
-        await bot.close_session()
-        sys.exit(1)
-
-    # Polling и вебхук одновременно работать не могут: снимаем старую
-    # подписку, прежде чем ставить новую.
+        require_migrations()
+    except RuntimeError as error:
+        log.error("PostgreSQL schema is not ready: %s", type(error).__name__)
+        raise SystemExit(1) from error
+    from maxapi import Bot
+    from maxapi.types import BotCommand
+    from maxapi.webhook.aiohttp import AiohttpMaxWebhook
+    survey = ProductionPrivacySurvey(list_options=False)
+    seen = TransactionalPersistentSeen()
+    bot = Bot(token)
+    dp = build_dispatcher(survey, seen)
+    queue = None
+    runner = None
     try:
-        await bot.delete_webhook()
-    except Exception:  # noqa: BLE001
-        pass
+        await bot.get_me()
+        await bot.subscribe_webhook(url=public_url, secret=secret)
+        try:
+            await bot.set_commands(*(BotCommand(name=n, description=t) for n, t in COMMANDS))
+        except Exception as error:
+            log.warning("MAX command menu update failed: %s", type(error).__name__)
+        webhook = AiohttpMaxWebhook(dp=dp, bot=bot, secret=secret)
+        app = webhook.create_app(path=path)
 
-    await bot.subscribe_webhook(url=url + path, secret=secret)
+        async def health(_):
+            try:
+                storage_ok = bool(survey.health())
+            except Exception:
+                storage_ok = False
+            if storage_ok:
+                METRICS.set("sdut_storage_up", 1)
+            else:
+                METRICS.set("sdut_storage_up", 0)
+            return web.json_response({"status": "ok" if storage_ok else "degraded", "storage": "PostgreSQL"}, status=200 if storage_ok else 503)
 
-    # Меню команд ставим здесь же — оно живёт на стороне MAX и не зависит
-    # от режима работы.
-    try:
-        from maxapi.types import BotCommand
+        async def ready(_):
+            try:
+                storage_ok = bool(survey.health())
+            except Exception:
+                storage_ok = False
+            return web.json_response({"ready": storage_ok, "storage": "PostgreSQL"}, status=200 if storage_ok else 503)
 
-        await bot.set_commands(
-            *(BotCommand(name=n, description=t) for n, t in max_bot.COMMANDS)
-        )
-    except Exception as error:  # noqa: BLE001
-        log.warning("Меню команд не обновилось: %s", error)
+        async def metrics(request: web.Request):
+            if not metrics_authorized(request.headers.get("Authorization")):
+                return web.json_response({"error": "unauthorized"}, status=401)
+            try:
+                stats = survey.outbox.stats()
+                for status, count in stats.items():
+                    if status != "tombstones":
+                        METRICS.set("sdut_outbox_messages", count, {"status": status})
+                METRICS.set("sdut_outbox_tombstones", stats.get("tombstones", 0))
+            except Exception as error:
+                log.warning("Could not refresh outbox metrics: %s", type(error).__name__)
+            return web.Response(text=METRICS.render(), content_type="text/plain", charset="utf-8")
 
-    webhook = AiohttpMaxWebhook(dp=dp, bot=bot, secret=secret)
-    app = webhook.create_app(path=path)
-
-    # Проба живости для балансировщика и мониторинга. Ничего о людях
-    # не отдаёт — только то, что процесс жив.
-    async def health(_: web.Request) -> web.Response:
-        return web.json_response({"status": "ok"})
-
-    app.router.add_get("/health", health)
-
-    # Очередь сообщений от операторов крутится рядом, как и при polling
-    queue = asyncio.create_task(max_bot.outbox_worker(bot))
-
-    name = getattr(me, "name", None) or "бот"
-    print()
-    print("=" * 62)
-    print(f"  Бот запущен в боевом режиме: {name}")
-    print(f"  Слушает {host}:{port}{path}")
-    print(f"  MAX шлёт события на {url + path}")
-    print()
-    print("  Остановить: Ctrl+C")
-    print("=" * 62)
-    print()
-
-    runner = web.AppRunner(app)
-    await runner.setup()
-    site = web.TCPSite(runner, host=host, port=port)
-    await site.start()
-    try:
-        await asyncio.Event().wait()
+        app.router.add_get("/health", health)
+        app.router.add_get("/ready", ready)
+        app.router.add_get("/metrics", metrics)
+        queue = asyncio.create_task(run_durable_outbox(bot))
+        runner = web.AppRunner(app)
+        await runner.setup()
+        site = web.TCPSite(runner, host=host, port=port)
+        await site.start()
+        log.info("MAX Webhook listener started on %s:%s", host, port)
+        try:
+            await asyncio.Event().wait()
+        finally:
+            if queue is not None:
+                queue.cancel()
+                await asyncio.gather(queue, return_exceptions=True)
+            if runner is not None:
+                await runner.cleanup()
     finally:
-        queue.cancel()
-        await runner.cleanup()
         await bot.close_session()
 
 
@@ -200,4 +207,4 @@ if __name__ == "__main__":
     try:
         asyncio.run(main())
     except KeyboardInterrupt:
-        print("\nБот остановлен.\n")
+        log.info("MAX Webhook stopped by operator")

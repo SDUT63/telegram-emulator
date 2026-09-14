@@ -132,11 +132,35 @@ def test_бот_разбирает_вложения_входящего():
 
 def test_у_бота_нет_копий_присланных_файлов():
     """Файл лежит у MAX. Копия у нас — это лишние данные о людях."""
-    src = open(max_bot.__file__, encoding="utf-8").read()
-    начало = src.index("def _files_of")
-    конец = src.index("class Seen:")
-    assert "download" not in src[начало:конец].lower()
-    assert "open(" not in src[начало:конец]
+    import inspect
+
+    import max_ui
+
+    тело = inspect.getsource(max_ui.files_of)
+    assert "download" not in тело.lower()
+    assert "open(" not in тело
+    # Сохраняем только ссылку на файл у MAX, не содержимое.
+    поля = set(max_ui.files_of(_тело_с_файлом())[0])
+    assert поля == {"kind", "name", "url", "size"}
+
+
+class _Ссылка:
+    url = "https://max.ru/f/9"
+
+
+class _Файл:
+    type = "file"
+    filename = "направление.pdf"
+    size = 2048
+    payload = _Ссылка()
+
+
+class _Тело:
+    attachments = [_Файл()]
+
+
+def _тело_с_файлом():
+    return _Тело()
 
 
 # --------------------------------------------------- справка по базе знаний
