@@ -73,21 +73,32 @@ def test_в_коде_нет_пустого_подтверждения():
 def test_подтверждения_идут_через_помощник():
     """Прямой вызов ack разрешён ровно в одном месте — внутри помощника.
 
-    Везде ещё подтверждать надо через `подтвердить()`: он не даёт
-    ни пустой подсказки, ни упавшего обработчика.
+    Везде ещё подтверждать надо через помощник: он не даёт ни пустой
+    подсказки, ни упавшего обработчика. В production помощник называется
+    `acknowledge` и живёт в каноническом диспетчере.
     """
-    прямые = re.findall(r"await event\.ack\(", ИСХОДНИК)
+    import max_production_dispatcher as dispatcher
+
+    исходник = io.open(dispatcher.__file__, encoding="utf-8").read()
+    прямые = re.findall(r"await event\.ack\(", исходник)
     assert len(прямые) == 1, f"прямых вызовов ack: {len(прямые)}"
-    помощник = ИСХОДНИК.split("async def подтвердить", 1)[1].split("\nasync def")[0]
-    assert "await event.ack(notification=подсказка)" in помощник
+    помощник = исходник.split("async def acknowledge", 1)[1].split("\n    @dp", 1)[0]
+    assert "await event.ack(notification=text)" in помощник
+    # Сбой подтверждения не должен ронять обработку события.
+    assert "except Exception" in помощник
 
 
 def test_у_каждого_подтверждения_есть_текст():
-    подсказки = re.findall(r"подтвердить\(event,\s*(.*?)\)\n", ИСХОДНИК)
+    import max_production_dispatcher as dispatcher
+
+    исходник = io.open(dispatcher.__file__, encoding="utf-8").read()
+    подсказки = re.findall(r"acknowledge\(event(?:,\s*([^)]*))?\)", исходник)
     assert подсказки, "подтверждений в коде не осталось вовсе"
+    по_умолчанию = re.search(r'async def acknowledge\(event,text="([^"]*)"', исходник)
+    assert по_умолчанию and по_умолчанию.group(1), "у помощника нет текста по умолчанию"
     for п in подсказки:
-        текст = п.strip().strip('"').strip("'")
-        assert текст and текст != "подсказка", f"пустая подсказка: {п!r}"
+        текст = (п or по_умолчанию.group(1)).strip().strip('"').strip("'")
+        assert текст and текст != "text", f"пустая подсказка: {п!r}"
         assert len(текст) <= 40, f"подсказка не влезет во всплывашку: {п!r}"
 
 

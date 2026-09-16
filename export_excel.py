@@ -26,7 +26,7 @@ from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 from openpyxl.utils import get_column_letter
 
 import crm_store as store
-from chatbot_survey import Survey
+import storage
 from survey_questions import QUESTIONS
 
 # Фирменные цвета: тот же петроль и песочный, что на страницах
@@ -79,7 +79,9 @@ def style_header(sheet, widths: list[int]) -> None:
 
 
 def build(path: str | None = None) -> str:
-    survey = Survey()          # только чтение
+    # То же хранилище, в котором работает бот: на боевом PostgreSQL
+    # файловый Survey() выгрузил бы пустую книгу, не сказав почему.
+    survey = storage.открыть()          # только чтение
     cases = store.all_cases()
     delivered = store.delivery_state()
     today = datetime.now()
@@ -226,7 +228,7 @@ def build(path: str | None = None) -> str:
 
 
 def _cli() -> int:
-    survey = Survey()
+    survey = storage.открыть()
     if not survey.state:
         print()
         print("  Обращений пока нет — выгружать нечего.")

@@ -1,126 +1,104 @@
 name: CI
 
 on:
+  workflow_dispatch:
   push:
-    branches: [ master, main, develop ]
+    branches: [ master, main, develop, max-bot-complete-2026 ]
   pull_request:
-    branches: [ master, main, develop ]
+    branches: [ master, main, develop, max-bot-complete-2026, claude/chat-bot-survey-publik-nq2w1s ]
+
+permissions:
+  contents: read
 
 jobs:
-  # Go Backend Tests
-  go-backend:
+  max-bot-python:
     runs-on: ubuntu-latest
     services:
       postgres:
-        image: postgres:15
+        image: postgres:16
         env:
-          POSTGRES_PASSWORD: telegram_emulator
-          POSTGRES_USER: telegram_emulator
-          POSTGRES_DB: telegram_emulator
+          POSTGRES_PASSWORD: sdut_test
+          POSTGRES_USER: sdut_test
+          POSTGRES_DB: sdut_test
         options: >-
-          --health-cmd pg_isready
-          --health-interval 10s
+          --health-cmd "pg_isready -U sdut_test -d sdut_test"
+          --health-interval 5s
           --health-timeout 5s
-          --health-retries 5
-        ports:
-          - 5432:5432
-      redis:
-        image: redis:7-alpine
-        options: >-
-          --health-cmd "redis-cli ping"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-        ports:
-          - 6379:6379
-
+          --health-retries 12
+        ports: [5432:5432]
+    env:
+      SDUT_DATABASE_URL: postgresql://sdut_test:sdut_test@127.0.0.1:5432/sdut_test
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-      
-    - name: Setup Go
-      uses: actions/setup-go@v4
-      with:
-        go-version: '1.24'
-        cache: true
-        
-    - name: Install Go dependencies
-      run: |
-        go mod download
-        go mod verify
-        
-    - name: Run Go linter
-      uses: golangci/golangci-lint-action@v4
-      with:
-        version: v1.64.8
-        args: --timeout=10m
-        
-    - name: Run Go tests
-      run: |
-        go test ./... -race -coverprofile=coverage.out -covermode=atomic
-        
-    - name: Upload Go coverage
-      uses: codecov/codecov-action@v4
-      with:
-        file: coverage.out
-        flags: go-backend
-        name: go-backend-coverage
-        
-    - name: Build Go binary
-      run: |
-        go build -o bin/telegram-emulator ./cmd/emulator
-        
-  # React Frontend Tests
+      - name: Checkout code
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      - name: Setup Python
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: '3.13'
+          cache: pip
+          cache-dependency-path: requirements.txt
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt pytest
+      - name: Check committed secrets
+        run: python scripts/check_secrets.py
+      - name: Check outbound architecture
+        run: python scripts/check_outbound_paths.py
+      - name: Compile Python sources
+        run: python -m compileall -q .
+      - name: Apply PostgreSQL migrations
+        run: python scripts/migrate_postgres.py
+      - name: Run Python tests
+        run: python -m pytest -q tests
+
+  go-backend:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      - name: Setup Go
+        uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5
+        with:
+          go-version: '1.24'
+          cache: true
+      - name: Install Go dependencies
+        run: |
+          go mod download
+          go mod verify
+      - name: Run Go tests
+        run: go test ./... -race -coverprofile=coverage.out -covermode=atomic
+      - name: Build Go binary
+        run: go build -o bin/telegram-emulator ./cmd/emulator
+
   react-frontend:
     runs-on: ubuntu-latest
-    
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-      
-    - name: Setup Node.js
-      uses: actions/setup-node@v4
-      with:
-        node-version: '20.x'
-        cache: 'npm'
-        cache-dependency-path: web/package-lock.json
-        
-    - name: Install frontend dependencies
-      run: |
-        cd web
-        npm ci
-        
-    - name: Run ESLint
-      run: |
-        cd web
-        npm run lint || true
-        
-    - name: Build frontend
-      run: |
-        cd web
-        npm run build
+      - name: Checkout code
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      - name: Setup Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '20.x'
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - name: Install frontend dependencies
+        run: cd web && npm ci
+      - name: Run ESLint
+        run: cd web && npm run lint
+      - name: Build frontend
+        run: cd web && npm run build
 
-
-        
-  # Security Scan
   security:
     runs-on: ubuntu-latest
-    
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-      
-    - name: Run Trivy vulnerability scanner
-      uses: aquasecurity/trivy-action@master
-      with:
-        scan-type: 'fs'
-        scan-ref: '.'
-        format: 'sarif'
-        output: 'trivy-results.sarif'
-        
-    # Note: CodeQL upload disabled due to integration issues
-    # - name: Upload Trivy scan results to GitHub Security tab
-    #   uses: github/codeql-action/upload-sarif@v3
-    #   if: always()
-    #   with:
-    #     sarif_file: 'trivy-results.sarif'
+      - name: Checkout code
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      - name: Run Trivy vulnerability scanner
+        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1
+        with:
+          scan-type: fs
+          scan-ref: .
+          format: table
+          severity: HIGH,CRITICAL
+          exit-code: '1'

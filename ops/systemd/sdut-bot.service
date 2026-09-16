@@ -1,0 +1,50 @@
+[Unit]
+Description=СДУТ: чат-бот MAX (webhook + очередь исходящих)
+Documentation=https://github.com/SDUT63/telegram-emulator
+After=network-online.target postgresql.service
+Wants=network-online.target
+
+# Предел перезапусков живёт в [Unit], а не в [Service]: десять попыток
+# за пять минут, дальше служба останавливается и ждёт человека. Бот,
+# бесконечно перезапускающийся при пустой настройке, прячет причину
+# в потоке одинаковых записей журнала.
+StartLimitIntervalSec=300
+StartLimitBurst=10
+
+[Service]
+Type=simple
+User=sdut
+Group=sdut
+WorkingDirectory=/opt/sdut
+EnvironmentFile=/etc/sdut/bot.env
+
+# Бот не поднимается с недоделанной настройкой: без применённых
+# миграций, без ключа резервных копий, с паролем оператора по умолчанию.
+# Лучше не подняться и сказать об этом в журнале, чем принимать людей
+# и терять их карточки.
+ExecStartPre=/opt/sdut/.venv/bin/python /opt/sdut/preflight.py
+ExecStart=/opt/sdut/.venv/bin/python /opt/sdut/run_max_webhook.py
+
+# Задержка нужна: при недоступной базе бот иначе крутится в цикле
+# перезапусков и забивает журнал вместо того, чтобы дать её поднять.
+Restart=always
+RestartSec=5s
+
+# Логи — JSON-строками в journald, как их пишет logging_config.
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=sdut-bot
+
+# За этой границей персональные данные, и сужать её дёшево.
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/sdut/data /var/log/sdut
+ProtectKernelTunables=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true
+
+[Install]
+WantedBy=multi-user.target
