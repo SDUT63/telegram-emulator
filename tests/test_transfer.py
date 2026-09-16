@@ -160,7 +160,7 @@ def test_продолжить_на_обычном_вопросе_повторя�
     ("v2", 8, ["weekend", "dementia"]),
     ("v1", 10, ["urgent"]),
     ("night12", 15, ["night", "far"]),
-    ("round", 30, ["night", "weight110"]),
+    ("round", 30, ["night", "weight110_two"]),
     ("live_in", 30, ["night", "stoma"]),
     ("level1", 1, ["weekend", "urgent", "veteran"]),
     ("level2", 3, ["prepay3", "dementia"]),
@@ -168,6 +168,8 @@ def test_продолжить_на_обычном_вопросе_повторя�
     ("shift8", 22, ["weight90", "far", "registry"]),
     ("first_visit", 1, ["urgent"]),
     ("v4", 1, []),
+    ("v4", 6, ["weight110_lift", "far"]),
+    ("trial", 1, ["urgent", "dementia"]),
     ("escort", 4, ["holiday", "veteran", "prepay3"]),
 ]
 

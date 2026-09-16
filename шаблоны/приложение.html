@@ -215,6 +215,25 @@ p{margin:0 0 1rem}
   color:var(--ink-soft)}
 .plain{list-style:none;margin:0;padding:0}
 
+.split{background:var(--surface);border:1px solid var(--line);border-radius:8px;
+  padding:.5rem .95rem;margin-bottom:.9rem}
+.split .r{display:flex;justify-content:space-between;gap:.8rem;padding:.45rem 0;
+  font-size:.92rem;border-bottom:1px solid var(--line);align-items:baseline}
+.split .r:last-child{border-bottom:0}
+.split .r span:last-child{font-family:var(--mono);font-variant-numeric:tabular-nums;
+  white-space:nowrap;flex:0 0 auto;color:var(--ink-soft)}
+.split .r.sum{font-weight:600;padding-top:.65rem}
+.split .r.sum span:last-child{color:var(--accent)}
+.split .bar{display:flex;height:8px;border-radius:4px;overflow:hidden;margin:.5rem 0 .2rem}
+.split .bar i{display:block;height:100%}
+.why-list{list-style:none;margin:0 0 1rem;padding:0}
+.why-list li{padding:.7rem 0;border-bottom:1px solid var(--line)}
+.why-list b{display:block;font-weight:600;font-size:.96rem;margin-bottom:.15rem}
+.why-list span{color:var(--ink-soft);font-size:.89rem}
+.market{background:var(--surface-2);border-radius:8px;padding:.85rem .95rem;
+  margin-bottom:1rem;font-size:.92rem;color:var(--ink-soft)}
+.market b{color:var(--ink)}
+
 /* ---------- перенос ответов из бота ---------- */
 .carry{background:var(--ok-bg);border-radius:8px;padding:.85rem .95rem;
   margin-bottom:1rem;font-size:.93rem;color:var(--ok)}
@@ -381,6 +400,14 @@ footer{margin-top:2.5rem;padding-top:1.4rem;border-top:1px solid var(--line-stro
     <h3>Из чего складывается сумма</h3>
     <div class="lines" id="cost-lines"></div>
   </div>
+
+  <h3>Из чего складывается час</h3>
+  <p class="note" id="split-note"></p>
+  <div class="split" id="cost-split"></div>
+
+  <h3>Почему дороже объявления на доске</h3>
+  <div class="market" id="cost-market"></div>
+  <ul class="why-list" id="cost-why"></ul>
 
   <h3>Круглые сутки: три способа и разница между ними</h3>
   <div class="cmp" id="cost-round"></div>
@@ -1192,6 +1219,42 @@ footer{margin-top:2.5rem;padding-top:1.4rem;border-top:1px solid var(--line-stro
     });
   }
 
+  function рисоватьРазбор(){
+    var цвета = ['var(--accent)', 'var(--ok)', 'var(--warn)',
+                 'var(--line-strong)', 'var(--ink-faint)'];
+    var всего = ПРАЙС.разбор_цена;
+    document.getElementById('split-note').textContent =
+      'Час у подопечного при визите на ' + ПРАЙС.разбор_блок +
+      ' часа. Той же формулой посчитан весь прайс: меняется длина визита — ' +
+      'меняется доля дороги, и вместе с ней цена часа.';
+    var полосы = ПРАЙС.разбор_часа.map(function(р, i){
+      return '<i style="width:' + (р.рублей / всего * 100) + '%;background:' +
+        цвета[i % цвета.length] + '"></i>';
+    }).join('');
+    document.getElementById('cost-split').innerHTML =
+      '<div class="bar">' + полосы + '</div>' +
+      ПРАЙС.разбор_часа.map(function(р){
+        return '<div class="r"><span>' + экранировать(р.строка) + '</span><span>' +
+          рубли(р.рублей) + '</span></div>';
+      }).join('') +
+      '<div class="r sum"><span>Час у подопечного</span><span>' +
+      рубли(всего) + '</span></div>';
+
+    document.getElementById('cost-market').innerHTML =
+      'В Тольятти частные объявления начинаются от <b>' +
+      рубли(ПРАЙС.рынок.частник_в_час) + ' в час</b>, агентство с проживанием — от <b>' +
+      рубли(ПРАЙС.рынок.агентство_проживание_сутки) + ' в сутки</b>. У службы дороже, ' +
+      'и вот за что. Законный минимум ставки помощника при полной занятости — ' +
+      рубли(ПРАЙС.минимальная_ставка) + ' в час: ниже него трудовой договор ' +
+      'заключить нельзя.';
+
+    document.getElementById('cost-why').innerHTML =
+      ПРАЙС.почему_столько.map(function(п){
+        return '<li><b>' + экранировать(п.что) + '</b><span>' +
+          экранировать(п.почему) + '</span></li>';
+      }).join('');
+  }
+
   function рисоватьНеВходит(){
     document.getElementById('cost-not').innerHTML = ПРАЙС.не_входит.map(function(н){
       return '<div class="card flag"><span class="h">' + экранировать(н.что) +
@@ -1341,6 +1404,7 @@ footer{margin-top:2.5rem;padding-top:1.4rem;border-top:1px solid var(--line-stro
       ПРАЙС = d;
       рисоватьСтоимость();
       рисоватьСутки();
+      рисоватьРазбор();
       рисоватьКаталог();
       рисоватьНеВходит();
       подсказатьПакет();
