@@ -40,8 +40,8 @@ from flask import (
 )
 
 import crm_store as store
+import storage
 from login_guard import ЗАЩИТА
-from chatbot_survey import Survey
 from survey_questions import QUESTIONS
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -370,7 +370,10 @@ def _case_view(user_id: str, person: dict, delivered: dict) -> dict:
 @app.get("/api/cases")
 @login_required
 def api_cases():
-    survey = Survey()  # только чтение: конструктор ничего не пишет
+    # То же хранилище, в котором работает бот. Раньше здесь стоял
+    # файловый Survey(), и на боевом PostgreSQL координатор видел
+    # ноль обращений при полной базе — молча, без всякой ошибки.
+    survey = storage.открыть()  # только чтение: конструктор ничего не пишет
     delivered = store.delivery_state()
     cases = [
         _case_view(user_id, person, delivered)
@@ -548,7 +551,7 @@ def api_funnel():
     """
     import funnel
 
-    survey = Survey()  # только чтение: конструктор ничего не пишет
+    survey = storage.открыть()  # только чтение: конструктор ничего не пишет
     отчёт = funnel.по_анкете(survey)
     return jsonify({**отчёт.как_числа(), "текст": отчёт.как_текст()})
 

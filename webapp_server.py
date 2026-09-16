@@ -18,7 +18,7 @@ import os
 
 from flask import Flask, jsonify, send_from_directory
 
-from chatbot_survey import Survey
+import storage
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 WEBAPP_DIR = os.path.join(HERE, "webapp")
@@ -70,7 +70,7 @@ def health():
 @app.route("/stats")
 def stats():
     """Сколько обращений собрал бот. Без персональных данных."""
-    started, finished = Survey().stats()
+    started, finished = storage.открыть().stats()
     return jsonify({"started": started, "finished": finished})
 
 
