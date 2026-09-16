@@ -1,0 +1,415 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Помощь дома — СДУТ</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Literata:opsz,wght@7..72,600;7..72,700&family=Golos+Text:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+:root{
+  --ground:#F2F5F3; --surface:#FFFFFF; --surface-2:#E9EFEC;
+  --ink:#14201E; --ink-soft:#4B5A56; --ink-faint:#748480;
+  --line:#D9E2DE; --line-strong:#B9C7C2;
+  --accent:#1B5A55; --accent-soft:#D6E6E3;
+  --ok:#2C6647; --ok-bg:#DCEBE2;
+  --warn:#83600F; --warn-bg:#F2E8CE;
+  --stop:#9C382E; --stop-bg:#F5DDD9;
+  --serif:"Literata",Georgia,serif;
+  --sans:"Golos Text","Helvetica Neue",Arial,sans-serif;
+  --mono:"IBM Plex Mono",Consolas,monospace;
+  color-scheme: light dark;
+}
+@media (prefers-color-scheme:dark){:root{
+  --ground:#101614; --surface:#171F1D; --surface-2:#1E2826;
+  --ink:#E5EBE8; --ink-soft:#A8B7B2; --ink-faint:#7E8E89;
+  --line:#293430; --line-strong:#3A4844;
+  --accent:#63B4AB; --accent-soft:#1D302E;
+  --ok:#6DBB8E; --ok-bg:#1A2B22;
+  --warn:#D2A648; --warn-bg:#2C2617;
+  --stop:#DE7A6D; --stop-bg:#2E1C19;
+}}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0}
+body{background:var(--ground);color:var(--ink);font-family:var(--sans);
+     font-size:17px;line-height:1.6;-webkit-text-size-adjust:100%;
+     padding-top:env(safe-area-inset-top,0px)}
+.wrap{max-width:40rem;margin:0 auto;padding-inline:20px;padding-block:0 5rem}
+
+/* ---------- экстренное ---------- */
+.emergency{background:var(--stop-bg);border-radius:8px;padding:1rem 1.1rem;
+  margin-block:1.4rem;border-left:4px solid var(--stop)}
+.emergency b{color:var(--stop)}
+.emergency a{color:var(--stop);font-weight:600}
+
+/* ---------- шапка ---------- */
+header{padding-block:2rem 1.2rem}
+.eyebrow{font-family:var(--mono);font-size:.72rem;letter-spacing:.14em;
+  text-transform:uppercase;color:var(--accent);margin:0 0 .7rem}
+h1{font-family:var(--serif);font-weight:700;font-size:clamp(1.8rem,6.5vw,2.5rem);
+  line-height:1.12;margin:0 0 .7rem;text-wrap:balance}
+.lede{color:var(--ink-soft);margin:0;font-size:1.03rem}
+
+/* ---------- вкладки ---------- */
+.tabs{display:flex;gap:.4rem;overflow-x:auto;scrollbar-width:none;
+  margin-block:1.6rem 1.8rem;padding-bottom:2px}
+.tabs::-webkit-scrollbar{display:none}
+.tab{flex:0 0 auto;font-family:var(--sans);font-size:.92rem;font-weight:500;
+  padding:.5rem .9rem;border-radius:999px;border:1px solid var(--line-strong);
+  background:transparent;color:var(--ink-soft);cursor:pointer}
+.tab[aria-selected="true"]{background:var(--accent);border-color:var(--accent);color:#fff}
+
+h2{font-family:var(--serif);font-weight:600;font-size:1.4rem;line-height:1.25;
+  margin:0 0 .5rem;text-wrap:balance}
+h3{font-size:1rem;font-weight:600;margin:1.8rem 0 .5rem}
+.sub{color:var(--ink-soft);margin:0 0 1.5rem}
+p{margin:0 0 1rem}
+
+/* ---------- калькулятор ---------- */
+.group{margin-bottom:1.6rem}
+.group h3{font-family:var(--mono);font-size:.74rem;letter-spacing:.1em;
+  text-transform:uppercase;color:var(--accent);margin:0 0 .7rem;font-weight:500}
+.q{background:var(--surface);border:1px solid var(--line);border-radius:8px;
+  padding:.85rem .95rem;margin-bottom:.6rem}
+.q .t{display:block;margin-bottom:.6rem;font-size:.97rem}
+.opts{display:grid;grid-template-columns:repeat(3,1fr);gap:.35rem}
+.opts button{font-family:var(--sans);font-size:.85rem;padding:.5rem .2rem;
+  border-radius:6px;border:1px solid var(--line-strong);background:transparent;
+  color:var(--ink-soft);cursor:pointer;line-height:1.25}
+.opts button[aria-pressed="true"]{border-color:var(--accent);background:var(--accent-soft);
+  color:var(--accent);font-weight:600}
+
+/* ---------- итог ----------
+   Держим сверху, а не снизу: прижатый к низу блок на телефоне
+   закрывал сами вопросы, и шкалы было не видно. */
+.result{position:sticky;top:0;z-index:5;background:var(--surface);
+  border:1px solid var(--line-strong);border-radius:10px;padding:.8rem .95rem;
+  margin-block:0 1.4rem;box-shadow:0 2px 14px rgba(0,0,0,.07)}
+.result .line{display:flex;justify-content:space-between;align-items:baseline;gap:.8rem}
+.result .num{font-family:var(--mono);font-size:1.05rem;font-weight:500;
+  font-variant-numeric:tabular-nums;color:var(--accent);white-space:nowrap;flex:0 0 auto}
+.result .lvl{font-weight:600;font-size:.98rem;line-height:1.3}
+.result .hrs{color:var(--ink-soft);font-size:.9rem;margin-top:.25rem}
+.bar{height:5px;border-radius:3px;background:var(--surface-2);margin:.6rem 0 .4rem;overflow:hidden}
+.bar i{display:block;height:100%;background:var(--accent);width:0;transition:width .3s ease}
+.note{font-size:.82rem;color:var(--ink-faint);margin:.5rem 0 0;line-height:1.45}
+.note:empty{display:none}
+
+/* ---------- чек-лист найма ---------- */
+.check{list-style:none;margin:0;padding:0}
+.check li{display:flex;gap:.75rem;align-items:flex-start;padding:.7rem 0;
+  border-bottom:1px solid var(--line)}
+.check input{width:22px;height:22px;margin:.15rem 0 0;accent-color:var(--accent);flex:0 0 auto}
+.check .txt{font-size:.97rem}
+.check .why{display:block;color:var(--ink-faint);font-size:.87rem;margin-top:.15rem}
+.check input:checked + .txt{color:var(--ink-faint)}
+
+.card{background:var(--surface);border:1px solid var(--line);border-radius:8px;
+  padding:1rem 1.1rem;margin-bottom:.9rem}
+.card .h{font-weight:600;display:block;margin-bottom:.3rem}
+.card p{margin:0;color:var(--ink-soft);font-size:.95rem}
+.card.free{border-left:3px solid var(--ok)}
+.card.paid{border-left:3px solid var(--warn)}
+.card.flag{border-left:3px solid var(--stop)}
+.tag{font-family:var(--mono);font-size:.66rem;letter-spacing:.08em;
+  text-transform:uppercase;padding:.15rem .4rem;border-radius:3px;margin-left:.4rem}
+.tag.free{background:var(--ok-bg);color:var(--ok)}
+.tag.paid{background:var(--warn-bg);color:var(--warn)}
+
+.cta{display:block;background:var(--accent);color:#fff;text-align:center;
+  padding:.9rem;border-radius:8px;text-decoration:none;font-weight:600;
+  margin-top:1.4rem}
+footer{margin-top:2.5rem;padding-top:1.4rem;border-top:1px solid var(--line-strong);
+  color:var(--ink-faint);font-size:.85rem}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <p class="eyebrow">АНО «СДУТ» · Тольятти</p>
+  <h1>Помощь дома</h1>
+  <p class="lede">Посчитать, на какую помощь можно рассчитывать, и разобраться, как её получить.</p>
+</header>
+
+<div class="emergency">
+  <b>Если человеку плохо прямо сейчас</b> — звоните <a href="tel:103">103</a>,
+  с мобильного также <a href="tel:112">112</a>. Круглосуточно, бесплатно,
+  без направления. Всё остальное подождёт.
+</div>
+
+<div class="tabs" role="tablist">
+  <button class="tab" id="tab-calc" role="tab" aria-selected="true" aria-controls="p-calc">Сколько часов положено</button>
+  <button class="tab" id="tab-hire" role="tab" aria-selected="false" aria-controls="p-hire">Нанять помощника</button>
+  <button class="tab" id="tab-docs" role="tab" aria-selected="false" aria-controls="p-docs">Что собрать</button>
+</div>
+
+<!-- ============ КАЛЬКУЛЯТОР ============ -->
+<section id="p-calc" role="tabpanel" aria-labelledby="tab-calc">
+  <h2>Сколько часов помощи положено</h2>
+  <p class="sub">Двадцать одна позиция из оценочной шкалы приказа. Отметьте, что человек
+  может делать сам — счёт идёт сразу.</p>
+  <div class="result" id="result">
+    <div class="line">
+      <span class="lvl" id="lvl">Отмечено 0 из 21</span>
+      <span class="num" id="num">0 / 55</span>
+    </div>
+    <div class="bar"><i id="bar"></i></div>
+    <div class="hrs" id="hrs">Уровень появится, когда отмечены все позиции.</div>
+    <p class="note" id="note"></p>
+  </div>
+
+  <div id="scale"></div>
+</section>
+
+<!-- ============ НАЙМ ============ -->
+<section id="p-hire" role="tabpanel" aria-labelledby="tab-hire" hidden>
+  <h2>Нанять помощника по уходу</h2>
+  <p class="sub">Сначала — что можно получить бесплатно. Платить имеет смысл за то,
+  что сверх этого.</p>
+
+  <div class="card free">
+    <span class="h">Социальный пакет долговременного ухода<span class="tag free">бесплатно</span></span>
+    <p>Помощник приходит домой и делает то, что человек не может сам: моет, кормит,
+    перемещает, меняет подгузник. Объём — от одиннадцати до двадцати восьми часов
+    в неделю, в зависимости от уровня нуждаемости. Считается на первой вкладке.</p>
+  </div>
+
+  <div class="card free">
+    <span class="h">Социальное обслуживание на дому<span class="tag free">бесплатно или с доплатой</span></span>
+    <p>Соцработник: покупки, лекарства, уборка, оплата счетов. Бесплатно, если доход
+    ниже полутора прожиточных минимумов; иначе — с частичной оплатой.</p>
+  </div>
+
+  <div class="card free">
+    <span class="h">Выплата родственнику<span class="tag free">бесплатно</span></span>
+    <p>Если уход берёт на себя неработающий член семьи, за это бывает положена
+    ежемесячная выплата. Условия уточняет координатор — они зависят от группы
+    инвалидности и возраста.</p>
+  </div>
+
+  <div class="card paid">
+    <span class="h">Частная сиделка<span class="tag paid">платно</span></span>
+    <p>Имеет смысл, когда нужно больше часов, чем даёт пакет, или круглосуточно.
+    Ниже — что спросить, прежде чем договариваться.</p>
+  </div>
+
+  <h3>Что спросить у сиделки до того, как договоритесь</h3>
+  <ul class="check" id="hire-check"></ul>
+
+  <h3>Когда стоит насторожиться</h3>
+  <div class="card flag">
+    <span class="h">Не даёт документы и не хочет договор</span>
+    <p>Без договора нельзя ни спросить за качество, ни расстаться без скандала.</p>
+  </div>
+  <div class="card flag">
+    <span class="h">Обещает «вылечить» или отменяет назначения врача</span>
+    <p>Помощник по уходу не лечит. Отмена лекарств — повод прекратить сразу.</p>
+  </div>
+  <div class="card flag">
+    <span class="h">Просит доступ к банковской карте или документам на квартиру</span>
+    <p>Покупки — по чекам и наличным. Ничего больше.</p>
+  </div>
+  <div class="card flag">
+    <span class="h">Человек стал молчаливым, боится или появились синяки</span>
+    <p>Это разговор не с сиделкой, а с координатором службы. Сразу.</p>
+  </div>
+
+  <!-- Телефон службы в справочнике не заполнен (phone: "" в настройках
+       index.html), и ставить сюда выдуманный нельзя: человек позвонит
+       в никуда. Ведём в бота — его адрес настоящий и работает. -->
+  <a class="cta" href="https://max.ru/id6320093220_bot">Написать координатору в MAX</a>
+</section>
+
+<!-- ============ ДОКУМЕНТЫ ============ -->
+<section id="p-docs" role="tabpanel" aria-labelledby="tab-docs" hidden>
+  <h2>Что собрать</h2>
+  <p class="sub">Заранее собирать всё не нужно — координатор скажет, что понадобится
+  именно вам. Этот список на случай, если хочется подготовиться.</p>
+  <ul class="check" id="docs-check"></ul>
+  <p class="note">Отметки сохраняются в этом телефоне. Ничего никуда не отправляется.</p>
+  <a class="cta" href="https://max.ru/id6320093220_bot">Написать координатору в MAX</a>
+</section>
+
+<footer>
+  АНО «Система долговременного ухода», Тольятти.
+  Расчёт предварительный и не заменяет очную оценку.
+</footer>
+
+</div>
+
+<script>
+(function(){
+  "use strict";
+
+  /* ---------------- вкладки ---------------- */
+  var tabs = [].slice.call(document.querySelectorAll('.tab'));
+  tabs.forEach(function(t){
+    t.addEventListener('click', function(){
+      tabs.forEach(function(o){
+        var panel = document.getElementById(o.getAttribute('aria-controls'));
+        var on = (o === t);
+        o.setAttribute('aria-selected', on ? 'true' : 'false');
+        if (panel) panel.hidden = !on;
+      });
+      window.scrollTo({top: 0, behavior: 'smooth'});
+    });
+  });
+
+  /* ---------------- хранение отметок ---------------- */
+  function load(key){
+    try { return JSON.parse(localStorage.getItem(key) || '{}'); }
+    catch(e){ return {}; }
+  }
+  function save(key, value){
+    try { localStorage.setItem(key, JSON.stringify(value)); } catch(e){}
+  }
+
+  /* ---------------- калькулятор ---------------- */
+  var ШКАЛА = null, ОТВЕТЫ = load('sdut-scale');
+
+  function рисоватьШкалу(){
+    var корень = document.getElementById('scale');
+    var разделы = [];
+    ШКАЛА.позиции.forEach(function(п){
+      if (разделы.indexOf(п.раздел) === -1) разделы.push(п.раздел);
+    });
+    корень.innerHTML = разделы.map(function(р){
+      var список = ШКАЛА.позиции.filter(function(п){ return п.раздел === р; });
+      return '<div class="group"><h3>' + р + '</h3>' + список.map(function(п){
+        return '<div class="q"><span class="t">' + п.вопрос + '</span>' +
+          '<div class="opts" data-id="' + п.id + '">' +
+            '<button type="button" data-g="может_сам">Сам</button>' +
+            '<button type="button" data-g="частично">С трудом</button>' +
+            '<button type="button" data-g="не_может">Не может</button>' +
+          '</div></div>';
+      }).join('') + '</div>';
+    }).join('');
+
+    корень.addEventListener('click', function(ev){
+      var кнопка = ev.target.closest('button[data-g]');
+      if (!кнопка) return;
+      var id = кнопка.parentNode.getAttribute('data-id');
+      ОТВЕТЫ[id] = (ОТВЕТЫ[id] === кнопка.getAttribute('data-g'))
+        ? null : кнопка.getAttribute('data-g');
+      save('sdut-scale', ОТВЕТЫ);
+      обновить();
+    });
+    обновить();
+  }
+
+  function обновить(){
+    var сумма = 0, отвечено = 0;
+    ШКАЛА.позиции.forEach(function(п){
+      var г = ОТВЕТЫ[п.id];
+      if (!г) return;
+      отвечено++;
+      if (г === 'частично') сумма += п.частично;
+      else if (г === 'не_может') сумма += п.не_может;
+      var набор = document.querySelector('.opts[data-id="' + п.id + '"]');
+      if (набор) [].forEach.call(набор.children, function(b){
+        b.setAttribute('aria-pressed', b.getAttribute('data-g') === г ? 'true' : 'false');
+      });
+    });
+    // Снять подсветку там, где отметку убрали
+    ШКАЛА.позиции.forEach(function(п){
+      if (ОТВЕТЫ[п.id]) return;
+      var набор = document.querySelector('.opts[data-id="' + п.id + '"]');
+      if (набор) [].forEach.call(набор.children, function(b){
+        b.setAttribute('aria-pressed','false');
+      });
+    });
+
+    var всего = ШКАЛА.позиции.length;
+    document.getElementById('num').textContent =
+      (Math.round(сумма * 10) / 10) + ' / ' + ШКАЛА.максимум;
+    document.getElementById('bar').style.width =
+      Math.min(100, (сумма / ШКАЛА.максимум) * 100) + '%';
+
+    var подпись = document.getElementById('lvl');
+    var часы = document.getElementById('hrs');
+    var сноска = document.getElementById('note');
+
+    if (отвечено < всего){
+      подпись.textContent = 'Отмечено ' + отвечено + ' из ' + всего;
+      часы.textContent = 'Уровень считается, когда отмечены все позиции.';
+      сноска.textContent = '';
+      return;
+    }
+    var уровень = ШКАЛА.уровни.filter(function(у){ return сумма >= у.от; })[0]
+                  || ШКАЛА.уровни[ШКАЛА.уровни.length - 1];
+    подпись.textContent = уровень.название;
+    часы.textContent = уровень.номер > 0
+      ? 'Социальный пакет: ' + уровень.часов_в_неделю[0] + '–' +
+        уровень.часов_в_неделю[1] + ' часов помощи в неделю.'
+      : 'По этой шкале уровень не устанавливается. Это не значит «помощь не нужна» — позвоните координатору.';
+    сноска.textContent = ШКАЛА.оговорка;
+  }
+
+  /* ---------------- чек-листы ---------------- */
+  var ВОПРОСЫ_СИДЕЛКЕ = [
+    ['Есть ли опыт именно с лежачими и готовы ли показать, как перемещаете',
+     'Перемещение — то, на чём чаще всего надрывают спину и роняют человека.'],
+    ['Что именно входит в работу, а что нет',
+     'Готовка, стирка, прогулка, уколы — это разные вещи, и договориться надо до, а не после.'],
+    ['Сколько часов, в какие дни, и что будет при болезни или отпуске',
+     'Подмена — самый частый повод для срыва всего ухода.'],
+    ['Умеет ли обрабатывать кожу и замечать пролежни',
+     'Пролежень появляется за несколько часов лежания без поворотов.'],
+    ['Что будет делать, если человеку станет плохо',
+     'Правильный ответ начинается со «звоню 103», а не «жду вас».'],
+    ['Готовы ли подписать договор и показать документы',
+     'Без договора спросить за качество не с кого.'],
+    ['Кто покупает продукты и как отчитываются за деньги',
+     'Чеки и наличные. Карту не передавайте.'],
+    ['Испытательная неделя — согласны?',
+     'За неделю видно и человека, и то, как на него реагирует подопечный.']
+  ];
+
+  var ДОКУМЕНТЫ = [
+    ['Паспорт человека, за которым уход', 'И ваш, если обращаетесь за него.'],
+    ['СНИЛС и полис ОМС', 'Понадобятся почти везде.'],
+    ['Справка об инвалидности, если есть', 'Если нет — это не помеха обратиться.'],
+    ['ИПРА — программа реабилитации', 'По ней дают технические средства.'],
+    ['Выписки из больницы за последний год', 'Хотя бы последнюю.'],
+    ['Список лекарств с дозами', 'Можно просто сфотографировать упаковки.'],
+    ['Документ о полномочиях, если человек не может подписать сам',
+     'Доверенность или решение об опеке. Координатор подскажет, что именно.']
+  ];
+
+  function чеклист(узел, данные, ключ){
+    var отмечено = load(ключ);
+    узел.innerHTML = данные.map(function(п, i){
+      return '<li><input type="checkbox" id="' + ключ + '-' + i + '"' +
+        (отмечено[i] ? ' checked' : '') + '>' +
+        '<label class="txt" for="' + ключ + '-' + i + '">' + п[0] +
+        '<span class="why">' + p1(п) + '</span></label></li>';
+    }).join('');
+    узел.addEventListener('change', function(ev){
+      if (ev.target.type !== 'checkbox') return;
+      отмечено[ev.target.id.split('-').pop()] = ev.target.checked;
+      save(ключ, отмечено);
+    });
+  }
+  function p1(п){ return п[1] || ''; }
+
+  чеклист(document.getElementById('hire-check'), ВОПРОСЫ_СИДЕЛКЕ, 'sdut-hire');
+  чеклист(document.getElementById('docs-check'), ДОКУМЕНТЫ, 'sdut-docs');
+
+  /* ---------------- загрузка шкалы ---------------- */
+  fetch('шкала.json')
+    .then(function(r){ if (!r.ok) throw new Error(r.status); return r.json(); })
+    .then(function(d){ ШКАЛА = d; рисоватьШкалу(); })
+    .catch(function(){
+      document.getElementById('scale').innerHTML =
+        '<div class="card"><span class="h">Шкала не загрузилась</span>' +
+        '<p>Проверьте соединение и откройте страницу заново. ' +
+        'Остальные разделы работают.</p></div>';
+      document.getElementById('result').hidden = true;
+    });
+})();
+</script>
+</body>
+</html>
