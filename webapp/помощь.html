@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Помощь дома — СДУТ</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%231B5A55'/%3E%3Cpath d='M9 17h14M16 10v14' stroke='white' stroke-width='3' stroke-linecap='round'/%3E%3C/svg%3E">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Literata:opsz,wght@7..72,600;7..72,700&family=Golos+Text:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
@@ -96,6 +97,52 @@ p{margin:0 0 1rem}
 .note{font-size:.82rem;color:var(--ink-faint);margin:.5rem 0 0;line-height:1.45}
 .note:empty{display:none}
 
+/* ---------- поиск по материалам ---------- */
+.search{width:100%;font-family:var(--sans);font-size:1rem;padding:.8rem .9rem;
+  border-radius:8px;border:1px solid var(--line-strong);background:var(--surface);
+  color:var(--ink);margin-bottom:1.2rem}
+.search:focus{outline:2px solid var(--accent);outline-offset:1px}
+.hit{background:var(--surface);border:1px solid var(--line);border-radius:8px;
+  margin-bottom:.6rem;overflow:hidden}
+.hit > summary{padding:.8rem .95rem;cursor:pointer;list-style:none;font-weight:600;
+  font-size:.97rem;line-height:1.35}
+.hit > summary::-webkit-details-marker{display:none}
+.hit > summary::after{content:"▾";float:right;color:var(--ink-faint);font-weight:400}
+.hit[open] > summary::after{content:"▴"}
+.hit .where{display:block;font-family:var(--mono);font-size:.66rem;
+  letter-spacing:.08em;text-transform:uppercase;color:var(--accent);
+  font-weight:500;margin-bottom:.25rem}
+.hit .body{padding:0 .95rem .95rem;color:var(--ink-soft);font-size:.95rem;
+  white-space:pre-wrap;line-height:1.55}
+.hit .src{display:block;margin-top:.7rem;padding-top:.6rem;
+  border-top:1px solid var(--line);font-size:.8rem;color:var(--ink-faint)}
+.sect{font-family:var(--mono);font-size:.72rem;letter-spacing:.1em;
+  text-transform:uppercase;color:var(--accent);margin:1.4rem 0 .6rem;font-weight:500}
+.empty{color:var(--ink-soft);padding:1rem 0}
+
+/* ---------- анкета ---------- */
+.fq{background:var(--surface);border:1px solid var(--line);border-radius:8px;
+  padding:.85rem .95rem;margin-bottom:.6rem}
+.fq .t{display:block;margin-bottom:.6rem;font-size:.97rem;font-weight:500}
+.fq .opt{display:block;width:100%;text-align:left;font-family:var(--sans);
+  font-size:.92rem;padding:.55rem .7rem;margin-bottom:.3rem;border-radius:6px;
+  border:1px solid var(--line-strong);background:transparent;color:var(--ink-soft);
+  cursor:pointer;line-height:1.3}
+.fq .opt[aria-pressed="true"]{border-color:var(--accent);background:var(--accent-soft);
+  color:var(--accent);font-weight:600}
+.fq input[type=text]{width:100%;font-family:var(--sans);font-size:.97rem;
+  padding:.6rem .7rem;border-radius:6px;border:1px solid var(--line-strong);
+  background:transparent;color:var(--ink)}
+.send{width:100%;font-family:var(--sans);font-size:1rem;font-weight:600;
+  padding:.9rem;border-radius:8px;border:0;background:var(--accent);color:#fff;
+  cursor:pointer;margin-top:1.2rem}
+.send[disabled]{opacity:.45;cursor:default}
+.sent{background:var(--ok-bg);color:var(--ok);border-radius:8px;padding:.8rem .95rem;
+  margin-top:.8rem;font-size:.93rem}
+.dump{width:100%;min-height:9rem;font-family:var(--mono);font-size:.82rem;
+  padding:.7rem;border-radius:8px;border:1px solid var(--line-strong);
+  background:var(--surface-2);color:var(--ink);margin-top:.8rem;line-height:1.5}
+
 /* ---------- чек-лист найма ---------- */
 .check{list-style:none;margin:0;padding:0}
 .check li{display:flex;gap:.75rem;align-items:flex-start;padding:.7rem 0;
@@ -141,13 +188,25 @@ footer{margin-top:2.5rem;padding-top:1.4rem;border-top:1px solid var(--line-stro
 </div>
 
 <div class="tabs" role="tablist">
-  <button class="tab" id="tab-calc" role="tab" aria-selected="true" aria-controls="p-calc">Сколько часов положено</button>
+  <button class="tab" id="tab-find" role="tab" aria-selected="true" aria-controls="p-find">Справочник</button>
+  <button class="tab" id="tab-calc" role="tab" aria-selected="false" aria-controls="p-calc">Сколько часов положено</button>
+  <button class="tab" id="tab-form" role="tab" aria-selected="false" aria-controls="p-form">Анкета</button>
   <button class="tab" id="tab-hire" role="tab" aria-selected="false" aria-controls="p-hire">Нанять помощника</button>
   <button class="tab" id="tab-docs" role="tab" aria-selected="false" aria-controls="p-docs">Что собрать</button>
 </div>
 
+<!-- ============ СПРАВОЧНИК ============ -->
+<section id="p-find" role="tabpanel" aria-labelledby="tab-find">
+  <h2>Материалы службы</h2>
+  <p class="sub" id="find-sub">Всё, что знает бот, — здесь целиком. Напишите своими
+  словами: «пролежни», «маме нечем платить», «как оформить инвалидность».</p>
+  <input class="search" id="q" type="search" enterkeyhint="search"
+         placeholder="Что случилось или о чём спросить" autocomplete="off">
+  <div id="find-out"></div>
+</section>
+
 <!-- ============ КАЛЬКУЛЯТОР ============ -->
-<section id="p-calc" role="tabpanel" aria-labelledby="tab-calc">
+<section id="p-calc" role="tabpanel" aria-labelledby="tab-calc" hidden>
   <h2>Сколько часов помощи положено</h2>
   <p class="sub">Двадцать одна позиция из оценочной шкалы приказа. Отметьте, что человек
   может делать сам — счёт идёт сразу.</p>
@@ -162,6 +221,23 @@ footer{margin-top:2.5rem;padding-top:1.4rem;border-top:1px solid var(--line-stro
   </div>
 
   <div id="scale"></div>
+</section>
+
+<!-- ============ АНКЕТА ============ -->
+<section id="p-form" role="tabpanel" aria-labelledby="tab-form" hidden>
+  <h2>Анкета для координатора</h2>
+  <p class="sub">Те же вопросы, что задаёт бот. Можно заполнить здесь — спокойно,
+  с возможностью вернуться, — а потом передать одним сообщением.</p>
+  <div class="result" id="form-top">
+    <div class="line">
+      <span class="lvl" id="form-count">Отвечено 0</span>
+      <span class="num" id="form-of">из 0</span>
+    </div>
+    <div class="bar"><i id="form-bar"></i></div>
+    <div class="hrs">Ничего никуда не отправляется, пока вы сами не нажмёте кнопку внизу.</div>
+  </div>
+  <div id="form"></div>
+  <div id="form-send"></div>
 </section>
 
 <!-- ============ НАЙМ ============ -->
@@ -398,16 +474,228 @@ footer{margin-top:2.5rem;padding-top:1.4rem;border-top:1px solid var(--line-stro
   чеклист(document.getElementById('hire-check'), ВОПРОСЫ_СИДЕЛКЕ, 'sdut-hire');
   чеклист(document.getElementById('docs-check'), ДОКУМЕНТЫ, 'sdut-docs');
 
+  /* ---------------- поиск по материалам ----------------
+     Ищем так же, как бот: по началу слова. Русский склоняется,
+     и «уровень», «уровня», «уровни» должны находиться одинаково. */
+  var БАЗА = null;
+
+  function основы(текст){
+    var слова = (текст || '').toLowerCase().replace(/ё/g,'е').match(/[а-яa-z0-9]+/g) || [];
+    return слова.filter(function(с){ return с.length >= 4 || /^\d+$/.test(с); })
+                .map(function(с){ return с.slice(0, 5); });
+  }
+
+  function искать(запрос){
+    var нужно = основы(запрос);
+    if (!нужно.length) return [];
+    var фраза = (запрос || '').toLowerCase().replace(/ё/g,'е').trim();
+    return БАЗА.статьи.map(function(с){
+      // Места разной ценности считаем раздельно. Пока они были свалены
+      // в одну строку, «пролежни» находило статью про паллиативный
+      // статус: слово стояло у неё в ключах и весило столько же,
+      // сколько чужой заголовок.
+      var заголовок = с.заголовок.toLowerCase().replace(/ё/g,'е');
+      var ключи = с.ключи.join(' ').toLowerCase().replace(/ё/g,'е');
+      var раздел = с.раздел.toLowerCase().replace(/ё/g,'е');
+      var тело = с.текст.toLowerCase().replace(/ё/g,'е');
+      var вес = 0, совпало = 0;
+      нужно.forEach(function(о){
+        if (заголовок.indexOf(о) >= 0)      { вес += 10; совпало++; }
+        else if (ключи.indexOf(о) >= 0)     { вес += 5;  совпало++; }
+        else if (раздел.indexOf(о) >= 0)    { вес += 2;  совпало++; }
+        else if (тело.indexOf(о) >= 0)      { вес += 1;  совпало++; }
+      });
+      // Запрос целиком в заголовке — это почти наверняка та статья.
+      if (фраза.length >= 4 && заголовок.indexOf(фраза) >= 0) вес += 8;
+      // Длинный запрос, совпавший одним частым словом, — обычно случайность.
+      if (нужно.length >= 3 && совпало < 2) вес = 0;
+      return {статья: с, вес: вес};
+    }).filter(function(р){ return р.вес > 0; })
+      .sort(function(a,b){ return b.вес - a.вес; })
+      .slice(0, 12).map(function(р){ return р.статья; });
+  }
+
+  function экранировать(т){
+    return String(т).replace(/[&<>"]/g, function(з){
+      return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[з];
+    });
+  }
+
+  function карточка(с){
+    return '<details class="hit"><summary><span class="where">' +
+      экранировать(с.раздел) + '</span>' + экранировать(с.заголовок) + '</summary>' +
+      '<div class="body">' + экранировать(с.текст) +
+      (с.источник ? '<span class="src">Источник: ' + экранировать(с.источник) + '</span>' : '') +
+      '</div></details>';
+  }
+
+  function поРазделам(){
+    var разделы = {};
+    БАЗА.статьи.forEach(function(с){
+      (разделы[с.раздел] = разделы[с.раздел] || []).push(с);
+    });
+    return Object.keys(разделы).map(function(р){
+      return '<div class="sect">' + экранировать(р) + ' · ' + разделы[р].length + '</div>' +
+        разделы[р].map(карточка).join('');
+    }).join('');
+  }
+
+  function рисоватьПоиск(){
+    var поле = document.getElementById('q');
+    var вывод = document.getElementById('find-out');
+    var подпись = document.getElementById('find-sub');
+    подпись.textContent = 'Все ' + БАЗА.статей + ' материалов службы — здесь целиком. ' +
+      'Напишите своими словами: «пролежни», «маме нечем платить», «как оформить инвалидность».';
+    вывод.innerHTML = поРазделам();
+    var таймер = null;
+    поле.addEventListener('input', function(){
+      clearTimeout(таймер);
+      таймер = setTimeout(function(){
+        var запрос = поле.value.trim();
+        if (!запрос){ вывод.innerHTML = поРазделам(); return; }
+        var найдено = искать(запрос);
+        вывод.innerHTML = найдено.length
+          ? '<div class="sect">Нашлось: ' + найдено.length + '</div>' + найдено.map(карточка).join('')
+          : '<p class="empty">По этим словам ничего не нашлось. Попробуйте одним-двумя ' +
+            'словами — «пролежни», «коляска», «инвалидность» — или напишите вопрос ' +
+            'в бот: координатор ответит сам.</p>';
+      }, 180);
+    });
+  }
+
+  /* ---------------- анкета ---------------- */
+  var АНКЕТА = null, ОТВЕТЫ_АНКЕТЫ = load('sdut-form');
+
+  function виден(в){
+    var правило = в.когда;
+    if (!правило) return true;
+    return поПравилу(правило);
+  }
+  function поПравилу(п){
+    if (п['и']) return п['и'].every(поПравилу);
+    if (п['не']) return !поПравилу(п['не']);
+    var ключ = п['есть'][0], значения = п['есть'][1];
+    var было = (ОТВЕТЫ_АНКЕТЫ[ключ] || '').toLowerCase();
+    return значения.some(function(з){ return было.indexOf(з.toLowerCase()) >= 0; });
+  }
+
+  function рисоватьАнкету(){
+    var корень = document.getElementById('form');
+    var видимые = АНКЕТА.вопросы.filter(виден);
+    корень.innerHTML = видимые.map(function(в){
+      var тело;
+      if (в.варианты){
+        тело = в.варианты.map(function(вар){
+          var выбран = в.несколько
+            ? (ОТВЕТЫ_АНКЕТЫ[в.id] || '').split('; ').indexOf(вар) >= 0
+            : ОТВЕТЫ_АНКЕТЫ[в.id] === вар;
+          return '<button type="button" class="opt" data-q="' + в.id + '" data-v="' +
+            экранировать(вар) + '" aria-pressed="' + (выбран ? 'true' : 'false') + '">' +
+            экранировать(вар) + '</button>';
+        }).join('');
+      } else {
+        тело = '<input type="text" data-q="' + в.id + '" value="' +
+          экранировать(ОТВЕТЫ_АНКЕТЫ[в.id] || '') + '" ' +
+          (в.вид === 'phone' ? 'inputmode="tel" placeholder="8 917 000 00 00"' : '') + '>';
+      }
+      return '<div class="fq"><span class="t">' + экранировать(в.текст) + '</span>' + тело + '</div>';
+    }).join('');
+
+    var всего = видимые.length;
+    var отвечено = видимые.filter(function(в){ return ОТВЕТЫ_АНКЕТЫ[в.id]; }).length;
+    document.getElementById('form-count').textContent = 'Отвечено ' + отвечено;
+    document.getElementById('form-of').textContent = 'из ' + всего;
+    document.getElementById('form-bar').style.width = всего ? (отвечено / всего * 100) + '%' : '0';
+    рисоватьОтправку(отвечено);
+  }
+
+  function рисоватьОтправку(отвечено){
+    var узел = document.getElementById('form-send');
+    if (!отвечено){ узел.innerHTML = ''; return; }
+    узел.innerHTML =
+      '<button class="send" id="mk">Собрать ответы для координатора</button>' +
+      '<div id="mk-out"></div>';
+    document.getElementById('mk').addEventListener('click', собратьОтветы);
+  }
+
+  function текстОтветов(){
+    var строки = ['Анкета СДУТ, заполнена в мини-приложении', ''];
+    АНКЕТА.вопросы.filter(виден).forEach(function(в){
+      var о = ОТВЕТЫ_АНКЕТЫ[в.id];
+      if (о) строки.push(в.текст.split('\n')[0] + ' — ' + о);
+    });
+    return строки.join('\n');
+  }
+
+  function собратьОтветы(){
+    var текст = текстОтветов();
+    var узел = document.getElementById('mk-out');
+    узел.innerHTML =
+      '<textarea class="dump" id="dump" readonly></textarea>' +
+      '<div class="sent">Скопируйте это и отправьте одним сообщением в бот — ' +
+      'координатор получит всё сразу. Пока вы не отправили, ответы лежат только ' +
+      'в этом телефоне.</div>' +
+      '<a class="cta" href="https://max.ru/id6320093220_bot">Открыть бот в MAX</a>';
+    var поле = document.getElementById('dump');
+    поле.value = текст;
+    поле.focus(); поле.select();
+    try { navigator.clipboard && navigator.clipboard.writeText(текст); } catch(e){}
+  }
+
+  document.addEventListener('click', function(ev){
+    var кнопка = ev.target.closest('.fq .opt');
+    if (!кнопка) return;
+    var q = кнопка.getAttribute('data-q'), v = кнопка.getAttribute('data-v');
+    var вопрос = АНКЕТА.вопросы.filter(function(в){ return в.id === q; })[0];
+    if (вопрос && вопрос.несколько){
+      var было = (ОТВЕТЫ_АНКЕТЫ[q] || '').split('; ').filter(Boolean);
+      var где = было.indexOf(v);
+      if (где >= 0) было.splice(где, 1); else было.push(v);
+      ОТВЕТЫ_АНКЕТЫ[q] = было.join('; ');
+    } else {
+      ОТВЕТЫ_АНКЕТЫ[q] = (ОТВЕТЫ_АНКЕТЫ[q] === v) ? '' : v;
+    }
+    save('sdut-form', ОТВЕТЫ_АНКЕТЫ);
+    рисоватьАнкету();
+  });
+
+  document.addEventListener('input', function(ev){
+    var поле = ev.target.closest('.fq input[type=text]');
+    if (!поле) return;
+    ОТВЕТЫ_АНКЕТЫ[поле.getAttribute('data-q')] = поле.value;
+    save('sdut-form', ОТВЕТЫ_АНКЕТЫ);
+  });
+
   /* ---------------- загрузка шкалы ---------------- */
-  fetch('шкала.json')
-    .then(function(r){ if (!r.ok) throw new Error(r.status); return r.json(); })
-    .then(function(d){ ШКАЛА = d; рисоватьШкалу(); })
+  function взять(имя){
+    return fetch(имя).then(function(r){
+      if (!r.ok) throw new Error(имя + ': ' + r.status);
+      return r.json();
+    });
+  }
+
+  взять('шкала.json').then(function(d){ ШКАЛА = d; рисоватьШкалу(); })
     .catch(function(){
       document.getElementById('scale').innerHTML =
         '<div class="card"><span class="h">Шкала не загрузилась</span>' +
         '<p>Проверьте соединение и откройте страницу заново. ' +
         'Остальные разделы работают.</p></div>';
       document.getElementById('result').hidden = true;
+    });
+
+  взять('база.json').then(function(d){ БАЗА = d; рисоватьПоиск(); })
+    .catch(function(){
+      document.getElementById('find-out').innerHTML =
+        '<p class="empty">Материалы не загрузились. Проверьте соединение ' +
+        'и откройте страницу заново — или спросите в боте, он отвечает по тем же ' +
+        'материалам.</p>';
+    });
+
+  взять('анкета.json').then(function(d){ АНКЕТА = d; рисоватьАнкету(); })
+    .catch(function(){
+      document.getElementById('form').innerHTML =
+        '<p class="empty">Анкета не загрузилась. Её всегда можно пройти в самом боте.</p>';
+      document.getElementById('form-top').hidden = true;
     });
 })();
 </script>
