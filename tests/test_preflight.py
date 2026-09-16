@@ -211,3 +211,39 @@ def test_на_настроенной_машине_отмашка_даётся(ч
     итоги = preflight.проверить()
     стоп = [и for и in итоги if и.уровень == preflight.НЕЛЬЗЯ]
     assert стоп == [], [(и.что, и.подробность) for и in стоп]
+
+
+def test_расхождение_бота_и_crm_это_стоп(чисто, monkeypatch):
+    """Бот на PostgreSQL, а читается файл — координатор увидит пустоту.
+
+    Это ровно та беда, ради которой проверка и добавлена: она не ломает
+    бота и ничего не пишет в логи, а вся работа службы стоит.
+    """
+    import storage
+
+    чисто.setenv("SDUT_DATABASE_URL", "postgresql://x@127.0.0.1/x")
+    monkeypatch.setattr(storage, "где_данные", lambda: "файл")
+    monkeypatch.setattr(storage, "открыть",
+                        lambda **к: type("П", (), {"stats": lambda с: (5, 1),
+                                                   "state": {}})())
+
+    итог = preflight.карточки_видны_координатору()
+    assert итог.уровень == preflight.НЕЛЬЗЯ
+    assert "ноль обращений" in итог.делать
+
+
+def test_обращения_без_единого_телефона_это_внимание(чисто, monkeypatch):
+    """Полная база и ни одного телефона — звонить некуда."""
+    import storage
+
+    monkeypatch.setattr(storage, "где_данные", lambda: "файл")
+    monkeypatch.setattr(
+        storage, "открыть",
+        lambda **к: type("П", (), {
+            "stats": lambda с: (7, 0),
+            "state": {"a": {"answers": {"who": "О близком человеке"}}},
+        })())
+
+    итог = preflight.карточки_видны_координатору()
+    assert итог.уровень == preflight.ВНИМАНИЕ
+    assert "funnel" in итог.делать
