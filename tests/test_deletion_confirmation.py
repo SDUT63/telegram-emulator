@@ -53,13 +53,20 @@ def _purge(survey, user_id: str) -> None:
 
 
 def _drain(bot, queue) -> int:
+    """Осушить очередь целиком.
+
+    Целиком — потому что deliver_once берёт следующую доступную строку,
+    а не строку этого пользователя. Значит тест обязан начинать с пустой
+    очереди: иначе он считает чужие сообщения своими и тем дольше, чем
+    больше работы сделали тесты до него. Отсюда `clean_outbox`.
+    """
     delivered = 0
     while asyncio.run(deliver_once(bot, queue=queue)):
         delivered += 1
     return delivered
 
 
-def test_deletion_confirms_to_the_user_and_leaves_no_personal_data(postgres_dsn):
+def test_deletion_confirms_to_the_user_and_leaves_no_personal_data(postgres_dsn, clean_outbox):
     survey = ProductionPrivacySurvey(db_url=postgres_dsn, list_options=False)
     queue = PostgresOutbox(db_url=postgres_dsn)
     user_id = str(abs(hash(uuid.uuid4().hex)) % 10**9)
