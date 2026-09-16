@@ -1,0 +1,27 @@
+[Unit]
+Description=СДУТ: удаление данных по истечении срока хранения
+After=postgresql.service
+
+[Service]
+Type=oneshot
+User=sdut
+Group=sdut
+WorkingDirectory=/opt/sdut
+EnvironmentFile=/etc/sdut/bot.env
+
+# Часть 7 статьи 5 ФЗ-152: хранить не дольше, чем требует цель.
+# Срок задаёт служба через SDUT_CASE_RETENTION_DAYS; без него первая
+# команда ничего не удаляет и говорит об этом в журнале.
+ExecStart=/opt/sdut/.venv/bin/python /opt/sdut/ops/purge_expired_cases.py
+ExecStart=/opt/sdut/.venv/bin/python /opt/sdut/ops/purge_privacy.py
+
+# Неназначенный срок возвращает 2 — это не повод считать запуск
+# провалившимся и слать тревогу каждую ночь.
+SuccessExitStatus=0 2
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=sdut-retention
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
