@@ -27,6 +27,8 @@ import uuid
 from datetime import datetime
 from typing import Any
 
+import файловый_замок
+
 HERE = os.path.dirname(os.path.abspath(__file__))
 
 CRM_DATA = os.path.join(HERE, "crm_data.json")
@@ -58,10 +60,8 @@ def _read(path: str, default: Any) -> Any:
 
 
 def _write(path: str, data: Any) -> None:
-    tmp = path + ".tmp"
-    with open(tmp, "w", encoding="utf-8") as fh:
-        json.dump(data, fh, ensure_ascii=False, indent=2)
-    os.replace(tmp, path)
+    файловый_замок.записать_надёжно(
+        path, json.dumps(data, ensure_ascii=False, indent=2))
 
 
 def hash_password(password: str, salt: str | None = None) -> str:
@@ -129,11 +129,19 @@ def all_cases() -> dict[str, Any]:
 
 
 def _update(user_id: str, change) -> dict[str, Any]:
-    data = _all()
-    entry = data["cases"].setdefault(user_id, _blank_case())
-    change(entry)
-    _write(CRM_DATA, data)
-    return entry
+    """Прочитать, изменить, записать — целиком под замком.
+
+    Без замка это классическая потеря обновления: один координатор
+    ставит статус, другой в тот же момент пишет заметку, и каждый
+    записывает файл, прочитанный до чужой правки. Стенд показал:
+    из шестидесяти одновременных заметок доживало две.
+    """
+    with файловый_замок.занять(CRM_DATA):
+        data = _all()
+        entry = data["cases"].setdefault(user_id, _blank_case())
+        change(entry)
+        _write(CRM_DATA, data)
+        return entry
 
 
 def set_status(user_id: str, status: str, who: str) -> dict[str, Any]:

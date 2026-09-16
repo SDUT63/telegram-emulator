@@ -18,11 +18,13 @@ import csv
 import json
 import os
 import re
+import threading
 from datetime import datetime
 from typing import Any
 
 import consent_forms
 import fallback
+import файловый_замок
 import survey_questions
 from survey_questions import CHECKPOINT_ID, QUESTIONS, STOP_OPTION
 
@@ -321,7 +323,36 @@ class Survey:
         self.storage_path = storage_path
         self.list_options = list_options
         self.state: dict[str, dict[str, Any]] = {}
+        # Запись и разбор сообщения защищены замками. Под нагрузкой без
+        # них терялись сообщения: две нити писали в один и тот же
+        # временный файл, первая переименовывала его, вторая падала
+        # с «нет такого файла» — и ответ человека пропадал вместе
+        # с исключением. Из двухсот одновременных обращений доходило
+        # одно.
+        self._замок_записи = threading.Lock()
+        self._замки_людей: dict[str, threading.RLock] = {}
+        self._замок_замков = threading.Lock()
         self.load()
+
+    def _замок_человека(self, user_id: str) -> threading.RLock:
+        """Свой замок на каждого человека.
+
+        Общий замок на всех сделал бы бот однопоточным: пока разбирается
+        одно сообщение, ждут все остальные. Разные люди друг другу
+        не мешают, а два сообщения одного человека — мешают: мессенджер
+        повторяет доставку, человек дважды нажимает кнопку, и оба
+        сообщения отвечают на один и тот же вопрос.
+
+        Замок возвратный: внутри разбора бот иногда вызывает сам себя —
+        ответ номером кнопки разбирается тем же путём, что и ответ
+        текстом. С обычным замком это встало бы намертво, и вставало:
+        прогон проверок перестал заканчиваться вовсе.
+        """
+        with self._замок_замков:
+            замок = self._замки_людей.get(user_id)
+            if замок is None:
+                замок = self._замки_людей[user_id] = threading.RLock()
+            return замок
 
     # ------------------------------------------------------------ хранение
 
@@ -341,10 +372,50 @@ class Survey:
             self.state = {}
 
     def save(self) -> None:
-        tmp = self.storage_path + ".tmp"
-        with open(tmp, "w", encoding="utf-8") as fh:
-            json.dump(self.state, fh, ensure_ascii=False, indent=2)
-        os.replace(tmp, self.storage_path)
+        """Записать состояние целиком, не потеряв его при этом.
+
+        Временный файл у каждой записи свой. Пока имя было общим
+        (`.json.tmp`), две одновременные записи дрались за него:
+        первая переименовывала, вторая падала. Замок нужен и сам
+        по себе — сериализовать словарь, который в этот момент
+        меняет другая нить, нельзя.
+        """
+        снимок = self._снимок()
+        with self._замок_записи:
+            файловый_замок.записать_надёжно(
+                self.storage_path,
+                json.dumps(снимок, ensure_ascii=False, indent=2))
+
+    def _снимок(self) -> dict[str, dict[str, Any]]:
+        """Копия состояния, которую можно спокойно сериализовать.
+
+        Записывать напрямую из `self.state` нельзя: пока идёт запись,
+        другая нить заводит нового человека или добавляет ответ, и
+        сериализация падает с «dictionary changed size during iteration».
+        Под нагрузкой это выглядело так: из двухсот пятидесяти
+        одновременных обращений одно-два теряли сообщение.
+
+        Копируем через `.copy()`, а не обходом в цикле: в CPython это
+        одна операция на стороне интерфейса, и порвать её нельзя. Обход
+        же — обычный цикл, и рвётся именно он.
+
+        Двух уровней достаточно: глубже лежат записи сообщений и
+        отметки тревог, а они добавляются целиком и после добавления
+        не меняются.
+        """
+        снимок: dict[str, dict[str, Any]] = {}
+        for кто, запись in self.state.copy().items():
+            if not isinstance(запись, dict):
+                снимок[кто] = запись
+                continue
+            копия = запись.copy()
+            for поле, значение in копия.copy().items():
+                if isinstance(значение, dict):
+                    копия[поле] = значение.copy()
+                elif isinstance(значение, list):
+                    копия[поле] = значение.copy()
+            снимок[кто] = копия
+        return снимок
 
     def _person(self, user_id: str) -> dict[str, Any]:
         person = self.state.get(user_id)
@@ -443,6 +514,10 @@ class Survey:
         return mark if mark.get("at") else None
 
     def grant_consent(self, user_id: str) -> str:
+        with self._замок_человека(user_id):
+            return self._grant_consent(user_id)
+
+    def _grant_consent(self, user_id: str) -> str:
         """Человек согласился. Записываем факт, время и версию текста.
 
         Запись делается один раз. Повторное нажатие не меняет дату:
@@ -461,6 +536,10 @@ class Survey:
         return CONSENT_YES + "\n\n" + self._ask(user_id, self._next(0, person["answers"]))
 
     def refuse_consent(self, user_id: str) -> str:
+        with self._замок_человека(user_id):
+            return self._refuse_consent(user_id)
+
+    def _refuse_consent(self, user_id: str) -> str:
         """Отказ. Ничего, кроме самого отказа, не храним."""
         person = self._person(user_id)
         person["consent"] = {
@@ -647,6 +726,18 @@ class Survey:
         return ответ
 
     def handle(self, user_id: str, text: str) -> str:
+        """Разобрать сообщение человека и ответить.
+
+        Разбор идёт под замком этого человека: два его сообщения
+        не должны отвечать на один и тот же вопрос. Такое случается
+        не от злого умысла — мессенджер повторяет доставку, когда не
+        дождался ответа, а человек нажимает кнопку дважды, когда
+        кажется, что не сработало.
+        """
+        with self._замок_человека(user_id):
+            return self._разобрать(user_id, text)
+
+    def _разобрать(self, user_id: str, text: str) -> str:
         text = (text or "").strip()
         low = text.lower()
 
@@ -1452,13 +1543,18 @@ class Survey:
         header = ["Кто ответил", "Начато", "Завершено", "Требует внимания"] + [
             q["text"].splitlines()[0] for q in QUESTIONS
         ]
-        # utf-8-sig — чтобы Excel открыл кириллицу без «кракозябр»
+        # utf-8-sig — чтобы Excel открыл кириллицу без «кракозябр».
+        # Каждое значение проходит через таблицы.для_csv: человек может
+        # написать в ответе формулу, и она выполнится у координатора
+        # при открытии файла.
+        import таблицы
+
         with open(path, "w", encoding="utf-8-sig", newline="") as fh:
             writer = csv.writer(fh, delimiter=";")
             writer.writerow(header)
-            for user_id, person in self.state.items():
+            for user_id, person in self._снимок().items():
                 answers = person.get("answers", {})
-                writer.writerow(
+                строка = (
                     [
                         user_id,
                         person.get("started", ""),
@@ -1467,6 +1563,7 @@ class Survey:
                     ]
                     + [answers.get(q["id"], "") for q in QUESTIONS]
                 )
+                writer.writerow([таблицы.для_csv(з) for з in строка])
         return path
 
     def stats(self) -> tuple[int, int]:

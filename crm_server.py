@@ -80,6 +80,37 @@ app.config.update(
 )
 
 
+@app.after_request
+def защитные_заголовки(ответ):
+    """Заголовки, которые дёшевы и нужны, даже когда CRM стоит локально.
+
+    nosniff — чтобы вложение, названное картинкой, не исполнилось как
+    скрипт. DENY — чтобы страницу нельзя было открыть в чужом фрейме
+    и заставить оператора нажать не то, что он видит. Политика
+    содержимого запрещает подгружать что-либо со стороны: в CRM лежат
+    имена, телефоны и сведения о здоровье, и утечь они могут одним
+    запросом к чужому адресу.
+
+    unsafe-inline для стилей и скриптов пока нужен: разметка CRM
+    написана со встроенными обработчиками. Убирать его надо вместе
+    с ними, а не вместо.
+    """
+    ответ.headers.setdefault("X-Content-Type-Options", "nosniff")
+    ответ.headers.setdefault("X-Frame-Options", "DENY")
+    ответ.headers.setdefault("Referrer-Policy", "same-origin")
+    ответ.headers.setdefault(
+        "Content-Security-Policy",
+        "default-src 'self'; img-src 'self' data: blob:; "
+        "style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; "
+        "connect-src 'self'; form-action 'self'; frame-ancestors 'none'; "
+        "base-uri 'none'; object-src 'none'",
+    )
+    # Карточки не должны оседать в кэше браузера на общем компьютере.
+    if ответ.mimetype == "application/json" or ответ.direct_passthrough:
+        ответ.headers.setdefault("Cache-Control", "no-store")
+    return ответ
+
+
 def login_required(view):
     @functools.wraps(view)
     def wrapper(*args, **kwargs):
