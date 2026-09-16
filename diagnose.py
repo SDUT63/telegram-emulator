@@ -294,7 +294,7 @@ def check_knowledge() -> None:
         return
     if статей < 20:
         say(f"  [!]       в базе всего {статей} статей — похоже, "
-            "справочник webapp/index.html не найден")
+            "справочник webapp/guide.html не найден")
     else:
         say(f"  [ок]      база знаний: {статей} статей")
 

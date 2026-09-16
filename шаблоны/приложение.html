@@ -143,6 +143,88 @@ p{margin:0 0 1rem}
   padding:.7rem;border-radius:8px;border:1px solid var(--line-strong);
   background:var(--surface-2);color:var(--ink);margin-top:.8rem;line-height:1.5}
 
+/* ---------- калькулятор стоимости ---------- */
+.kinds{display:flex;flex-wrap:wrap;gap:.4rem;margin-bottom:.9rem}
+.kinds button{font-family:var(--sans);font-size:.88rem;padding:.45rem .8rem;
+  border-radius:999px;border:1px solid var(--line-strong);background:transparent;
+  color:var(--ink-soft);cursor:pointer}
+.kinds button[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);
+  color:#fff;font-weight:500}
+.pick{display:block;width:100%;text-align:left;font-family:var(--sans);
+  background:var(--surface);border:1px solid var(--line);border-radius:8px;
+  padding:.8rem .9rem;margin-bottom:.5rem;cursor:pointer;color:inherit}
+.pick[aria-pressed="true"]{border-color:var(--accent);border-left:3px solid var(--accent);
+  background:var(--accent-soft)}
+.pick .top{display:flex;justify-content:space-between;align-items:baseline;gap:.7rem}
+.pick .name{font-weight:600;font-size:.97rem;line-height:1.3}
+.pick .rub{font-family:var(--mono);font-size:.95rem;font-weight:500;
+  font-variant-numeric:tabular-nums;color:var(--accent);white-space:nowrap;flex:0 0 auto}
+.pick .hour{font-family:var(--mono);font-size:.78rem;color:var(--ink-faint);
+  display:block;margin-top:.15rem;text-align:right}
+.pick .what{display:block;color:var(--ink-soft);font-size:.87rem;margin-top:.4rem;
+  line-height:1.45}
+.step{display:flex;align-items:center;gap:.7rem}
+.step button{width:44px;height:44px;border-radius:8px;border:1px solid var(--line-strong);
+  background:var(--surface);color:var(--ink);font-size:1.3rem;cursor:pointer;line-height:1}
+.step .n{font-family:var(--mono);font-size:1.2rem;font-weight:500;min-width:2.2rem;
+  text-align:center;font-variant-numeric:tabular-nums}
+.step .unit{color:var(--ink-soft);font-size:.93rem}
+.adds{list-style:none;margin:0;padding:0}
+.adds li{display:flex;gap:.7rem;align-items:flex-start;padding:.65rem 0;
+  border-bottom:1px solid var(--line)}
+.adds input{width:22px;height:22px;margin:.15rem 0 0;accent-color:var(--accent);flex:0 0 auto}
+.adds .txt{font-size:.95rem;flex:1 1 auto}
+.adds .pct{font-family:var(--mono);font-size:.82rem;font-weight:500;flex:0 0 auto;
+  padding:.1rem .35rem;border-radius:4px;background:var(--warn-bg);color:var(--warn)}
+.adds .pct.down{background:var(--ok-bg);color:var(--ok)}
+.adds .why{display:block;color:var(--ink-faint);font-size:.85rem;margin-top:.15rem;
+  line-height:1.45}
+.adds li.off{opacity:.55}
+.lines{background:var(--surface);border:1px solid var(--line);border-radius:8px;
+  padding:.5rem .95rem}
+.lines .r{display:flex;justify-content:space-between;gap:.8rem;padding:.45rem 0;
+  font-size:.92rem;border-bottom:1px solid var(--line)}
+.lines .r:last-child{border-bottom:0}
+.lines .r.sum{font-weight:600;font-size:1rem;padding-top:.7rem}
+.lines .r span:last-child{font-family:var(--mono);font-variant-numeric:tabular-nums;
+  white-space:nowrap;flex:0 0 auto}
+.lines .r.skip{color:var(--ink-faint);font-size:.85rem}
+.cmp{margin-bottom:1rem}
+.cmp .row{margin-bottom:.9rem}
+.cmp .hd{display:flex;justify-content:space-between;align-items:baseline;gap:.7rem;
+  font-size:.93rem}
+.cmp .hd b{font-weight:600}
+.cmp .hd .rub{font-family:var(--mono);font-variant-numeric:tabular-nums;
+  color:var(--accent);white-space:nowrap;flex:0 0 auto}
+.cmp .track{height:10px;border-radius:5px;background:var(--surface-2);margin:.35rem 0;
+  overflow:hidden}
+.cmp .track i{display:block;height:100%;background:var(--accent);width:0;
+  transition:width .35s ease}
+.cmp .who{color:var(--ink-faint);font-size:.85rem;line-height:1.45}
+.grp{background:var(--surface);border:1px solid var(--line);border-radius:8px;
+  margin-bottom:.5rem;overflow:hidden}
+.grp > summary{padding:.75rem .95rem;cursor:pointer;list-style:none;font-weight:600;
+  font-size:.95rem}
+.grp > summary::-webkit-details-marker{display:none}
+.grp > summary::after{content:"▾";float:right;color:var(--ink-faint);font-weight:400}
+.grp[open] > summary::after{content:"▴"}
+.grp .cnt{font-family:var(--mono);font-size:.8rem;color:var(--ink-faint);
+  font-weight:400;margin-left:.4rem}
+.grp .inner{padding:0 .95rem .6rem}
+.plain li{border-bottom:1px solid var(--line);padding:.6rem 0;font-size:.93rem;
+  color:var(--ink-soft)}
+.plain{list-style:none;margin:0;padding:0}
+
+/* ---------- перенос ответов из бота ---------- */
+.carry{background:var(--ok-bg);border-radius:8px;padding:.85rem .95rem;
+  margin-bottom:1rem;font-size:.93rem;color:var(--ok)}
+.carry b{display:block;margin-bottom:.2rem}
+.paste{width:100%;min-height:5.5rem;font-family:var(--sans);font-size:.9rem;
+  padding:.6rem .7rem;border-radius:8px;border:1px solid var(--line-strong);
+  background:var(--surface);color:var(--ink);margin-top:.5rem}
+.linkish{background:none;border:0;padding:0;font:inherit;color:var(--accent);
+  text-decoration:underline;cursor:pointer}
+
 /* ---------- чек-лист найма ---------- */
 .check{list-style:none;margin:0;padding:0}
 .check li{display:flex;gap:.75rem;align-items:flex-start;padding:.7rem 0;
@@ -176,7 +258,7 @@ footer{margin-top:2.5rem;padding-top:1.4rem;border-top:1px solid var(--line-stro
 <div class="wrap">
 
 <header>
-  <p class="eyebrow"><a href="index.html" style="color:inherit;text-decoration:none">‹ Навигатор помощи</a> · АНО «СДУТ»</p>
+  <p class="eyebrow"><a href="guide.html" style="color:inherit;text-decoration:none">‹ Навигатор помощи</a> · АНО «СДУТ»</p>
   <h1>Помощь дома</h1>
   <p class="lede">Посчитать, на какую помощь можно рассчитывать, и разобраться, как её получить.</p>
 </header>
@@ -191,7 +273,7 @@ footer{margin-top:2.5rem;padding-top:1.4rem;border-top:1px solid var(--line-stro
   <button class="tab" id="tab-find" role="tab" aria-selected="true" aria-controls="p-find">Справочник</button>
   <button class="tab" id="tab-calc" role="tab" aria-selected="false" aria-controls="p-calc">Сколько часов положено</button>
   <button class="tab" id="tab-form" role="tab" aria-selected="false" aria-controls="p-form">Анкета</button>
-  <button class="tab" id="tab-hire" role="tab" aria-selected="false" aria-controls="p-hire">Нанять помощника</button>
+  <button class="tab" id="tab-cost" role="tab" aria-selected="false" aria-controls="p-cost">Сколько стоит</button>
   <button class="tab" id="tab-docs" role="tab" aria-selected="false" aria-controls="p-docs">Что собрать</button>
 </div>
 
@@ -226,8 +308,21 @@ footer{margin-top:2.5rem;padding-top:1.4rem;border-top:1px solid var(--line-stro
 <!-- ============ АНКЕТА ============ -->
 <section id="p-form" role="tabpanel" aria-labelledby="tab-form" hidden>
   <h2>Анкета для координатора</h2>
-  <p class="sub">Те же вопросы, что задаёт бот. Можно заполнить здесь — спокойно,
-  с возможностью вернуться, — а потом передать одним сообщением.</p>
+  <p class="sub">Те же вопросы, что задаёт бот. Заполнять дважды не нужно: если вы
+  уже отвечали в чате, напишите боту «приложение» — он пришлёт ссылку, в которой
+  ответы уже лежат.</p>
+  <div class="carry" id="carry" hidden></div>
+  <details class="grp" id="carry-box">
+    <summary>Перенести ответы из бота вручную</summary>
+    <div class="inner">
+      <p class="note">Если ссылка не открылась, скопируйте из чата сообщение бота
+      «Что записано» целиком и вставьте сюда. Ничего никуда не отправляется —
+      разбор идёт прямо в телефоне.</p>
+      <textarea class="paste" id="paste" placeholder="Что записано:&#10;• Кому нужна помощь&#10;  о близком"></textarea>
+      <button class="send" id="paste-go">Разобрать и заполнить</button>
+      <div id="paste-out"></div>
+    </div>
+  </details>
   <div class="result" id="form-top">
     <div class="line">
       <span class="lvl" id="form-count">Отвечено 0</span>
@@ -240,39 +335,75 @@ footer{margin-top:2.5rem;padding-top:1.4rem;border-top:1px solid var(--line-stro
   <div id="form-send"></div>
 </section>
 
-<!-- ============ НАЙМ ============ -->
-<section id="p-hire" role="tabpanel" aria-labelledby="tab-hire" hidden>
-  <h2>Нанять помощника по уходу</h2>
-  <p class="sub">Сначала — что можно получить бесплатно. Платить имеет смысл за то,
-  что сверх этого.</p>
+<!-- ============ СТОИМОСТЬ ============ -->
+<section id="p-cost" role="tabpanel" aria-labelledby="tab-cost" hidden>
+  <h2>Сколько стоит уход</h2>
+  <p class="sub" id="cost-sub">Служба подбирает помощника по договору с семьёй —
+  в частном порядке. Это не социальный пакет: сколько часов положено бесплатно,
+  считает вкладка «Сколько часов положено».</p>
 
-  <div class="card free">
-    <span class="h">Социальный пакет долговременного ухода<span class="tag free">бесплатно</span></span>
-    <p>Помощник приходит домой и делает то, что человек не может сам: моет, кормит,
-    перемещает, меняет подгузник. Объём — от одиннадцати до двадцати восьми часов
-    в неделю, в зависимости от уровня нуждаемости. Считается на первой вкладке.</p>
+  <div class="result" id="cost-top">
+    <div class="line">
+      <span class="lvl" id="cost-what">Выберите, что нужно</span>
+      <span class="num" id="cost-sum">—</span>
+    </div>
+    <div class="hrs" id="cost-hour">Цена за час появится, когда выбран формат ухода.</div>
+    <p class="note" id="cost-note"></p>
   </div>
 
-  <div class="card free">
-    <span class="h">Социальное обслуживание на дому<span class="tag free">бесплатно или с доплатой</span></span>
-    <p>Соцработник: покупки, лекарства, уборка, оплата счетов. Бесплатно, если доход
-    ниже полутора прожиточных минимумов; иначе — с частичной оплатой.</p>
+  <div class="group">
+    <h3>Что нужно</h3>
+    <div class="kinds" id="cost-kinds"></div>
+    <div id="cost-picks"></div>
   </div>
 
-  <div class="card free">
-    <span class="h">Выплата родственнику<span class="tag free">бесплатно</span></span>
-    <p>Если уход берёт на себя неработающий член семьи, за это бывает положена
-    ежемесячная выплата. Условия уточняет координатор — они зависят от группы
-    инвалидности и возраста.</p>
+  <div class="group" id="cost-count-box" hidden>
+    <h3>Сколько</h3>
+    <div class="step">
+      <button type="button" id="cost-minus" aria-label="Уменьшить">−</button>
+      <span class="n" id="cost-n">1</span>
+      <button type="button" id="cost-plus" aria-label="Увеличить">+</button>
+      <span class="unit" id="cost-unit"></span>
+    </div>
   </div>
 
-  <div class="card paid">
-    <span class="h">Частная сиделка<span class="tag paid">платно</span></span>
-    <p>Имеет смысл, когда нужно больше часов, чем даёт пакет, или круглосуточно.
-    Ниже — что спросить, прежде чем договариваться.</p>
+  <div class="group">
+    <h3>Что усложняет уход</h3>
+    <ul class="adds" id="cost-adds"></ul>
   </div>
 
-  <h3>Что спросить у сиделки до того, как договоритесь</h3>
+  <div class="group">
+    <h3>Что снижает цену</h3>
+    <ul class="adds" id="cost-cuts"></ul>
+  </div>
+
+  <div class="group">
+    <h3>Из чего складывается сумма</h3>
+    <div class="lines" id="cost-lines"></div>
+  </div>
+
+  <h3>Круглые сутки: три способа и разница между ними</h3>
+  <div class="cmp" id="cost-round"></div>
+
+  <h3>Что входит в уход</h3>
+  <p class="note">Пятьдесят услуг из приложения № 6 к Приказу № 731 — тот же перечень,
+  по которому собирается и социальный пакет. Отметьте нужное: отметки попадут
+  в расчёт для координатора.</p>
+  <div id="cost-catalog"></div>
+
+  <h3>Что в уход не входит</h3>
+  <div id="cost-not"></div>
+
+  <h3>Условия</h3>
+  <ul class="plain" id="cost-terms"></ul>
+
+  <button class="send" id="cost-send">Собрать расчёт для координатора</button>
+  <div id="cost-out"></div>
+
+  <h3>Если нанимаете помощника сами</h3>
+  <p class="note">Служба нанимает помощников по трудовому договору и отвечает
+  за замену и качество. Если вы ищете сиделку сами — вот что стоит спросить
+  до того, как договоритесь.</p>
   <ul class="check" id="hire-check"></ul>
 
   <h3>Когда стоит насторожиться</h3>
@@ -294,7 +425,7 @@ footer{margin-top:2.5rem;padding-top:1.4rem;border-top:1px solid var(--line-stro
   </div>
 
   <!-- Телефон службы в справочнике не заполнен (phone: "" в настройках
-       index.html), и ставить сюда выдуманный нельзя: человек позвонит
+       guide.html), и ставить сюда выдуманный нельзя: человек позвонит
        в никуда. Ведём в бота — его адрес настоящий и работает. -->
   <a class="cta" href="https://max.ru/id6320093220_bot">Написать координатору в MAX</a>
 </section>
@@ -312,6 +443,8 @@ footer{margin-top:2.5rem;padding-top:1.4rem;border-top:1px solid var(--line-stro
 <footer>
   АНО «Система долговременного ухода», Тольятти.
   Расчёт предварительный и не заменяет очную оценку.
+  <br><a href="guide.html">Справочник целиком одной страницей</a> —
+  там же согласие на обработку данных, реквизиты и источники.
 </footer>
 
 </div>
@@ -422,6 +555,10 @@ footer{margin-top:2.5rem;padding-top:1.4rem;border-top:1px solid var(--line-stro
         уровень.часов_в_неделю[1] + ' часов помощи в неделю.'
       : 'По этой шкале уровень не устанавливается. Это не значит «помощь не нужна» — позвоните координатору.';
     сноска.textContent = ШКАЛА.оговорка;
+    // Уровень нужен второй вкладке: она подскажет подходящий пакет,
+    // чтобы человек не сопоставлял баллы с прайсом сам.
+    УРОВЕНЬ_ПО_ШКАЛЕ = уровень.номер;
+    if (ПРАЙС) подсказатьПакет();
   }
 
   /* ---------------- чек-листы ---------------- */
@@ -666,6 +803,509 @@ footer{margin-top:2.5rem;padding-top:1.4rem;border-top:1px solid var(--line-stro
     save('sdut-form', ОТВЕТЫ_АНКЕТЫ);
   });
 
+  /* ---------------- перенос ответов из бота ----------------
+     Анкета одна и та же в боте и здесь. Человек, прошедший её
+     в чате, не должен отвечать второй раз: бот отдаёт ссылку,
+     в которой ответы уже лежат, а мы их читаем.
+
+     Часть адреса после решётки браузер на сервер не отправляет —
+     в журналах хостинга ответов не окажется. Вход по номеру
+     телефона тут не годится: номер знает полгорода, и он открыл бы
+     чужие ответы о здоровье любому, кто его наберёт. */
+  var ПЕРЕНЕСЕНО = 0;
+
+  function изХеша(){
+    var хвост = (location.hash || '').replace(/^#/, '');
+    if (!хвост) return null;
+    var найдено = null;
+    хвост.split('&').forEach(function(кусок){
+      var где = кусок.indexOf('=');
+      if (где < 0) return;
+      var имя;
+      try { имя = decodeURIComponent(кусок.slice(0, где)); }
+      catch(e){ имя = кусок.slice(0, где); }
+      if (имя === 'анкета' || имя === 'a') найдено = кусок.slice(где + 1);
+    });
+    return найдено;
+  }
+
+  function раскодировать(код){
+    try {
+      var b64 = String(код).replace(/-/g, '+').replace(/_/g, '/');
+      while (b64.length % 4) b64 += '=';
+      var сырое = atob(b64);
+      var байты = new Uint8Array(сырое.length);
+      for (var i = 0; i < сырое.length; i++) байты[i] = сырое.charCodeAt(i);
+      var данные = JSON.parse(new TextDecoder('utf-8').decode(байты));
+      return (данные && typeof данные === 'object' && !Array.isArray(данные))
+        ? данные : null;
+    } catch(e){ return null; }
+  }
+
+  function влить(данные){
+    var сколько = 0;
+    Object.keys(данные || {}).forEach(function(к){
+      if (данные[к]){ ОТВЕТЫ_АНКЕТЫ[к] = String(данные[к]); сколько++; }
+    });
+    if (сколько) save('sdut-form', ОТВЕТЫ_АНКЕТЫ);
+    return сколько;
+  }
+
+  function принятьИзСсылки(){
+    var код = изХеша();
+    if (!код) return;
+    var данные = раскодировать(код);
+    if (!данные) return;
+    ПЕРЕНЕСЕНО = влить(данные);
+    // Убираем ответы из адресной строки: иначе человек, переславший
+    // ссылку «посмотри, что это за приложение», перешлёт вместе с ней
+    // и рассказ о здоровье близкого.
+    try { history.replaceState(null, '', location.pathname + location.search); }
+    catch(e){}
+  }
+
+  function ключСтроки(с){
+    return String(с).toLowerCase().replace(/ё/g, 'е')
+      .replace(/[^а-яa-z0-9]+/g, ' ').trim();
+  }
+
+  function разобратьТекст(текст){
+    if (!АНКЕТА) return {};
+    var карта = {};
+    АНКЕТА.вопросы.forEach(function(в){
+      карта[ключСтроки(в.текст.split('\n')[0])] = в.id;
+    });
+    var найдено = {}, ждём = null;
+    String(текст || '').split('\n').forEach(function(строка){
+      var чистая = строка.replace(/^[\s•\-–—*]+/, '').trim();
+      if (!чистая) return;
+      var части = чистая.split(/\s+[—–]\s+/);
+      if (части.length >= 2 && карта[ключСтроки(части[0])]){
+        найдено[карта[ключСтроки(части[0])]] = части.slice(1).join(' — ').trim();
+        ждём = null;
+        return;
+      }
+      if (карта[ключСтроки(чистая)]){ ждём = карта[ключСтроки(чистая)]; return; }
+      if (ждём){ найдено[ждём] = чистая; ждём = null; }
+    });
+    return найдено;
+  }
+
+  function показатьПеренос(сколько){
+    var узел = document.getElementById('carry');
+    if (!сколько){ узел.hidden = true; return; }
+    узел.hidden = false;
+    узел.innerHTML = '<b>Ответы из бота перенесены</b>' + сколько + ' ' +
+      множ(сколько, ['ответ', 'ответа', 'ответов']) +
+      ' уже заполнено. Проверьте и допишите, чего не хватает.';
+  }
+
+  document.getElementById('paste-go').addEventListener('click', function(){
+    var поле = document.getElementById('paste');
+    var вывод = document.getElementById('paste-out');
+    var найдено = разобратьТекст(поле.value);
+    var сколько = влить(найдено);
+    if (!сколько){
+      вывод.innerHTML = '<p class="empty">Не удалось разобрать. Нужно сообщение ' +
+        'бота «Что записано» целиком — вместе со строками вопросов, а не только ' +
+        'ответы.</p>';
+      return;
+    }
+    вывод.innerHTML = '<div class="sent">Перенесено ' + сколько + ' ' +
+      множ(сколько, ['ответ', 'ответа', 'ответов']) + '.</div>';
+    поле.value = '';
+    рисоватьАнкету();
+    показатьПеренос(сколько);
+  });
+
+  /* ---------------- калькулятор стоимости ---------------- */
+  var ПРАЙС = null;
+  var ВЫБОР = load('sdut-cost');
+  if (!ВЫБОР.поправки) ВЫБОР.поправки = [];
+  if (!ВЫБОР.услуги) ВЫБОР.услуги = {};
+  if (!ВЫБОР.сколько) ВЫБОР.сколько = 1;
+  // Без выбора по умолчанию вкладка открывалась пустой: чипы есть,
+  // а под ними ничего и прочерк вместо суммы, пока не догадаешься
+  // нажать. Показываем самый частый случай — визит на два часа, —
+  // и человек сразу видит, как устроен расчёт.
+  if (!ВЫБОР.раздел) ВЫБОР.раздел = 'Разовые визиты';
+  if (!ВЫБОР.позиция) ВЫБОР.позиция = 'v2';
+  var УРОВЕНЬ_ПО_ШКАЛЕ = 0;
+
+  var ЕДИНИЦЫ = {
+    'визит': ['визит', 'визита', 'визитов'],
+    'выезд': ['выезд', 'выезда', 'выездов'],
+    'смена': ['смена', 'смены', 'смен'],
+    'сутки': ['сутки', 'суток', 'суток'],
+    'месяц': ['месяц', 'месяца', 'месяцев']
+  };
+
+  function множ(число, формы){
+    var сто = Math.abs(число) % 100, десять = сто % 10;
+    if (сто > 10 && сто < 20) return формы[2];
+    if (десять > 1 && десять < 5) return формы[1];
+    if (десять === 1) return формы[0];
+    return формы[2];
+  }
+
+  function рубли(число){
+    return String(Math.round(число)).replace(/\B(?=(\d{3})+(?!\d))/g, ' ') + ' ₽';
+  }
+
+  function всеПозиции(){
+    var список = ПРАЙС.услуги.slice();
+    ПРАЙС.пакеты.forEach(function(п){
+      список.push({
+        id: п.id, раздел: 'Регулярный пакет', название: п.название,
+        цена: п.цена, часов: п.часов_в_месяц, единица: 'месяц',
+        ночная: false, уровень: п.уровень,
+        входит: п.кому + '. ' + п.график + ' — около ' +
+                Math.round(п.часов_в_месяц) + ' часов в месяц. ' + п.входит
+      });
+    });
+    return список;
+  }
+
+  function позиция(){
+    var все = всеПозиции();
+    for (var i = 0; i < все.length; i++) if (все[i].id === ВЫБОР.позиция) return все[i];
+    return null;
+  }
+
+  function поправка(ид){
+    for (var i = 0; i < ПРАЙС.поправки.length; i++)
+      if (ПРАЙС.поправки[i].id === ид) return ПРАЙС.поправки[i];
+    return null;
+  }
+
+  /* Арифметика та же, что в прайс.py: проценты складываются к базовой
+     цене, а не накручиваются друг на друга. Разойдутся — человек увидит
+     на экране одну сумму, а в договоре другую. */
+  function посчитать(){
+    var поз = позиция();
+    if (!поз) return null;
+    var процент = 0, разовые = 0, учтено = [], пропущено = [];
+    ВЫБОР.поправки.forEach(function(ид){
+      var п = поправка(ид);
+      if (!п) return;
+      if (п.процент === null || п.справочно || п.кроме.indexOf(поз.id) >= 0){
+        пропущено.push(п);
+        return;
+      }
+      if (п.разово) разовые += п.процент;
+      else процент += п.скидка ? -п.процент : п.процент;
+      учтено.push(п);
+    });
+    var доля = Math.max(0, 1 + процент / 100);
+    var заЕдиницу = Math.round(поз.цена * доля);
+    var разом = Math.round(поз.цена * разовые / 100);
+    return {
+      поз: поз, процент: процент, заЕдиницу: заЕдиницу, разом: разом,
+      итог: Math.max(0, Math.round(заЕдиницу * ВЫБОР.сколько + разом)),
+      вЧас: поз.часов ? Math.round(заЕдиницу / поз.часов) : null,
+      учтено: учтено, пропущено: пропущено
+    };
+  }
+
+  function разделы(){
+    var порядок = [], видели = {};
+    всеПозиции().forEach(function(п){
+      if (!видели[п.раздел]){ видели[п.раздел] = true; порядок.push(п.раздел); }
+    });
+    return порядок;
+  }
+
+  function рисоватьРазделы(){
+    document.getElementById('cost-kinds').innerHTML = разделы().map(function(р){
+      return '<button type="button" data-kind="' + экранировать(р) + '" aria-pressed="' +
+        (ВЫБОР.раздел === р ? 'true' : 'false') + '">' + экранировать(р) + '</button>';
+    }).join('');
+  }
+
+  function рисоватьПозиции(){
+    var узел = document.getElementById('cost-picks');
+    var список = всеПозиции().filter(function(п){ return п.раздел === ВЫБОР.раздел; });
+    узел.innerHTML = список.map(function(п){
+      var вЧас = п.часов ? Math.round(п.цена / п.часов) : null;
+      return '<button type="button" class="pick" data-pos="' + п.id + '" aria-pressed="' +
+        (ВЫБОР.позиция === п.id ? 'true' : 'false') + '">' +
+        '<span class="top"><span class="name">' + экранировать(п.название) + '</span>' +
+        '<span class="rub">' + рубли(п.цена) + '<span class="hour">' +
+        (вЧас ? рубли(вЧас) + ' в час' : '&nbsp;') + '</span></span></span>' +
+        '<span class="what">' + экранировать(п.входит) + '</span></button>';
+    }).join('');
+  }
+
+  function рисоватьКоличество(){
+    var поз = позиция();
+    var коробка = document.getElementById('cost-count-box');
+    if (!поз){ коробка.hidden = true; return; }
+    коробка.hidden = false;
+    document.getElementById('cost-n').textContent = ВЫБОР.сколько;
+    var формы = ЕДИНИЦЫ[поз.единица] || ['раз', 'раза', 'раз'];
+    document.getElementById('cost-unit').textContent =
+      множ(ВЫБОР.сколько, формы) + (поз.единица === 'месяц' ? '' : ' в месяц');
+  }
+
+  function рисоватьПоправки(){
+    var поз = позиция();
+    function строка(п){
+      var выключена = поз && п.кроме.indexOf(поз.id) >= 0;
+      var отмечена = ВЫБОР.поправки.indexOf(п.id) >= 0;
+      var знак = п.процент === null ? 'по расчёту'
+               : (п.скидка ? '−' : '+') + п.процент + ' %';
+      var почему = п.пояснение;
+      if (выключена) почему = 'Для этой позиции уже учтено в цене. ' + почему;
+      if (п.справочно) почему = 'Считается отдельно, в этот расчёт не входит. ' + почему;
+      return '<li' + (выключена || п.справочно ? ' class="off"' : '') + '>' +
+        '<input type="checkbox" id="add-' + п.id + '" data-add="' + п.id + '"' +
+        (отмечена ? ' checked' : '') + (выключена ? ' disabled' : '') + '>' +
+        '<span class="txt"><label for="add-' + п.id + '">' +
+        экранировать(п.основание) + '</label>' +
+        '<span class="why">' + экранировать(почему) + '</span></span>' +
+        '<span class="pct' + (п.скидка ? ' down' : '') + '">' + знак + '</span></li>';
+    }
+    document.getElementById('cost-adds').innerHTML =
+      ПРАЙС.поправки.filter(function(п){ return !п.скидка; }).map(строка).join('');
+    document.getElementById('cost-cuts').innerHTML =
+      ПРАЙС.поправки.filter(function(п){ return п.скидка; }).map(строка).join('');
+  }
+
+  function рисоватьИтог(){
+    var счёт = посчитать();
+    var что = document.getElementById('cost-what');
+    var сумма = document.getElementById('cost-sum');
+    var час = document.getElementById('cost-hour');
+    var сноска = document.getElementById('cost-note');
+    var строки = document.getElementById('cost-lines');
+
+    if (!счёт){
+      что.textContent = 'Выберите, что нужно';
+      сумма.textContent = '—';
+      час.textContent = 'Цена за час появится, когда выбран формат ухода.';
+      сноска.textContent = ПРАЙС.частный_порядок;
+      строки.innerHTML = '<div class="r"><span>Пока нечего считать</span><span></span></div>';
+      return;
+    }
+
+    var формы = ЕДИНИЦЫ[счёт.поз.единица] || ['раз', 'раза', 'раз'];
+    что.textContent = счёт.поз.название;
+    сумма.textContent = рубли(счёт.итог);
+    час.textContent = (счёт.вЧас ? рубли(счёт.вЧас) + ' за час у подопечного · ' : '') +
+      ВЫБОР.сколько + ' ' + множ(ВЫБОР.сколько, формы) +
+      (счёт.поз.единица === 'месяц' ? '' : ' в месяц');
+    сноска.textContent = ПРАЙС.оговорка;
+
+    var ряды = ['<div class="r"><span>' + экранировать(счёт.поз.название) + ' × ' +
+      ВЫБОР.сколько + '</span><span>' + рубли(счёт.поз.цена * ВЫБОР.сколько) + '</span></div>'];
+    счёт.учтено.forEach(function(п){
+      var сколько = п.разово ? 1 : ВЫБОР.сколько;
+      var сумма_п = Math.round(счёт.поз.цена * сколько * п.процент / 100);
+      ряды.push('<div class="r"><span>' + экранировать(п.основание) + ' ' +
+        (п.скидка ? '−' : '+') + п.процент + ' %' +
+        (п.разово ? ', один раз' : '') + '</span><span>' +
+        (п.скидка ? '−' : '+') + рубли(сумма_п) + '</span></div>');
+    });
+    счёт.пропущено.forEach(function(п){
+      ряды.push('<div class="r skip"><span>' + экранировать(п.основание) +
+        ' — в этот расчёт не входит</span><span></span></div>');
+    });
+    ряды.push('<div class="r sum"><span>' + подписьИтога(счёт) + '</span><span>' +
+      рубли(счёт.итог) + '</span></div>');
+    строки.innerHTML = ряды.join('');
+  }
+
+  function подписьИтога(счёт){
+    if (счёт.поз.единица !== 'месяц') return 'Итого в месяц';
+    return ВЫБОР.сколько > 1
+      ? 'Итого за ' + ВЫБОР.сколько + ' ' +
+        множ(ВЫБОР.сколько, ЕДИНИЦЫ['месяц'])
+      : 'Итого в месяц';
+  }
+
+  function подсказатьПакет(){
+    if (!ПРАЙС || !УРОВЕНЬ_ПО_ШКАЛЕ) return;
+    var пакет = ПРАЙС.пакеты.filter(function(п){
+      return п.уровень === УРОВЕНЬ_ПО_ШКАЛЕ;
+    })[0];
+    if (!пакет) return;
+    var узел = document.getElementById('cost-sub');
+    узел.innerHTML = 'По вашей оценке на первой вкладке — <b>' +
+      экранировать(пакет.название.toLowerCase()) + '</b>: ' +
+      экранировать(пакет.график) + ', ' + рубли(пакет.цена) + ' в месяц. ' +
+      'Это платный уход по договору с семьёй, в частном порядке. Сколько часов ' +
+      'положено бесплатно — на вкладке «Сколько часов положено».';
+    // Своё человек не перебиваем: подставляем пакет только пока
+    // он сам ничего не выбрал.
+    if (!ВЫБОР.выбрано){
+      ВЫБОР.раздел = 'Регулярный пакет';
+      ВЫБОР.позиция = пакет.id;
+      ВЫБОР.сколько = 1;
+      save('sdut-cost', ВЫБОР);
+      рисоватьСтоимость();
+    }
+  }
+
+  function рисоватьСутки(){
+    var предел = Math.max.apply(null, ПРАЙС.круглосуточно.map(function(в){
+      return в.в_месяц;
+    }));
+    document.getElementById('cost-round').innerHTML =
+      ПРАЙС.круглосуточно.map(function(в){
+        return '<div class="row"><div class="hd"><b>' + экранировать(в.вариант) +
+          '</b><span class="rub">' + рубли(в.в_месяц) + ' в месяц</span></div>' +
+          '<div class="track"><i style="width:' +
+          Math.round(в.в_месяц / предел * 100) + '%"></i></div>' +
+          '<div class="who">' + рубли(в.в_сутки) + ' в сутки. ' +
+          экранировать(в.кому) + '</div></div>';
+      }).join('') +
+      '<p class="note">Разница между первым и последним вариантом — почти в шесть ' +
+      'раз. Обучение родственника в Школе ухода делает уход дома реально доступным.</p>';
+  }
+
+  function рисоватьКаталог(){
+    var группы = {}, порядок = [];
+    ПРАЙС.каталог.forEach(function(у){
+      if (!группы[у.группа]){ группы[у.группа] = []; порядок.push(у.группа); }
+      группы[у.группа].push(у);
+    });
+    document.getElementById('cost-catalog').innerHTML = порядок.map(function(г){
+      var отмечено = группы[г].filter(function(у){ return ВЫБОР.услуги[у.номер]; }).length;
+      return '<details class="grp"><summary>' + экранировать(г) +
+        '<span class="cnt">' + (отмечено ? отмечено + ' из ' : '') +
+        группы[г].length + '</span></summary><div class="inner"><ul class="check">' +
+        группы[г].map(function(у){
+          return '<li><input type="checkbox" id="srv-' + у.номер + '" data-srv="' +
+            у.номер + '"' + (ВЫБОР.услуги[у.номер] ? ' checked' : '') + '>' +
+            '<label class="txt" for="srv-' + у.номер + '">' +
+            экранировать(у.услуга) + '</label></li>';
+        }).join('') + '</ul></div></details>';
+    }).join('');
+  }
+
+  function обновитьСчётчики(){
+    [].forEach.call(document.querySelectorAll('#cost-catalog .grp'), function(д){
+      var поля = д.querySelectorAll('input[data-srv]');
+      var отмечено = д.querySelectorAll('input[data-srv]:checked').length;
+      var счёт = д.querySelector('.cnt');
+      if (счёт) счёт.textContent = (отмечено ? отмечено + ' из ' : '') + поля.length;
+    });
+  }
+
+  function рисоватьНеВходит(){
+    document.getElementById('cost-not').innerHTML = ПРАЙС.не_входит.map(function(н){
+      return '<div class="card flag"><span class="h">' + экранировать(н.что) +
+        '</span><p>' + экранировать(н.почему) + '</p></div>';
+    }).join('');
+    document.getElementById('cost-terms').innerHTML = ПРАЙС.условия.map(function(у){
+      return '<li>' + экранировать(у) + '</li>';
+    }).join('') + '<li>Прайс действует с ' + экранировать(ПРАЙС.действует_с) + '.</li>';
+  }
+
+  function рисоватьСтоимость(){
+    рисоватьРазделы();
+    рисоватьПозиции();
+    рисоватьКоличество();
+    рисоватьПоправки();
+    рисоватьИтог();
+  }
+
+  function текстРасчёта(){
+    var счёт = посчитать();
+    var строки = ['Расчёт стоимости ухода, СДУТ', ''];
+    if (счёт){
+      var формы = ЕДИНИЦЫ[счёт.поз.единица] || ['раз', 'раза', 'раз'];
+      строки.push('Формат: ' + счёт.поз.название + ' × ' + ВЫБОР.сколько + ' ' +
+        множ(ВЫБОР.сколько, формы));
+      строки.push('Базовая цена: ' + рубли(счёт.поз.цена) + ' за ' + счёт.поз.единица);
+      счёт.учтено.forEach(function(п){
+        строки.push('  ' + (п.скидка ? '−' : '+') + п.процент + ' % — ' +
+          п.основание + (п.разово ? ' (один раз)' : ''));
+      });
+      строки.push(подписьИтога(счёт) + ': ' + рубли(счёт.итог) +
+        (счёт.вЧас ? ' (' + рубли(счёт.вЧас) + ' за час у подопечного)' : ''));
+    } else {
+      строки.push('Формат ухода ещё не выбран.');
+    }
+    var нужно = ПРАЙС.каталог.filter(function(у){ return ВЫБОР.услуги[у.номер]; });
+    if (нужно.length){
+      строки.push('', 'Что нужно из перечня услуг:');
+      нужно.forEach(function(у){ строки.push('• ' + у.услуга); });
+    }
+    строки.push('', 'Расчёт предварительный. Точную сумму называет договор ' +
+      'после первичного выезда организатора ухода.');
+    return строки.join('\n');
+  }
+
+  document.getElementById('cost-send').addEventListener('click', function(){
+    var текст = текстРасчёта();
+    var узел = document.getElementById('cost-out');
+    узел.innerHTML = '<textarea class="dump" id="cost-dump" readonly></textarea>' +
+      '<div class="sent">Скопируйте и отправьте одним сообщением в бот — ' +
+      'координатор увидит расчёт целиком. Пока вы не отправили, он лежит только ' +
+      'в этом телефоне.</div>' +
+      '<a class="cta" href="https://max.ru/id6320093220_bot">Открыть бот в MAX</a>';
+    var поле = document.getElementById('cost-dump');
+    поле.value = текст;
+    поле.focus(); поле.select();
+    try { navigator.clipboard && navigator.clipboard.writeText(текст); } catch(e){}
+  });
+
+  document.getElementById('cost-kinds').addEventListener('click', function(ev){
+    var кнопка = ev.target.closest('button[data-kind]');
+    if (!кнопка) return;
+    ВЫБОР.раздел = кнопка.getAttribute('data-kind');
+    save('sdut-cost', ВЫБОР);
+    рисоватьСтоимость();
+  });
+
+  document.getElementById('cost-picks').addEventListener('click', function(ev){
+    var кнопка = ev.target.closest('.pick');
+    if (!кнопка) return;
+    var ид = кнопка.getAttribute('data-pos');
+    // Количество сбрасываем: восемь визитов, оставшись «восемью»
+    // при переключении на пакет, превращались в восемь месяцев —
+    // и семья видела 449 120 ₽ там, где речь о сорока тысячах.
+    if (ВЫБОР.позиция !== ид) ВЫБОР.сколько = 1;
+    ВЫБОР.позиция = (ВЫБОР.позиция === ид) ? '' : ид;
+    ВЫБОР.выбрано = true;
+    save('sdut-cost', ВЫБОР);
+    рисоватьСтоимость();
+  });
+
+  document.getElementById('cost-minus').addEventListener('click', function(){
+    ВЫБОР.сколько = Math.max(1, ВЫБОР.сколько - 1);
+    save('sdut-cost', ВЫБОР);
+    рисоватьКоличество(); рисоватьИтог();
+  });
+  document.getElementById('cost-plus').addEventListener('click', function(){
+    ВЫБОР.сколько = Math.min(31, ВЫБОР.сколько + 1);
+    save('sdut-cost', ВЫБОР);
+    рисоватьКоличество(); рисоватьИтог();
+  });
+
+  document.addEventListener('change', function(ev){
+    var поле = ev.target;
+    if (поле.hasAttribute && поле.hasAttribute('data-add')){
+      var ид = поле.getAttribute('data-add');
+      var где = ВЫБОР.поправки.indexOf(ид);
+      if (поле.checked && где < 0) ВЫБОР.поправки.push(ид);
+      if (!поле.checked && где >= 0) ВЫБОР.поправки.splice(где, 1);
+      save('sdut-cost', ВЫБОР);
+      рисоватьИтог();
+      return;
+    }
+    if (поле.hasAttribute && поле.hasAttribute('data-srv')){
+      var номер = поле.getAttribute('data-srv');
+      if (поле.checked) ВЫБОР.услуги[номер] = true;
+      else delete ВЫБОР.услуги[номер];
+      save('sdut-cost', ВЫБОР);
+      // Не перерисовываем список целиком: на телефоне это схлопывает
+      // группу и уводит палец с того места, куда человек целился.
+      обновитьСчётчики();
+    }
+  });
+
   /* ---------------- загрузка шкалы ---------------- */
   // Данные вшиты в страницу при сборке, а не подгружаются файлами.
   // Так было сначала, и на Cloudflare это не заработало: имена файлов
@@ -697,7 +1337,26 @@ footer{margin-top:2.5rem;padding-top:1.4rem;border-top:1px solid var(--line-stro
         'материалам.</p>';
     });
 
-  взять('survey.json').then(function(d){ АНКЕТА = d; рисоватьАнкету(); })
+  взять('price.json').then(function(d){
+      ПРАЙС = d;
+      рисоватьСтоимость();
+      рисоватьСутки();
+      рисоватьКаталог();
+      рисоватьНеВходит();
+      подсказатьПакет();
+    })
+    .catch(function(){
+      document.getElementById('cost-picks').innerHTML =
+        '<p class="empty">Прайс не загрузился. Стоимость назовёт координатор — ' +
+        'напишите в бот.</p>';
+      document.getElementById('cost-top').hidden = true;
+    });
+
+  принятьИзСсылки();
+
+  взять('survey.json').then(function(d){
+      АНКЕТА = d; рисоватьАнкету(); показатьПеренос(ПЕРЕНЕСЕНО);
+    })
     .catch(function(){
       document.getElementById('form').innerHTML =
         '<p class="empty">Анкета не загрузилась. Её всегда можно пройти в самом боте.</p>';

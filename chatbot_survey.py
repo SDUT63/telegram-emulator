@@ -275,6 +275,12 @@ RESTART_WORDS = {"заново", "начать заново", "/restart", "сн�
 BEGIN_WORDS = {"/start", "start", "старт", "начать", "начнём", "начнем"}
 CANCEL_WORDS = {"отмена", "стоп", "cancel", "/cancel", "/stop"}
 SUMMARY_WORDS = {"ответы", "результаты", "мои ответы", "/answers"}
+# Мини-приложение: справочник с поиском, расчёт часов и стоимости.
+# Человек чаще спрашивает «сколько это стоит», чем знает слово
+# «приложение», поэтому по цене сюда же.
+APP_WORDS = {"приложение", "мини-приложение", "калькулятор", "/app",
+             "сколько стоит", "стоимость", "цена", "цены", "прайс",
+             "сколько это стоит", "сколько стоит уход"}
 HELP_WORDS = {"помощь", "help", "/help", "?"}
 SKIP_WORDS = {"далее", "пропустить", "skip", "-"}
 BACK_WORDS = {"назад", "back"}
@@ -691,8 +697,12 @@ class Survey:
         # непонимания начинается заново. Иначе она доедет до последней
         # ступени на ровном месте.
         if low in (RESTART_WORDS | HELP_WORDS | SUMMARY_WORDS | CANCEL_WORDS
-                   | BEGIN_WORDS | CONTINUE_WORDS | BACK_WORDS | SKIP_WORDS):
+                   | BEGIN_WORDS | CONTINUE_WORDS | BACK_WORDS | SKIP_WORDS
+                   | APP_WORDS):
             self.understood(user_id)
+
+        if low in APP_WORDS:
+            return self.приглашение_в_приложение(user_id)
 
         if low in RESTART_WORDS:
             return self.restart_after_consent(user_id)
@@ -739,14 +749,20 @@ class Survey:
         if low in BEGIN_WORDS:
             return RESUMED + "\n\n" + self._ask(user_id, step)
 
-        # «продолжить» после предупреждения просто повторяет вопрос
-        if low in CONTINUE_WORDS:
-            return self._ask(user_id, step)
-
         if low in BACK_WORDS:
             return self._go_back(user_id)
 
         question = QUESTIONS[step]
+
+        # «продолжить» после предупреждения просто повторяет вопрос —
+        # но не тогда, когда это и есть ответ. На рубеже анкеты
+        # «Продолжить» стоит первым вариантом, и написавший его словом
+        # вместо номера получал тот же вопрос заново. И так до конца:
+        # выйти из этого круга словами было нельзя.
+        if low in CONTINUE_WORDS:
+            ответ_ли = bool(question.get("options")) and self._check(question, text)[0]
+            if not ответ_ли:
+                return self._ask(user_id, step)
 
         if low in SKIP_WORDS:
             if question.get("required", True):
@@ -870,6 +886,41 @@ class Survey:
             self.understood(user_id)
             return текст + "\n\n" + СПРАВКА_ПОДПИСЬ
         return fallback.фраза(self.miss(user_id), fallback.ВОПРОС)
+
+    def ссылка_в_приложение(self, user_id: str) -> str:
+        """Адрес мини-приложения с уже перенесёнными ответами.
+
+        Без этого человек, прошедший анкету в чате, открывает
+        приложение и видит пустую форму — те же тридцать четыре
+        вопроса второй раз.
+        """
+        import перенос
+
+        человек = self.state.get(user_id) or {}
+        return перенос.ссылка(человек.get("answers") or {})
+
+    def приглашение_в_приложение(self, user_id: str) -> str:
+        """Ответ на просьбу открыть приложение или узнать цену."""
+        адрес = self.ссылка_в_приложение(user_id)
+        человек = self.state.get(user_id) or {}
+        есть_ответы = bool(человек.get("answers"))
+
+        строки = [
+            "Мини-приложение службы:",
+            адрес,
+            "",
+            "В нём: справочник с поиском, расчёт часов помощи "
+            "по оценочной шкале и калькулятор стоимости платного ухода "
+            "с надбавками и скидками.",
+        ]
+        if есть_ответы and "#" in адрес:
+            строки += [
+                "",
+                "Ваши ответы уже внутри ссылки — заново заполнять "
+                "не нужно. Ссылка личная: в ней то, что вы рассказали, "
+                "поэтому пересылать её другим не стоит.",
+            ]
+        return "\n".join(строки)
 
     @staticmethod
     def _свои_слова(question: dict[str, Any], text: str) -> bool:

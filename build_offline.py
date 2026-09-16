@@ -22,7 +22,7 @@ import sys
 import urllib.request
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-SRC = os.path.join(HERE, "webapp", "index.html")
+SRC = os.path.join(HERE, "webapp", "guide.html")
 IMG_DIR = os.path.join(HERE, "webapp", "img")
 OUT = os.path.join(HERE, "webapp", "Навигатор-помощи-СДУТ.html")
 
