@@ -1,0 +1,305 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Карта развития бота СДУТ</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Literata:opsz,wght@7..72,600;7..72,700&family=Golos+Text:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+:root{
+  --ground:#F2F5F3; --surface:#FFFFFF; --surface-2:#E9EFEC;
+  --ink:#14201E; --ink-soft:#4B5A56; --ink-faint:#748480;
+  --line:#D9E2DE; --line-strong:#B9C7C2;
+  --accent:#1B5A55; --accent-soft:#D6E6E3;
+  --ok:#2C6647; --ok-bg:#DCEBE2;
+  --warn:#83600F; --warn-bg:#F2E8CE;
+  --stop:#9C382E; --stop-bg:#F5DDD9;
+  --serif:"Literata",Georgia,serif;
+  --sans:"Golos Text","Helvetica Neue",Arial,sans-serif;
+  --mono:"IBM Plex Mono",Consolas,monospace;
+  color-scheme: light dark;
+}
+@media (prefers-color-scheme:dark){:root{
+  --ground:#101614; --surface:#171F1D; --surface-2:#1E2826;
+  --ink:#E5EBE8; --ink-soft:#A8B7B2; --ink-faint:#7E8E89;
+  --line:#293430; --line-strong:#3A4844;
+  --accent:#63B4AB; --accent-soft:#1D302E;
+  --ok:#6DBB8E; --ok-bg:#1A2B22;
+  --warn:#D2A648; --warn-bg:#2C2617;
+  --stop:#DE7A6D; --stop-bg:#2E1C19;
+}}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0}
+body{background:var(--ground);color:var(--ink);font-family:var(--sans);
+  font-size:17px;line-height:1.62;-webkit-text-size-adjust:100%}
+.wrap{max-width:46rem;margin:0 auto;padding-inline:20px;padding-block:0 5rem}
+
+header{padding-block:2.6rem 1.6rem;border-bottom:1px solid var(--line-strong)}
+.eyebrow{font-family:var(--mono);font-size:.72rem;letter-spacing:.14em;
+  text-transform:uppercase;color:var(--accent);margin:0 0 .8rem}
+h1{font-family:var(--serif);font-weight:700;font-size:clamp(1.9rem,6.5vw,2.7rem);
+  line-height:1.12;margin:0 0 .8rem;text-wrap:balance}
+.lede{color:var(--ink-soft);margin:0;font-size:1.05rem;max-width:36rem}
+
+section{padding-block:2.4rem}
+section+section{border-top:1px solid var(--line)}
+h2{font-family:var(--serif);font-weight:600;font-size:1.5rem;line-height:1.24;
+  margin:0 0 .5rem;text-wrap:balance}
+h3{font-size:1.04rem;font-weight:600;margin:2rem 0 .5rem}
+.sub{color:var(--ink-soft);margin:0 0 1.6rem;max-width:36rem}
+p{margin:0 0 1rem}
+code{font-family:var(--mono);font-size:.86em;background:var(--surface-2);
+  padding:.1em .35em;border-radius:3px;overflow-wrap:anywhere}
+
+/* карточка идеи */
+.idea{background:var(--surface);border:1px solid var(--line);border-radius:9px;
+  padding:1.1rem 1.15rem;margin-bottom:1rem;border-left:3px solid var(--line-strong)}
+.idea.now{border-left-color:var(--ok)}
+.idea.next{border-left-color:var(--accent)}
+.idea.later{border-left-color:var(--warn)}
+.idea.no{border-left-color:var(--stop);opacity:.92}
+.idea .top{display:flex;justify-content:space-between;align-items:baseline;
+  gap:1rem;margin-bottom:.4rem;flex-wrap:wrap}
+.idea .h{font-weight:600;font-size:1.04rem}
+.idea .cost{font-family:var(--mono);font-size:.7rem;letter-spacing:.06em;
+  text-transform:uppercase;color:var(--ink-faint);white-space:nowrap}
+.idea p{margin:0 0 .6rem;color:var(--ink-soft);font-size:.96rem}
+.idea p:last-child{margin-bottom:0}
+.idea .why{color:var(--ink);font-size:.94rem;background:var(--accent-soft);
+  border-radius:6px;padding:.55rem .7rem;margin-top:.7rem}
+.idea .why b{color:var(--accent)}
+
+.chip{font-family:var(--mono);font-size:.66rem;letter-spacing:.08em;
+  text-transform:uppercase;padding:.2rem .45rem;border-radius:3px;font-weight:500}
+.chip.ok{background:var(--ok-bg);color:var(--ok)}
+.chip.acc{background:var(--accent-soft);color:var(--accent)}
+.chip.warn{background:var(--warn-bg);color:var(--warn)}
+.chip.stop{background:var(--stop-bg);color:var(--stop)}
+
+table{width:100%;border-collapse:collapse;font-size:.94rem;margin-bottom:1.2rem}
+th,td{text-align:left;padding:.6rem .5rem;border-bottom:1px solid var(--line);
+  vertical-align:top}
+th{font-family:var(--mono);font-size:.68rem;letter-spacing:.08em;
+  text-transform:uppercase;color:var(--ink-faint);font-weight:500}
+td.num{font-family:var(--mono);font-variant-numeric:tabular-nums;white-space:nowrap}
+.scroll{overflow-x:auto}
+
+.note{background:var(--surface-2);border-radius:8px;padding:1rem 1.1rem;
+  font-size:.95rem;margin:1.4rem 0}
+footer{padding-block:2.2rem;border-top:1px solid var(--line-strong);
+  color:var(--ink-faint);font-size:.88rem}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <p class="eyebrow">АНО «СДУТ» · Тольятти · 16 сентября 2026</p>
+  <h1>Карта развития бота</h1>
+  <p class="lede">Что уже работает, что стоит сделать дальше и от чего лучше
+  отказаться. Порядок — по тому, сколько пользы на единицу работы, а не по
+  тому, что интереснее делать.</p>
+</header>
+
+<section>
+  <h2>Где мы сейчас</h2>
+  <p class="sub">Проверено исполнением, а не чтением кода.</p>
+  <div class="scroll">
+  <table>
+    <tr><th>Что</th><th>Состояние</th></tr>
+    <tr><td>Анкета</td><td class="num">34 вопроса, проходится живой речью</td></tr>
+    <tr><td>Материалы службы</td><td class="num">240 статей, поиск без интернета</td></tr>
+    <tr><td>Распознавание угрозы жизни</td><td class="num">по Приказу № 388н</td></tr>
+    <tr><td>Проверки</td><td class="num">1006, CI зелёный</td></tr>
+    <tr><td>Мини-приложение</td><td class="num">поиск, шкала, анкета, наём</td></tr>
+    <tr><td>Через настоящий MAX</td><td class="num">не проверено ни разу</td></tr>
+  </table>
+  </div>
+  <div class="note">
+    <b>Главное ограничение.</b> Всё проверено на живом PostgreSQL, но
+    транспорт MAX эмулирован: у разработки нет токена. Пока не пройден живой
+    сценарий в мессенджере, любая строка ниже — план, а не готовность.
+  </div>
+</section>
+
+<section>
+  <h2>Сделать в первую очередь</h2>
+  <p class="sub">Дёшево, и отдача видна сразу.</p>
+
+  <div class="idea now">
+    <div class="top"><span class="h">Заполнить контакты службы</span>
+      <span class="cost">полчаса · <span class="chip ok">без кода</span></span></div>
+    <p>В настройках справочника поля <code>phone</code>, <code>phoneText</code>,
+    <code>hours</code>, <code>email</code>, <code>address</code> и банковские
+    реквизиты пустые. Человек прочитал тридцать два раздела и не знает, куда
+    звонить и куда жертвовать.</p>
+    <div class="why"><b>Почему первым.</b> Это единственный пункт, где правка
+    в одну строку сразу превращает читателя в обратившегося.</div>
+  </div>
+
+  <div class="idea now">
+    <div class="top"><span class="h">Показать координатору словарь угроз жизни</span>
+      <span class="cost">час · <span class="chip ok">без кода</span></span></div>
+    <p>Собран по Приказу № 388н и методичкам для диспетчеров скорой, проверен
+    в обе стороны: ноль ложных тревог на пятнадцати описаниях подопечного, ноль
+    пропусков на двадцати девяти угрозах. Но это работа разработчика, а не врача.</p>
+    <div class="why"><b>Почему важно.</b> Единственное место в системе, где цена
+    ошибки — жизнь, а не неудобство.</div>
+  </div>
+
+  <div class="idea now">
+    <div class="top"><span class="h">Кнопка мини-приложения на видном месте</span>
+      <span class="cost">полчаса</span></div>
+    <p>Мини-приложение теперь умеет то, чего не умеет чат: показать все материалы
+    разом, посчитать часы, дать заполнить анкету не торопясь. Об этом надо сказать
+    в первом же сообщении бота и на экране после анкеты.</p>
+  </div>
+</section>
+
+<section>
+  <h2>Следующий шаг</h2>
+  <p class="sub">Требует работы, но опирается на то, что уже есть.</p>
+
+  <div class="idea next">
+    <div class="top"><span class="h">Перенос анкеты между ботом и приложением</span>
+      <span class="cost">2–3 дня · <span class="chip acc">нужен сервер</span></span></div>
+    <p>Сейчас анкета, заполненная в приложении, переносится текстом: человек
+    копирует и отправляет в бот. Работает, но заметно. Настоящий перенос — это
+    короткий код обмена: бот выдаёт шестизначный код, приложение его принимает
+    и подхватывает уже собранное, и наоборот.</p>
+    <p>Делается на том же PostgreSQL, что и всё остальное: таблица с кодом,
+    сроком жизни в пятнадцать минут и одноразовым использованием.</p>
+    <div class="why"><b>Почему не сразу.</b> Требует, чтобы приложение ходило
+    на сервер службы — а сейчас оно статическое и работает даже без него.
+    Это разменивает надёжность на удобство, и менять стоит осознанно.</div>
+  </div>
+
+  <div class="idea next">
+    <div class="top"><span class="h">Дневник ухода</span>
+      <span class="cost">3–4 дня</span></div>
+    <p>Отмечать раз в день: повороты, стул, температура, боль, что съел.
+    Неделя отметок — и видно динамику, которую человек по памяти не восстановит,
+    а координатору и врачу она нужна первым делом.</p>
+    <p>Живёт в телефоне, никуда не уходит; при обращении выгружается текстом
+    так же, как анкета.</p>
+    <div class="why"><b>Почему это удержит.</b> Единственный раздел, ради которого
+    приложение открывают каждый день, а не один раз.</div>
+  </div>
+
+  <div class="idea next">
+    <div class="top"><span class="h">Оповещение дежурного при угрозе жизни</span>
+      <span class="cost">1–2 дня · <span class="chip warn">нужно решение</span></span></div>
+    <p>Сейчас тревога видна координатору в CRM пометкой — то есть когда он
+    откроет CRM. Немедленного оповещения нет, потому что не выбран канал.</p>
+    <p>Технически готово всё: признак в карточке есть, очередь исходящих есть.
+    Нужен ответ на один вопрос — куда слать: SMS, звонок через телефонию или
+    группа в мессенджере.</p>
+  </div>
+
+  <div class="idea next">
+    <div class="top"><span class="h">Подбор оборудования по состоянию</span>
+      <span class="cost">2 дня</span></div>
+    <p>Шкала уже спрашивает, что человек может сам. Из тех же ответов выводится
+    список: противопролежневый матрас, кровать с подъёмом, ходунки, поручни —
+    и что из этого дают бесплатно по ИПРА, а что берут в прокате.</p>
+    <div class="why"><b>Почти даром.</b> Данные уже собраны калькулятором;
+    добавляется только таблица соответствий и экран.</div>
+  </div>
+</section>
+
+<section>
+  <h2>Когда появятся силы</h2>
+  <p class="sub">Полезно, но не меняет картину завтра.</p>
+
+  <div class="idea later">
+    <div class="top"><span class="h">Обучающие карточки по уходу</span>
+      <span class="cost">неделя + съёмка</span></div>
+    <p>Как повернуть лежачего, не надорвав спину. Как пересадить в коляску.
+    Как покормить того, кто поперхивается. Короткие шаги с рисунками —
+    видео здесь хуже: его не посмотришь одной рукой, стоя у кровати.</p>
+    <p>Требует участия тех, кто это умеет: разработчик такие карточки
+    придумать не может.</p>
+  </div>
+
+  <div class="idea later">
+    <div class="top"><span class="h">Напоминания</span>
+      <span class="cost">2 дня</span></div>
+    <p>Повернуть, дать лекарство, попоить. Делается ботом, а не приложением:
+    в мессенджер приходит уведомление, на статическую страницу — нет.</p>
+    <div class="why"><b>Осторожно.</b> Бот, напоминающий каждые два часа,
+    быстро попадает в беззвучный режим, и тогда не доходят и важные сообщения.
+    Начинать стоит с одного напоминания в день.</div>
+  </div>
+
+  <div class="idea later">
+    <div class="top"><span class="h">Отметка актуальности материалов</span>
+      <span class="cost">1 день</span></div>
+    <p>У статьи есть источник, но нет даты проверки. Изменится приказ — никто
+    не узнает, что статья устарела, а бот продолжит отвечать по ней.</p>
+  </div>
+
+  <div class="idea later">
+    <div class="top"><span class="h">Карта: куда идти в Тольятти</span>
+      <span class="cost">2 дня + данные</span></div>
+    <p>Поликлиники, бюро МСЭ, КЦСОН, пункт проката — с адресами, часами
+    и маршрутом. Данные собирает служба, приложение показывает.</p>
+  </div>
+</section>
+
+<section>
+  <h2>От чего я бы отказался</h2>
+  <p class="sub">Не потому что сложно, а потому что вредно.</p>
+
+  <div class="idea no">
+    <div class="top"><span class="h">Чат с нейросетью вместо поиска</span>
+      <span class="cost"><span class="chip stop">не советую</span></span></div>
+    <p>Соблазнительно и заметно хуже: модель отвечает уверенно и иногда
+    неправильно, а здесь спрашивают про лекарства, пролежни и права. Нынешний
+    поиск отвечает выдержкой из материалов службы — если он ошибётся, человек
+    увидит не тот текст, а не выдуманный.</p>
+    <p>Кроме того, вопросы пришлось бы отправлять наружу, а это сведения
+    о здоровье конкретного человека.</p>
+  </div>
+
+  <div class="idea no">
+    <div class="top"><span class="h">Личный кабинет с историей обращений</span>
+      <span class="cost"><span class="chip stop">не советую</span></span></div>
+    <p>Звучит солидно, но означает вход по паролю, восстановление доступа
+    и хранение медицинских сведений там, где их увидит любой, кто взял телефон
+    в руки. Всё, что нужно человеку, он и так видит по кнопке «Мои ответы».</p>
+  </div>
+
+  <div class="idea no">
+    <div class="top"><span class="h">Оценка качества помощника звёздочками</span>
+      <span class="cost"><span class="chip stop">не советую</span></span></div>
+    <p>Уход — не доставка еды. Пять звёзд не расскажут, что человек боится
+    жаловаться, а одна звезда испортит жизнь тому, кто делает тяжёлую работу
+    за небольшие деньги. Жалоба должна доходить до координатора текстом
+    и разбираться человеком.</p>
+  </div>
+</section>
+
+<section>
+  <h2>Как выбирать</h2>
+  <p>Три вопроса, по которым стоит проверять любую новую мысль — в том числе
+  мою.</p>
+  <h3>Это поможет тому, у кого дома беда прямо сейчас?</h3>
+  <p>Если польза появляется только у того, кто уже разобрался, — это не первая
+  очередь.</p>
+  <h3>Что будет, если оно ошибётся?</h3>
+  <p>Чем ближе к здоровью и деньгам, тем консервативнее должно быть решение.
+  Поиск, показывающий не ту статью, — неудобство. Модель, придумавшая дозу
+  лекарства, — беда.</p>
+  <h3>Кто будет это поддерживать через год?</h3>
+  <p>Раздел, который надо наполнять вручную каждый месяц, умрёт через два.
+  Лучше меньше разделов, которые обновляются сами из материалов службы.</p>
+</section>
+
+<footer>
+  Подготовлено по результатам аудита кода, базы данных и справочника.
+  Репозиторий: ветка <code>max-bot-complete-2026</code>.
+</footer>
+
+</div>
+</body>
+</html>
