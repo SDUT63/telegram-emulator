@@ -126,6 +126,11 @@ def build_dispatcher(survey):
         if files:
             survey.note_message(uid, text, files)
         reply = survey.handle(uid, text) if text else ""
+        # Пустой ответ означал молчание: после заполненной анкеты человек
+        # писал вопрос и не получал ничего. Ответ по материалам службы
+        # ищется тем же кодом, что и в остальных режимах.
+        if not reply and text:
+            reply = survey.справка_по_вопросу(uid, text)
         if reply:
             await send(event.bot, chat_id, uid, reply, visible_rows(survey, uid))
         if files:
