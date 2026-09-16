@@ -27,7 +27,7 @@ def test_сообщение_после_анкеты_сохраняется(conse
     s = consented
     дозаполнить(s)
     out = s.handle("u1", "А когда примерно позвонят? Мама совсем ослабла")
-    assert out == ANSWERED, "человеку надо сказать, что сообщение дошло"
+    assert ANSWERED in out, "человеку надо сказать, что сообщение дошло"
     assert [m["text"] for m in s.messages("u1")] == [
         "А когда примерно позвонят? Мама совсем ослабла"]
 
@@ -294,11 +294,16 @@ def test_подтверждение_приходит_один_раз(consented):
     s = consented
     дозаполнить(s)
     первый = s.handle("u1", "а когда позвонят координаторы вообще")
-    assert первый == ANSWERED
+    assert ANSWERED in первый
+
+    # Дальше подтверждение не повторяется, но и молчания быть не должно:
+    # на вопрос после анкеты приходит ответ из материалов службы.
     for текст in ("и ещё забыла сказать про пролежень на пятке",
                   "мама плохо спит последние ночи",
                   "спасибо вам большое за помощь"):
-        assert s.handle("u1", текст) == "", текст
+        ответ = s.handle("u1", текст)
+        assert ANSWERED not in ответ, текст
+        assert ответ, f"бот промолчал на {текст!r}"
 
 
 def test_молчание_не_теряет_сообщений(consented):
@@ -329,7 +334,7 @@ def test_через_сутки_подтверждаем_снова(consented):
     from datetime import datetime, timedelta
     s = consented
     дозаполнить(s)
-    assert s.handle("u1", "первое сообщение в разговоре") == ANSWERED
+    assert ANSWERED in s.handle("u1", "первое сообщение в разговоре")
     вчера = datetime.now() - timedelta(hours=25)
     s.state["u1"]["acked"] = вчера.isoformat(timespec="seconds")
-    assert s.handle("u1", "сообщение на следующий день") == ANSWERED
+    assert ANSWERED in s.handle("u1", "сообщение на следующий день")

@@ -6,16 +6,9 @@ from storage_sqlite import SQLiteSurvey
 from survey_questions import CHECKPOINT_ID, QUESTIONS
 
 class LaptopSurvey(SQLiteSurvey):
-    def continue_detailed(self,user_id):
-        uid=str(user_id); p=self.state.get(uid)
-        if not p or not p.get("finished"): return self.question_text(uid)
-        cp=next(i for i,q in enumerate(QUESTIONS) if q["id"]==CHECKPOINT_ID)
-        keep={q["id"] for q in QUESTIONS[:cp+1]}|{"district","lift"}
-        p["answers"]={k:v for k,v in (p.get("answers") or {}).items() if k in keep}
-        p["answers"][CHECKPOINT_ID]="Продолжить"; p["step"]=self._next(cp+1,p["answers"])
-        p["history"]=[s for s in (p.get("history") or []) if s<cp+1]; p["pending"]=None
-        p["alerts"]=[]; p["finished"]=None; p["reading"]=False; self.save()
-        return "Основные данные уже сохранены — имя, телефон и адрес повторно вводить не нужно.\n\n"+self.question_text(uid)
+    """Ноутбучная анкета. Продолжение подробной части живёт в Survey:
+    кнопка есть у обоих транспортов, и реализация должна быть одна."""
+
 
 def consent_rows(full=False):
     return [[("Согласен, продолжим","c:y")],[("Не согласен","c:n")],[("← Вернуться к краткому тексту","c:back")]] if full else [[("Согласен, продолжим","c:y")],[("Прочитать полный текст","c:full")],[("Не согласен","c:n")],[("Просто почитать","map")]]
@@ -23,7 +16,15 @@ def consent_rows(full=False):
 def rows(s,u):
     u=str(u)
     if s.stage(u)=="consent": return consent_rows(bool(s.reading(u)))
-    if s.current(u) is None: return [[("Мои ответы","m")],[("Продолжить подробную анкету","n")],[("Заполнить заново","r")]] if (s.state.get(u) or {}).get("finished") else [[("Мои ответы","m")]]
+    if s.current(u) is None:
+        # «Продолжить подробную анкету» после завершённой анкеты врало:
+        # продолжать нечего. Первой стоит кнопка тем — иначе человек
+        # должен угадать слово «спросить», которое ниоткуда не знает.
+        строки=[[("Спросить о другом","map")]]
+        if s.есть_что_продолжить(u): строки.append([("Продолжить подробную анкету","n")])
+        строки.append([("Мои ответы","m")])
+        if (s.state.get(u) or {}).get("finished"): строки.append([("Заполнить заново","r")])
+        return строки
     step,q=s.current(u); out=[]
     if q["kind"]!="choice": return out
     multi=bool(q.get("multi")); picked=s.picked(u,step) if multi else []; nothing=s.none_index(q) if multi else None
@@ -71,6 +72,10 @@ def build_dispatcher(s):
         c,u=e.get_ids();u=str(u);b=e.message.body;text=((b.text if b else None) or "").strip()
         if text.casefold().strip(" ?!.") in old.ASK_WORDS and u in s.state: await old.меню_тем(e.bot,c,u,s); return
         r=s.handle(u,text)
+        # Пустой ответ пилот не отправлял вовсе — и после завершённой
+        # анкеты бот молчал на любой вопрос. Ответ по материалам службы
+        # ищется тем же кодом, что и в боевом режиме.
+        if not r and text: r=s.справка_по_вопросу(u,text)
         if r: await send(e.bot,c,u,r,rows(s,u))
     @dp.message_callback()
     async def callback(e):

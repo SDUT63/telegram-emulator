@@ -91,7 +91,10 @@ def build_dispatcher(survey,seen=None):
                 return
             if action=="q":survey.handle_navigation_event(uid,"q",[]);return
             if action=="c" and args[:1]==["full"]:survey.handle_navigation_event(uid,"cfull",[]);return
-            if action in {"c","a","s","d","t","b","n","m"}:survey.handle_callback_event(uid,action,args);return
+            # «r» — заполнить заново. Без него кнопка на экране есть,
+            # а нажатие уходит в никуда: диспетчер молча отбрасывает
+            # действие, которого нет в этом наборе.
+            if action in {"c","a","s","d","t","b","n","r","m"}:survey.handle_callback_event(uid,action,args);return
             log.info("unknown callback action rejected")
         token=_OUTBOX_EDIT_TARGET.set(source_message)
         try:

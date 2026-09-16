@@ -84,12 +84,9 @@ class DurableProductionPostgresSurvey(ProductionPostgresSurvey):
                 _OUTBOX_KEYBOARD.reset(token_keyboard)
 
     def _reference_reply(self, user_id: str, question: str) -> str:
-        text = knowledge.ответ_без_модели(question)
-        if text:
-            Survey.understood(self, user_id)
-            return text + "\n\n" + СПРАВКА_ПОДПИСЬ
-        attempt = self.miss(user_id)
-        return fallback.фраза(attempt, fallback.ВОПРОС)
+        # Одна реализация на оба транспорта: пока она была только здесь,
+        # пилот на тот же вопрос не отвечал ничем.
+        return Survey.справка_по_вопросу(self, user_id, question)
 
     def handle_message_event(self, user_id: str, text: str, files: list[dict[str, Any]] | None = None) -> str:
         uid = str(user_id)
@@ -205,6 +202,11 @@ class DurableProductionPostgresSurvey(ProductionPostgresSurvey):
             if action == "b":
                 return self.handle(uid, "назад")
             if action == "n":
+                # Продолжить подробную часть после «Достаточно, свяжитесь».
+                # Раньше «n» начинало анкету заново, а подпись на кнопке
+                # обещала продолжение — человек терял всё, что ответил.
+                return self.continue_detailed(uid)
+            if action == "r":
                 return self.restart_after_consent(uid)
             if action == "m":
                 return self.summary(uid)
