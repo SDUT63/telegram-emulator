@@ -1,0 +1,345 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Прайс на реалиях и что сломалось под нагрузкой</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Literata:opsz,wght@7..72,600;7..72,700&family=Golos+Text:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+:root{
+  --ground:#F2F5F3; --surface:#FFFFFF; --surface-2:#E9EFEC;
+  --ink:#14201E; --ink-soft:#4B5A56; --ink-faint:#748480;
+  --line:#D9E2DE; --line-strong:#B9C7C2;
+  --accent:#1B5A55; --accent-soft:#D6E6E3;
+  --ok:#2C6647; --ok-bg:#DCEBE2;
+  --warn:#83600F; --warn-bg:#F2E8CE;
+  --stop:#9C382E; --stop-bg:#F5DDD9;
+  --serif:"Literata",Georgia,serif;
+  --sans:"Golos Text","Helvetica Neue",Arial,sans-serif;
+  --mono:"IBM Plex Mono",Consolas,monospace;
+  color-scheme: light dark;
+}
+@media (prefers-color-scheme:dark){:root{
+  --ground:#101614; --surface:#171F1D; --surface-2:#1E2826;
+  --ink:#E5EBE8; --ink-soft:#A8B7B2; --ink-faint:#7E8E89;
+  --line:#293430; --line-strong:#3A4844;
+  --accent:#63B4AB; --accent-soft:#1D302E;
+  --ok:#6DBB8E; --ok-bg:#1A2B22;
+  --warn:#D2A648; --warn-bg:#2C2617;
+  --stop:#DE7A6D; --stop-bg:#2E1C19;
+}}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0}
+body{background:var(--ground);color:var(--ink);font-family:var(--sans);
+  font-size:17px;line-height:1.62;-webkit-text-size-adjust:100%}
+.wrap{max-width:42rem;margin:0 auto;padding-inline:20px;padding-block:2.2rem 4rem}
+.eyebrow{font-family:var(--mono);font-size:.72rem;letter-spacing:.14em;
+  text-transform:uppercase;color:var(--accent);margin:0 0 .7rem}
+h1{font-family:var(--serif);font-weight:700;font-size:clamp(1.75rem,6vw,2.4rem);
+  line-height:1.14;margin:0 0 .6rem;text-wrap:balance}
+.lede{color:var(--ink-soft);margin:0 0 2rem;font-size:1.05rem}
+h2{font-family:var(--serif);font-weight:600;font-size:1.35rem;line-height:1.25;
+  margin:2.8rem 0 .6rem;text-wrap:balance}
+h3{font-size:1rem;font-weight:600;margin:1.8rem 0 .45rem}
+p{margin:0 0 .9rem}
+ul,ol{margin:0 0 1rem;padding-left:1.3rem}
+li{margin-bottom:.4rem}
+code{font-family:var(--mono);font-size:.87em;background:var(--surface-2);
+  padding:.1rem .3rem;border-radius:4px}
+.num{display:inline-block;font-family:var(--mono);font-size:.78rem;font-weight:500;
+  background:var(--accent);color:#fff;border-radius:999px;padding:.12rem .55rem;
+  margin-right:.45rem;vertical-align:.1em}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:9px;
+  padding:1rem 1.1rem;margin-bottom:.9rem}
+.card .h{font-weight:600;display:block;margin-bottom:.35rem}
+.card p{margin:0;color:var(--ink-soft);font-size:.95rem}
+.card p + p{margin-top:.6rem}
+.card.stop{border-left:3px solid var(--stop)}
+.card.ok{border-left:3px solid var(--ok)}
+.card.note{border-left:3px solid var(--warn);background:var(--warn-bg)}
+.card.note p, .card.note .h{color:var(--warn)}
+.scroll{overflow-x:auto;-webkit-overflow-scrolling:touch;margin-bottom:1.1rem}
+.tbl{width:100%;border-collapse:collapse;font-size:.92rem;min-width:30rem}
+.tbl th{text-align:left;font-family:var(--mono);font-size:.68rem;letter-spacing:.08em;
+  text-transform:uppercase;color:var(--accent);font-weight:500;
+  padding:.4rem .7rem .4rem 0;border-bottom:1px solid var(--line-strong);
+  white-space:nowrap}
+.tbl td{padding:.5rem .7rem .5rem 0;border-bottom:1px solid var(--line);
+  vertical-align:top}
+.tbl td:last-child,.tbl th:last-child{padding-right:0}
+.tbl .r{font-family:var(--mono);font-variant-numeric:tabular-nums;
+  white-space:nowrap;text-align:right}
+.tbl .down{color:var(--ok)}
+.tbl .up{color:var(--warn)}
+.tbl .bad{color:var(--stop);font-weight:500}
+.split{background:var(--surface);border:1px solid var(--line);border-radius:9px;
+  padding:.5rem 1rem;margin-bottom:1.1rem}
+.split .row{display:flex;justify-content:space-between;gap:.8rem;padding:.45rem 0;
+  border-bottom:1px solid var(--line);font-size:.93rem;align-items:baseline}
+.split .row:last-child{border-bottom:0}
+.split .row span:last-child{font-family:var(--mono);
+  font-variant-numeric:tabular-nums;white-space:nowrap;color:var(--ink-soft)}
+.split .row.sum{font-weight:600;padding-top:.65rem}
+.split .row.sum span:last-child{color:var(--accent)}
+.big{background:var(--accent-soft);border-radius:9px;padding:1rem 1.1rem;
+  margin-bottom:1.1rem}
+.big .n{font-family:var(--mono);font-size:1.6rem;font-weight:500;color:var(--accent);
+  display:block;line-height:1.2;font-variant-numeric:tabular-nums}
+.big .t{color:var(--ink-soft);font-size:.93rem;display:block;margin-top:.2rem}
+.fix{list-style:none;padding:0;margin:0 0 1rem}
+.fix li{padding:.75rem 0;border-bottom:1px solid var(--line)}
+.fix b{display:block;font-weight:600;font-size:.97rem}
+.fix .было{font-family:var(--mono);color:var(--stop);font-size:.85rem;
+  display:block;margin:.1rem 0}
+.fix span.t{color:var(--ink-soft);font-size:.9rem}
+.tags{display:flex;flex-wrap:wrap;gap:.35rem;margin-bottom:1rem}
+.tags span{font-size:.82rem;background:var(--ok-bg);color:var(--ok);
+  padding:.2rem .55rem;border-radius:999px}
+footer{margin-top:3rem;padding-top:1.3rem;border-top:1px solid var(--line-strong);
+  color:var(--ink-faint);font-size:.85rem}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<p class="eyebrow">АНО «СДУТ» · 16 сентября 2026</p>
+<h1>Прайс на реалиях и что сломалось под нагрузкой</h1>
+<p class="lede">Прайс пересчитан от себестоимости: теперь цены выводятся, а не назначаются.
+Обещание «всё бесплатно» убрано — служба вправе на коммерцию в рамках устава.
+Нагрузка нашла три способа потерять данные и одну дыру, ведущую с чата прямо
+на компьютер координатора.</p>
+
+<h2><span class="num">1</span>Почему прежний прайс был набором цен</h2>
+
+<p>Он не сходился, и это было не видно, потому что маржу считали без
+постоянных расходов. В расчёте не было ни организатора ухода, ни бухгалтерии,
+ни помещения — а это от 45 до 151 ₽ на каждый час в зависимости от объёма
+службы. Главная цифра прайса, и её не было вовсе.</p>
+
+<p>Ещё норма рабочего времени была взята 173 часа вместо 164,3. Отсюда
+«минимально допустимая ставка 157 ₽», которая на самом деле 165 ₽. Отпуск
+28 дней и первые дни больничного тоже оплачивает работодатель — ещё десятая
+часть фонда, и её в расчёте не было.</p>
+
+<p>Что получилось на деле, если отнести все постоянные расходы на платные
+услуги:</p>
+
+<div class="scroll">
+<table class="tbl">
+  <tr><th>Позиция</th><th>Цена была</th><th>Полная себестоимость</th><th>Итог</th></tr>
+  <tr><td>Смена 8 часов</td><td class="r">2 600</td><td class="r">2 657</td><td class="r bad">убыток</td></tr>
+  <tr><td>Дневная смена 12 часов</td><td class="r">3 700</td><td class="r">3 926</td><td class="r bad">убыток</td></tr>
+  <tr><td>Ночная смена 12 часов</td><td class="r">4 200</td><td class="r">4 320</td><td class="r bad">убыток</td></tr>
+  <tr><td>Круглосуточно, две смены</td><td class="r">7 700</td><td class="r">8 246</td><td class="r bad">убыток</td></tr>
+  <tr><td>Сиделка с проживанием</td><td class="r">2 700</td><td class="r">2 555</td><td class="r">+6 %, после налога в ноль</td></tr>
+  <tr><td>Пакет 1 уровня</td><td class="r">20 900</td><td class="r">19 629</td><td class="r">+6 %, после налога в ноль</td></tr>
+  <tr><td>Выезд на 1 час</td><td class="r">1 100</td><td class="r">415</td><td class="r up">наценка 165 %</td></tr>
+  <tr><td>Визит 2 часа</td><td class="r">1 490</td><td class="r">712</td><td class="r up">наценка 109 %</td></tr>
+</table>
+</div>
+
+<div class="card stop">
+  <span class="h">Прайс работал наоборот</span>
+  <p>Служба зарабатывала на случайных разовых визитах и теряла на регулярном
+  уходе — на том, ради чего создана. Чем больше было бы клиентов на пакетах,
+  тем хуже сходились бы деньги.</p>
+</div>
+
+<h2><span class="num">2</span>Как теперь считается час</h2>
+
+<p>Появился модуль <code>экономика.py</code>. В нём вводные с основаниями: МРОТ
+27 093 ₽, норма 164,3 часа, взносы 7,6 % (пп. 7 п. 1 и п. 2.2 ст. 427 НК — НКО
+на УСН в социальном обслуживании), дорога как рабочее время (ст. 91 ТК),
+ночной коэффициент 1,2 (ст. 154 ТК), отпуск и больничные, расходники,
+постоянные расходы, УСН 6 %.</p>
+
+<p>Час у подопечного при визите на два часа:</p>
+
+<div class="split">
+  <div class="row"><span>Труд помощника с взносами, отпуском и дорогой</span><span>296 ₽</span></div>
+  <div class="row"><span>Расходники и средства защиты</span><span>12 ₽</span></div>
+  <div class="row"><span>Организатор ухода, бухгалтерия, связь, помещение</span><span>48 ₽</span></div>
+  <div class="row"><span>Резерв на замену и кассовый разрыв</span><span>40 ₽</span></div>
+  <div class="row"><span>Налог УСН</span><span>25 ₽</span></div>
+  <div class="row"><span>Округление до десяти рублей</span><span>4 ₽</span></div>
+  <div class="row sum"><span>Час у подопечного</span><span>425 ₽</span></div>
+</div>
+
+<p>Цена часа падает с длиной визита не из вежливости: полчаса дороги делятся
+на число часов. При часовом визите они целиком ложатся на один час, при
+двенадцатичасовой смене — на двенадцать.</p>
+
+<div class="scroll">
+<table class="tbl">
+  <tr><th>Позиция</th><th>Было</th><th>Стало</th><th>За час</th></tr>
+  <tr><td>Выезд на 1 час</td><td class="r">1 100</td><td class="r down">500</td><td class="r">500 ₽</td></tr>
+  <tr><td>Визит 2 часа</td><td class="r">1 490</td><td class="r down">850</td><td class="r">425 ₽</td></tr>
+  <tr><td>Визит 3 часа</td><td class="r">1 930</td><td class="r down">1 200</td><td class="r">400 ₽</td></tr>
+  <tr><td>Визит 4 часа</td><td class="r">2 340</td><td class="r down">1 550</td><td class="r">388 ₽</td></tr>
+  <tr><td>Смена 8 часов</td><td class="r">2 600</td><td class="r up">2 950</td><td class="r">369 ₽</td></tr>
+  <tr><td>Дневная смена 12 часов</td><td class="r">3 700</td><td class="r up">4 350</td><td class="r">362 ₽</td></tr>
+  <tr><td>Ночная смена 12 часов</td><td class="r">4 200</td><td class="r up">4 820</td><td class="r">402 ₽</td></tr>
+  <tr><td>Круглосуточно, две смены</td><td class="r">7 700</td><td class="r up">9 170</td><td class="r">382 ₽</td></tr>
+  <tr><td>Сиделка с проживанием, сутки</td><td class="r">2 700</td><td class="r up">2 830</td><td class="r">354 ₽</td></tr>
+  <tr><td>Первичный выезд организатора</td><td class="r">2 000</td><td class="r down">1 090</td><td class="r">727 ₽</td></tr>
+  <tr><td>Пробный визит</td><td class="r">1 200</td><td class="r down">760</td><td class="r">380 ₽</td></tr>
+  <tr><td>Пакет 1 уровня, месяц</td><td class="r">20 900</td><td class="r up">22 000</td><td class="r">422 ₽</td></tr>
+  <tr><td>Пакет 2 уровня, месяц</td><td class="r">32 600</td><td class="r up">34 600</td><td class="r">398 ₽</td></tr>
+  <tr><td>Пакет 3 уровня, месяц</td><td class="r">40 100</td><td class="r up">43 600</td><td class="r">386 ₽</td></tr>
+</table>
+</div>
+
+<p>Разовые визиты подешевели вдвое, регулярный уход подорожал на 5–9 %.
+Пробный визит идёт по себестоимости — без резерва и наценки, один раз
+на клиента.</p>
+
+<h3>Две надбавки были посчитаны неверно</h3>
+<ul>
+  <li><b>Вес свыше 110 кг</b> стоил +50 % и в случае «работа только вдвоём».
+  Второй помощник оплачивался наполовину. Разделено: +20 % с подъёмником,
+  +100 % когда приезжают двое.</li>
+  <li><b>Второй подопечный по тому же адресу</b> — уточнено, что время визита
+  делится между двумя. Кому нужен полный объём каждому, берёт отдельные часы.</li>
+</ul>
+
+<h2><span class="num">3</span>Решение, которое принимать вам</h2>
+
+<p>Постоянные расходы службы — 90 500 ₽ в месяц. Сколько из них несут платные
+услуги, а сколько гранты и пожертвования, — это управленческое решение,
+и оно задано явно: сейчас <b>70 % на платные услуги</b>, 27 150 ₽ в месяц
+остаётся на уставные источники.</p>
+
+<div class="card note">
+  <span class="h">Если платные услуги должны нести всё</span>
+  <p>Визит 2 часа — 890 ₽ вместо 850. Пакет 1 уровня — 23 200 ₽ вместо 22 000.
+  Пакет 3 уровня — 46 300 ₽ вместо 43 600. То есть примерно +6 % ко всему
+  прайсу. Меняется одна строка в <code>экономика.py</code>, и цены
+  пересчитываются везде разом — в калькуляторе, в ответах бота и в статье
+  справочника.</p>
+</div>
+
+<div class="big">
+  <span class="n">579 часов в месяц</span>
+  <span class="t">точка безубыточности при текущем прайсе — это примерно
+  11 клиентов на пакете первого уровня или 5 на третьем</span>
+</div>
+
+<p>Цифра, которая решает, бизнес это или грантовый проект. Ниже неё служба
+живёт на гранты; выше — платный контур сам себя кормит и начинает
+подпитывать бесплатный.</p>
+
+<h3>Как это выглядит рядом с рынком</h3>
+<p>В Тольятти частные объявления начинаются от 160 ₽ в час, агентство
+с проживанием — от 1 800 ₽ в сутки. У службы 425 ₽ в час и 2 830 ₽ в сутки.
+Разницу надо не прятать, а называть, и теперь она названа прямо в приложении:
+трудовой договор со взносами и отпуском, замена в тот же день при болезни
+помощника, обучение и допуск, ответственность службы по договору вместо
+разговора с человеком, который перестал брать трубку.</p>
+
+<p>Ниже 165 ₽ за час рабочего времени ставку помощника опустить нельзя —
+это нарушение ТК. Конкурент, который продаёт час за 200 ₽, либо не платит
+взносов, либо не платит помощнику.</p>
+
+<h2><span class="num">4</span>«Всё бесплатно» убрано</h2>
+
+<p>Бот обещал: «всё, что мы делаем, бесплатно», «платы нет ни в какой форме»,
+«мы ничего не продаём». Рядом с калькулятором стоимости это не скромность,
+а обман: человек верит обещанию и получает счёт.</p>
+
+<p>Переписано без обещаний и без умолчаний. Бесплатное названо поимённо:
+консультация, разбор ситуации, маршрут, обучение в Школе ухода, сопровождение
+при оформлении — при любом доходе. Платный уход — отдельный контур, по
+договору, с ценой, известной заранее. Основание названо: п. 2 ст. 24
+ФЗ-7 и п. 4 ст. 50 ГК РФ, приносящая доход деятельность в рамках устава.
+Между учредителями выручка не распределяется — у АНО это и невозможно.</p>
+
+<p>Статья о ценах в базе знаний теперь собирается из прайса автоматически.
+Иначе в чате была бы одна сумма, а в калькуляторе другая, и человек поверил
+бы меньшей.</p>
+
+<h2><span class="num">5</span>Что нашла нагрузка</h2>
+
+<p>Три стенда: анкета, CRM с веб-сервером, PostgreSQL. Каждый не проверяет,
+работает ли, а пытается сделать то, чего делать нельзя.</p>
+
+<ul class="fix">
+  <li><b>Терялись сообщения при одновременной записи</b>
+    <span class="было">из 250 человек, писавших разом, доходил 1</span>
+    <span class="t">Две нити писали в один и тот же временный файл: первая
+    переименовывала его, вторая падала с «нет такого файла», и ответ человека
+    пропадал вместе с исключением. Теперь у каждой записи своя времянка,
+    разбор идёт под замком этого человека, а состояние сериализуется
+    со снимка.</span></li>
+  <li><b>Два координатора затирали работу друг друга</b>
+    <span class="было">из 60 одновременных заметок сохранялось 2</span>
+    <span class="t">«Прочитать — изменить — записать» шло без замка, и каждый
+    записывал файл, прочитанный до чужой правки. Добавлен замок, общий для
+    нитей и для процессов: рядом с CRM тот же файл правит отправщик
+    очереди.</span></li>
+  <li><b>Ответ анкеты выполнялся у координатора в Excel</b>
+    <span class="было">из чата на рабочий компьютер, без единого препятствия</span>
+    <span class="t">Человек пишет в ответ на вопрос об имени
+    <code>=HYPERLINK(...)</code>, координатор выгружает обращения и открывает
+    файл — формула срабатывает. Теперь такие значения помечаются как текст,
+    но не искажаются: координатор должен видеть ровно то, что написал
+    человек, это может оказаться уликой.</span></li>
+  <li><b>У CRM не было защитных заголовков</b>
+    <span class="t">Добавлены nosniff, запрет встраивания во фрейм, политика
+    содержимого и запрет кэширования карточек.</span></li>
+  <li><b>Я сам внёс взаимоблокировку</b>
+    <span class="было">прогон проверок перестал заканчиваться вовсе</span>
+    <span class="t">Замок человека был невозвратным, а бот внутри разбора
+    вызывает себя, когда ответ приходит номером кнопки. Заменено
+    на возвратный, есть отдельная проверка.</span></li>
+</ul>
+
+<h3>Что проверено и оказалось в порядке</h3>
+<div class="tags">
+  <span>вход без пароля закрыт, включая POST</span>
+  <span>перебор запирается после 4-й попытки</span>
+  <span>блокировка не мешает другим операторам</span>
+  <span>«смотрящий» не может ответить человеку</span>
+  <span>выход из каталога картинок закрыт</span>
+  <span>вложения не выводят из каталога</span>
+  <span>разметка из анкеты в CRM не выполняется</span>
+  <span>PostgreSQL не путает записи</span>
+  <span>дубль доставки не теряет ответ</span>
+  <span>карточка не растёт без предела</span>
+</div>
+
+<p>Хранимую разметку проверял не чтением кода, а в браузере на живом сервере:
+пять разных попыток — <code>img onerror</code>, <code>script</code>,
+<code>svg onload</code>, <code>javascript:</code>, <code>iframe</code> —
+все пять видны координатору как текст, ни одна не выполнилась.</p>
+
+<h3>Известные ограничения</h3>
+<p>Файловое хранилище переписывает файл целиком на каждое сообщение:
+126 сообщений в секунду при 250 одновременных обращениях. Для горячей линии
+с запасом, но дальше растёт время записи, а не число людей. Рабочий контур —
+PostgreSQL, и он проверен отдельно.</p>
+
+<p>PostgreSQL открывает соединение на каждую операцию — 43 сообщения
+в секунду, заметная часть уходит на само подключение. Пул соединений —
+очевидный следующий шаг, если нагрузка вырастет.</p>
+
+<h2>Что делать вам</h2>
+<ol>
+  <li>Решить, какую долю постоянных расходов несут платные услуги. Сейчас 70 %.</li>
+  <li>Выложить папку <code>webapp</code> на Cloudflare заново — цены в приложении изменились.</li>
+  <li>Прайс поменять можно в одном месте: <code>прайс.py</code> и
+  <code>экономика.py</code>, дальше <code>python scripts/собрать_данные.py</code>
+  пересобирает и приложение, и статью справочника.</li>
+</ol>
+
+<footer>
+АНО «Система долговременного ухода», Тольятти.<br>
+Ветка <code>claude/max-bot-complete-analysis-gcgbtm</code>, 1011 проверок зелёная.
+Стенды нагрузки — в папке <code>нагрузка/</code>.
+</footer>
+
+</div>
+</body>
+</html>
