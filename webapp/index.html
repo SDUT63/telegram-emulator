@@ -511,7 +511,21 @@ details.q[open] > summary::after { transform: rotate(-135deg); margin-top: -2px;
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg>
       </button>
     </div>
-    <nav class="chips" id="chips" aria-label="Разделы">
+    <style>
+/* Переход в мини-приложение. Отдельным цветом, потому что это
+   не раздел для чтения, а инструмент: расчёт часов помощи, анкета
+   и поиск по всем материалам службы. Из справочника на него раньше
+   не вело ничего, и открыть его было неоткуда. */
+.chip--app{
+  background: var(--topic, #1B5A55);
+  border-color: var(--topic, #1B5A55);
+  color: #fff;
+  font-weight: 600;
+}
+.chip--app:hover, .chip--app:focus-visible{ opacity:.9; color:#fff; }
+</style>
+<nav class="chips" id="chips" aria-label="Разделы">
+      <a class="chip chip--app" href="помощь.html">Посчитать часы помощи</a>
       <a class="chip" href="#b-now">Срочно</a>
       <a class="chip" href="#b-line">Куда обратиться</a>
       <a class="chip" href="#b-model">Что такое уход</a>
