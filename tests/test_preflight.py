@@ -267,3 +267,85 @@ def test_бессмысленный_срок_хранения_это_стоп(ч
     for плохое in ("год", "0", "99999"):
         чисто.setenv("SDUT_CASE_RETENTION_DAYS", плохое)
         assert preflight.срок_хранения_анкет().уровень == preflight.НЕЛЬЗЯ, плохое
+
+
+# ------------------------------------------------------- доступ снаружи
+
+def test_без_адреса_вебхука_это_внимание_а_не_стоп(чисто):
+    """На ноутбуке бот работает через long polling, и адрес не нужен."""
+    итог = preflight.доступ_снаружи()
+
+    assert итог.уровень == preflight.ВНИМАНИЕ
+    assert "long polling" in итог.делать
+
+
+def test_адрес_без_https_это_стоп(чисто):
+    чисто.setenv("MAX_WEBHOOK_URL", "http://бот.example.ru/max")
+    чисто.setenv("MAX_WEBHOOK_PATH", "/max")
+
+    итог = preflight.доступ_снаружи()
+    assert итог.уровень == preflight.НЕЛЬЗЯ
+    assert "https" in итог.подробность
+
+
+def test_адрес_не_на_443_это_стоп(чисто):
+    """MAX доставляет события только на 443."""
+    чисто.setenv("MAX_WEBHOOK_URL", "https://бот.example.ru:8443/max")
+    чисто.setenv("MAX_WEBHOOK_PATH", "/max")
+
+    assert preflight.доступ_снаружи().уровень == preflight.НЕЛЬЗЯ
+
+
+def test_путь_в_адресе_должен_совпадать_с_путём_бота(чисто):
+    """Иначе MAX стучится туда, где никто не слушает."""
+    чисто.setenv("MAX_WEBHOOK_URL", "https://бот.example.ru/max")
+    чисто.setenv("MAX_WEBHOOK_PATH", "/события")
+
+    итог = preflight.доступ_снаружи()
+    assert итог.уровень == preflight.НЕЛЬЗЯ
+    assert "путь" in итог.подробность
+
+
+def test_недоверенный_сертификат_отличается_от_недоступного(чисто, monkeypatch):
+    """Самоподписанный сертификат выглядит как работающий HTTPS,
+    но MAX его молча отвергнет, и события перестанут приходить."""
+    import socket
+    import ssl
+
+    def самоподписанный(*а, **к):
+        raise ssl.SSLCertVerificationError("self-signed certificate")
+
+    monkeypatch.setattr(socket, "create_connection", самоподписанный)
+    чисто.setenv("MAX_WEBHOOK_URL", "https://бот.example.ru/max")
+    чисто.setenv("MAX_WEBHOOK_PATH", "/max")
+
+    итог = preflight.доступ_снаружи()
+    assert итог.уровень == preflight.НЕЛЬЗЯ
+    assert "не примет" in итог.делать
+
+
+def test_недоступный_сервер_это_внимание(чисто, monkeypatch):
+    import socket
+
+    monkeypatch.setattr(socket, "create_connection",
+                        lambda *а, **к: (_ for _ in ()).throw(socket.timeout()))
+    чисто.setenv("MAX_WEBHOOK_URL", "https://бот.example.ru/max")
+    чисто.setenv("MAX_WEBHOOK_PATH", "/max")
+
+    assert preflight.доступ_снаружи().уровень == preflight.ВНИМАНИЕ
+
+
+@pytest.mark.parametrize("состояние,уровень", [
+    ("истёк", "НЕЛЬЗЯ"),
+    ("скоро истечёт", "ВНИМАНИЕ"),
+    ("ок", "ГОТОВО"),
+])
+def test_срок_сертификата_влияет_на_вердикт(чисто, monkeypatch, состояние, уровень):
+    """Истёкший сертификат — это молчащий бот: MAX перестанет
+    доставлять события, а в логах бота не появится ничего."""
+    monkeypatch.setattr(preflight, "_сертификат",
+                        lambda адрес: (состояние, "подробность"))
+    чисто.setenv("MAX_WEBHOOK_URL", "https://бот.example.ru/max")
+    чисто.setenv("MAX_WEBHOOK_PATH", "/max")
+
+    assert preflight.доступ_снаружи().уровень == getattr(preflight, уровень)
