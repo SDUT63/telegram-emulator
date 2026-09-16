@@ -39,6 +39,7 @@ from flask import (
     url_for,
 )
 
+import access_log
 import crm_store as store
 import storage
 from login_guard import ЗАЩИТА
@@ -143,6 +144,16 @@ def изменить(действие: str, *args, **kwargs):
     принципал = _principal()
     принципал.require(ТРЕБУЕМАЯ_РОЛЬ[действие])
 
+    # Все изменения проходят здесь — значит и в журнале они окажутся
+    # все, без перечисления обработчиков по одному. Записываем после
+    # проверки прав: отказ уже отмечен тем, что действия не было.
+    access_log.записать(
+        кто=session.get("operator_login", "?"),
+        роль=session.get("operator_role", "?"),
+        действие=действие,
+        обращение=str(args[0]) if args else None,
+    )
+
     production = _production_crm()
     if production is not None:
         return getattr(production, действие)(*args, auth=принципал, **kwargs)
@@ -199,6 +210,9 @@ def api_login():
         ответ = {"error": "Неверный логин или пароль"}
         if задержка > 0:
             ответ["error"] += f" Следующая попытка через {int(задержка) + 1} с."
+        # Неудачные попытки — самое важное в журнале: по ним видно подбор
+        # пароля к двери, за которой медицинские сведения.
+        access_log.записать(кто=логин or "?", роль="—", действие="вход не удался")
         return jsonify(ответ), 401
 
     ЗАЩИТА.успех(логин, адрес)
@@ -206,6 +220,7 @@ def api_login():
     session["operator"] = name
     session["operator_login"] = логин
     session["operator_role"] = store.role_of(логин)
+    access_log.записать(кто=логин, роль=session["operator_role"], действие="вход")
     return jsonify({"operator": name})
 
 
@@ -374,6 +389,12 @@ def api_cases():
     # файловый Survey(), и на боевом PostgreSQL координатор видел
     # ноль обращений при полной базе — молча, без всякой ошибки.
     survey = storage.открыть()  # только чтение: конструктор ничего не пишет
+    access_log.записать(
+        кто=session.get("operator_login", "?"),
+        роль=session.get("operator_role", "?"),
+        действие="просмотр обращений",
+        ещё={"обращений": len(survey.state or {})},
+    )
     delivered = store.delivery_state()
     cases = [
         _case_view(user_id, person, delivered)
@@ -446,6 +467,15 @@ def api_export():
     day = datetime.now().strftime("%Y-%m-%d")
     path = os.path.join(tempfile.gettempdir(), f"sdut-{day}.xlsx")
     export_excel.build(path)
+
+    # Выгрузка — это все имена, телефоны, адреса и сведения о здоровье
+    # разом, в файле, который потом живёт своей жизнью. Из всего, что
+    # делает оператор, здесь важнее всего знать, кто и когда.
+    access_log.записать(
+        кто=session.get("operator_login", "?"),
+        роль=session.get("operator_role", "?"),
+        действие="выгрузка в Excel",
+    )
 
     response = send_file(path, as_attachment=True, download_name=f"sdut-{day}.xlsx")
     # Имя файла по-русски. Заголовок с кириллицей браузер понимает только
