@@ -43,14 +43,18 @@ class Metrics:
             '# TYPE sdut_process_uptime_seconds gauge',
             f'sdut_process_uptime_seconds {time.monotonic() - self._started:.3f}',
         ]
-        for (name, labels), value in counters:
-            metric = _format(name, labels)
-            lines.append(f'# TYPE {name} counter')
-            lines.append(f'{metric} {value:g}')
-        for (name, labels), value in gauges:
-            metric = _format(name, labels)
-            lines.append(f'# TYPE {name} gauge')
-            lines.append(f'{metric} {value:g}')
+        # One TYPE line per metric NAME, with every labelled series grouped
+        # under it. Prometheus rejects a scrape outright on a second TYPE
+        # line for the same name ("second TYPE line for metric name"), so
+        # emitting one per series silently broke monitoring as soon as any
+        # metric gained a label.
+        for kind, series in (("counter", counters), ("gauge", gauges)):
+            grouped: dict[str, list[str]] = {}
+            for (name, labels), value in series:
+                grouped.setdefault(name, []).append(f'{_format(name, labels)} {value:g}')
+            for name in sorted(grouped):
+                lines.append(f'# TYPE {name} {kind}')
+                lines.extend(sorted(grouped[name]))
         return '\n'.join(lines) + '\n'
 
 

@@ -78,6 +78,29 @@ def validate_public_url(url, expected_path):
     return problems
 
 
+def _refresh_funnel_metrics(survey) -> None:
+    """Воронка в /metrics: куда доходят люди, когда идёт реклама.
+
+    Метка ступени — её название, значение — число человек. Ни имени,
+    ни телефона, ни идентификатора: /metrics читает мониторинг, и класть
+    туда персональные сведения нельзя даже за токеном.
+
+    Состояние перечитывается из базы: процесс мог работать сутки, а
+    отвечали люди всё это время другому процессу.
+    """
+    import funnel
+
+    survey.load()
+    отчёт = funnel.по_анкете(survey)
+    for имя, сколько in отчёт.ступени:
+        METRICS.set("sdut_funnel_people", сколько, {"stage": имя})
+    METRICS.set("sdut_funnel_consent_refused", отчёт.отказались)
+    METRICS.set("sdut_funnel_stopped_on_purpose", отчёт.остановились_сами)
+    METRICS.set("sdut_funnel_life_threat_cards", отчёт.с_тревогой)
+    for раздел, сколько in отчёт.остановки.items():
+        METRICS.set("sdut_funnel_stalled", сколько, {"section": раздел})
+
+
 def metrics_authorized(authorization: str | None) -> bool:
     """Gate /metrics when a token is configured.
 
@@ -180,6 +203,10 @@ async def main():
                 METRICS.set("sdut_outbox_tombstones", stats.get("tombstones", 0))
             except Exception as error:
                 log.warning("Could not refresh outbox metrics: %s", type(error).__name__)
+            try:
+                _refresh_funnel_metrics(survey)
+            except Exception as error:
+                log.warning("Could not refresh funnel metrics: %s", type(error).__name__)
             return web.Response(text=METRICS.render(), content_type="text/plain", charset="utf-8")
 
         app.router.add_get("/health", health)
