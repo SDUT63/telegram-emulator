@@ -1,0 +1,315 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Четыре замечания — что сделано</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Literata:opsz,wght@7..72,600;7..72,700&family=Golos+Text:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+:root{
+  --ground:#F2F5F3; --surface:#FFFFFF; --surface-2:#E9EFEC;
+  --ink:#14201E; --ink-soft:#4B5A56; --ink-faint:#748480;
+  --line:#D9E2DE; --line-strong:#B9C7C2;
+  --accent:#1B5A55; --accent-soft:#D6E6E3;
+  --ok:#2C6647; --ok-bg:#DCEBE2;
+  --warn:#83600F; --warn-bg:#F2E8CE;
+  --stop:#9C382E; --stop-bg:#F5DDD9;
+  --serif:"Literata",Georgia,serif;
+  --sans:"Golos Text","Helvetica Neue",Arial,sans-serif;
+  --mono:"IBM Plex Mono",Consolas,monospace;
+  color-scheme: light dark;
+}
+@media (prefers-color-scheme:dark){:root{
+  --ground:#101614; --surface:#171F1D; --surface-2:#1E2826;
+  --ink:#E5EBE8; --ink-soft:#A8B7B2; --ink-faint:#7E8E89;
+  --line:#293430; --line-strong:#3A4844;
+  --accent:#63B4AB; --accent-soft:#1D302E;
+  --ok:#6DBB8E; --ok-bg:#1A2B22;
+  --warn:#D2A648; --warn-bg:#2C2617;
+  --stop:#DE7A6D; --stop-bg:#2E1C19;
+}}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0}
+body{background:var(--ground);color:var(--ink);font-family:var(--sans);
+  font-size:17px;line-height:1.62;-webkit-text-size-adjust:100%}
+.wrap{max-width:42rem;margin:0 auto;padding-inline:20px;padding-block:2.2rem 4rem}
+.eyebrow{font-family:var(--mono);font-size:.72rem;letter-spacing:.14em;
+  text-transform:uppercase;color:var(--accent);margin:0 0 .7rem}
+h1{font-family:var(--serif);font-weight:700;font-size:clamp(1.8rem,6.5vw,2.5rem);
+  line-height:1.12;margin:0 0 .6rem;text-wrap:balance}
+.lede{color:var(--ink-soft);margin:0 0 2rem;font-size:1.05rem}
+h2{font-family:var(--serif);font-weight:600;font-size:1.35rem;line-height:1.25;
+  margin:2.6rem 0 .6rem;text-wrap:balance}
+h3{font-size:1rem;font-weight:600;margin:1.7rem 0 .45rem}
+p{margin:0 0 .9rem}
+ul,ol{margin:0 0 1rem;padding-left:1.3rem}
+li{margin-bottom:.4rem}
+code{font-family:var(--mono);font-size:.88em;background:var(--surface-2);
+  padding:.1rem .3rem;border-radius:4px}
+.num{display:inline-block;font-family:var(--mono);font-size:.78rem;font-weight:500;
+  background:var(--accent);color:#fff;border-radius:999px;padding:.12rem .55rem;
+  margin-right:.45rem;vertical-align:.1em}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:9px;
+  padding:1rem 1.1rem;margin-bottom:.9rem}
+.card .h{font-weight:600;display:block;margin-bottom:.35rem}
+.card p{margin:0;color:var(--ink-soft);font-size:.95rem}
+.card p + p{margin-top:.6rem}
+.card.was{border-left:3px solid var(--stop)}
+.card.now{border-left:3px solid var(--ok)}
+.card.note{border-left:3px solid var(--warn);background:var(--warn-bg)}
+.card.note p{color:var(--warn)}
+.card.note .h{color:var(--warn)}
+.steps{list-style:none;padding:0;margin:0 0 1.2rem;counter-reset:ш}
+.steps li{counter-increment:ш;position:relative;padding-left:2.2rem;
+  margin-bottom:.8rem}
+.steps li::before{content:counter(ш);position:absolute;left:0;top:.05rem;
+  font-family:var(--mono);font-size:.78rem;width:1.5rem;height:1.5rem;
+  border-radius:50%;background:var(--accent-soft);color:var(--accent);
+  display:flex;align-items:center;justify-content:center;font-weight:500}
+.tbl{width:100%;border-collapse:collapse;margin-bottom:1.1rem;font-size:.93rem}
+.tbl th{text-align:left;font-family:var(--mono);font-size:.7rem;letter-spacing:.09em;
+  text-transform:uppercase;color:var(--accent);font-weight:500;
+  padding:.4rem .6rem .4rem 0;border-bottom:1px solid var(--line-strong)}
+.tbl td{padding:.55rem .6rem .55rem 0;border-bottom:1px solid var(--line);
+  vertical-align:top}
+.tbl td:last-child,.tbl th:last-child{padding-right:0}
+.rub{font-family:var(--mono);font-variant-numeric:tabular-nums;white-space:nowrap;
+  color:var(--accent)}
+.scroll{overflow-x:auto;-webkit-overflow-scrolling:touch}
+.bars{margin:.6rem 0 1.4rem}
+.bars .row{margin-bottom:.8rem}
+.bars .hd{display:flex;justify-content:space-between;gap:.8rem;align-items:baseline;
+  font-size:.93rem}
+.bars .track{height:9px;border-radius:5px;background:var(--surface-2);margin-top:.3rem;
+  overflow:hidden}
+.bars .track i{display:block;height:100%;background:var(--accent)}
+.bars .why{color:var(--ink-faint);font-size:.84rem;margin-top:.25rem;line-height:1.4}
+.fix{list-style:none;padding:0;margin:0}
+.fix li{padding:.7rem 0;border-bottom:1px solid var(--line)}
+.fix b{display:block;font-weight:600;font-size:.96rem}
+.fix span{color:var(--ink-soft);font-size:.9rem}
+.fix .было{font-family:var(--mono);color:var(--stop);font-size:.86rem}
+footer{margin-top:3rem;padding-top:1.3rem;border-top:1px solid var(--line-strong);
+  color:var(--ink-faint);font-size:.85rem}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<p class="eyebrow">АНО «СДУТ» · 16 сентября 2026</p>
+<h1>Четыре замечания — что сделано</h1>
+<p class="lede">Дубли убраны, анкету больше не надо заполнять дважды, наём описан как
+частный, а стоимость теперь видно с ценой за час и всеми надбавками из прайса.
+Ниже — что изменилось, что выкладывать на Cloudflare и что нашлось по дороге.</p>
+
+<h2><span class="num">1</span>Полотно на первичной ссылке</h2>
+
+<div class="card was">
+  <span class="h">Было</span>
+  <p>Весь справочник уже лежал в мини-приложении с поиском, а по адресу
+  <code>sdut.d-lemeshev88.workers.dev</code> человек по-прежнему попадал на длинную
+  страницу и листал её до нужного места.</p>
+</div>
+<div class="card now">
+  <span class="h">Стало</span>
+  <p>По корню теперь открывается мини-приложение: поиск по всем 240 материалам,
+  расчёт часов, анкета и калькулятор стоимости. «Навигатор помощи» целиком остался
+  рядом — по адресу <code>guide.html</code>, ссылка на него в подвале приложения.
+  Там же согласие на обработку данных, реквизиты и источники.</p>
+  <p>Текст никуда не делся и не может: именно он — источник базы знаний бота.
+  Все 240 статей на месте, проверка это сторожит.</p>
+</div>
+
+<p>Старая ссылка <code>app.html</code> уже разошлась по чатам, поэтому она осталась
+и переадресует на корень — вместе с хвостом после решётки, иначе перенос анкеты
+терялся бы по дороге.</p>
+
+<h2><span class="num">2</span>Анкету приходилось заполнять дважды</h2>
+
+<p>Вы предложили вход по номеру телефона. Не делаю, и вот почему.</p>
+
+<div class="card note">
+  <span class="h">Номер телефона — не пароль</span>
+  <p>Его знают родственники, соседи и любой, кому человек когда-то звонил. Вход
+  по одному лишь номеру означал бы, что ответы о здоровье подопечного и его адрес
+  откроются каждому, кто этот номер наберёт. Для службы, которая берёт согласие
+  по ФЗ-152, это прямое нарушение.</p>
+  <p>И отдельно: для такого входа нужен сервер, который хранит анкеты и отвечает
+  из интернета. Мини-приложение лежит статическими файлами на Cloudflare —
+  там нечему хранить и некому отвечать.</p>
+</div>
+
+<div class="card now">
+  <span class="h">Что сделано вместо</span>
+  <p>Бот отдаёт ссылку, внутри которой ответы уже лежат. Человек пишет боту
+  «приложение», «калькулятор» или «сколько стоит» — и получает адрес, по которому
+  анкета открывается заполненной.</p>
+  <p>Ответы едут в части адреса после решётки. Эту часть браузер на сервер не
+  отправляет — в журналах Cloudflare их не окажется. Приложение читает их,
+  заполняет форму и сразу убирает из адресной строки, чтобы пересланная ссылка
+  не унесла с собой рассказ о здоровье.</p>
+  <p>Если ссылка почему-то не открылась — на вкладке «Анкета» есть «Перенести
+  ответы из бота вручную»: туда вставляется сообщение бота «Что записано»
+  целиком, и приложение разбирает его само.</p>
+</div>
+
+<p>Проверено на настоящей анкете, пройденной ботом: пятнадцать ответов доезжают
+оба пути — и ссылкой, и вставкой. Подробная часть анкеты при этом раскрывается
+так же, как в боте.</p>
+
+<h2><span class="num">3</span>Наём — только в частном порядке</h2>
+
+<p>Вкладка переписана. Раньше она начиналась с трёх карточек «бесплатно» —
+социальный пакет, обслуживание на дому, выплата родственнику, — и выглядело так,
+будто служба всё это выдаёт. Теперь сказано прямо: это платная услуга по договору
+с семьёй; сколько часов положено бесплатно — считает соседняя вкладка.</p>
+
+<p>Что осталось из старого: чек-лист «что спросить у сиделки» и четыре признака,
+когда стоит насторожиться. Они переехали вниз, под заголовок «Если нанимаете
+помощника сами» — люди нанимают частным образом, и это знание им нужно.</p>
+
+<h2><span class="num">4</span>Стоимость — визуально и за час</h2>
+
+<p>Калькулятор собран по вашему прайсу. Считает четыре формата, и у каждого
+на виду цена за час у подопечного — это и есть «функционал присмотра за
+определённую сумму в час».</p>
+
+<div class="scroll">
+<table class="tbl">
+  <tr><th>Формат</th><th>Цена</th><th>За час</th></tr>
+  <tr><td>Выезд на 1 час</td><td class="rub">1 100 ₽</td><td class="rub">1 100 ₽</td></tr>
+  <tr><td>Визит 2 часа</td><td class="rub">1 490 ₽</td><td class="rub">745 ₽</td></tr>
+  <tr><td>Визит 4 часа</td><td class="rub">2 340 ₽</td><td class="rub">585 ₽</td></tr>
+  <tr><td>Смена 8 часов</td><td class="rub">2 600 ₽</td><td class="rub">325 ₽</td></tr>
+  <tr><td>Ночная смена 12 часов</td><td class="rub">4 200 ₽</td><td class="rub">350 ₽</td></tr>
+  <tr><td>Сиделка с проживанием, сутки</td><td class="rub">2 700 ₽</td><td class="rub">338 ₽</td></tr>
+  <tr><td>Пакет 1 уровня, месяц</td><td class="rub">20 900 ₽</td><td class="rub">401 ₽</td></tr>
+  <tr><td>Пакет 2 уровня, месяц</td><td class="rub">32 600 ₽</td><td class="rub">375 ₽</td></tr>
+  <tr><td>Пакет 3 уровня, месяц</td><td class="rub">40 100 ₽</td><td class="rub">355 ₽</td></tr>
+</table>
+</div>
+
+<p>У сиделки с проживанием час считается от восьми оплачиваемых часов, а не
+от двадцати четырёх: делить 2 700 на сутки значило бы обещать 113 ₽ в час
+за работу, которой в договоре нет.</p>
+
+<h3>Что ещё умеет калькулятор</h3>
+<ul>
+  <li>Одиннадцать надбавок и четыре скидки — каждая с основанием: статья ТК,
+  постановление, внутренний СОП. Человек видит не «плюс двадцать процентов»,
+  а почему.</li>
+  <li>Разбор суммы построчно: база, каждая надбавка отдельной строкой в рублях,
+  итог.</li>
+  <li>Сравнение трёх способов закрыть круглые сутки — полосами, чтобы разница
+  в шесть раз была видна, а не вычислялась.</li>
+  <li>Каталог 50 услуг приложения № 6 к Приказу № 731 с отметками: что включить
+  в договор. Отметки уезжают координатору вместе с расчётом.</li>
+  <li>Что в уход не входит — семь позиций с объяснением, чья это компетенция.</li>
+  <li>Кнопка «Собрать расчёт для координатора»: текст в буфер, дальше одним
+  сообщением в бот.</li>
+</ul>
+
+<div class="bars">
+  <div class="row">
+    <div class="hd"><b>Пакет 3 уровня, ночь берёт семья</b><span class="rub">40 100 ₽</span></div>
+    <div class="track"><i style="width:17%"></i></div>
+    <div class="why">Родственник проходит обучение в Школе ухода, протокол Ф-СЕМ-01</div>
+  </div>
+  <div class="row">
+    <div class="hd"><b>Сиделка с проживанием</b><span class="rub">81 000 ₽</span></div>
+    <div class="track"><i style="width:35%"></i></div>
+    <div class="why">Подопечный ночью спит, ночного ухода не требуется</div>
+  </div>
+  <div class="row">
+    <div class="hd"><b>Круглосуточный уход, две смены</b><span class="rub">231 000 ₽</span></div>
+    <div class="track"><i style="width:100%"></i></div>
+    <div class="why">Единственный законный формат для лежачего пациента с ночным
+    позиционированием</div>
+  </div>
+</div>
+
+<p>И связка между вкладками: если человек прошёл оценку по 21 позиции и получил
+третий уровень, калькулятор сам открывается на пакете третьего уровня и объясняет,
+почему. Сопоставлять баллы с прайсом руками не нужно.</p>
+
+<p>Себестоимость и маржа из вашего файла в приложение <b>не попали</b> —
+намеренно. Это внутренняя кухня службы, на странице для семьи ей не место.</p>
+
+<h2>Что нашлось по дороге</h2>
+
+<p>Всё это писалось как работающее, проверялось в настоящем браузере — и потому
+нашлось. Каждая из ошибок называла бы семье не ту сумму.</p>
+
+<ul class="fix">
+  <li><b>Количество переносилось между позициями</b>
+    <span class="было">449 120 ₽ вместо 40 100 ₽</span>
+    <span>Восемь визитов, оставшись «восемью» при переключении на месячный пакет,
+    превращались в восемь месяцев.</span></li>
+  <li><b>Надбавка за выходные бралась с месячного пакета</b>
+    <span class="было">+20 % ни за что</span>
+    <span>В пакете суббота и воскресенье — штатные дни: график шесть-семь дней
+    в неделю. Надбавка была бы платой за уже оплаченное.</span></li>
+  <li><b>«Срочный выезд» умножался на все визиты месяца</b>
+    <span class="было">+2 200 ₽ вместо +220 ₽</span>
+    <span>По прайсу это разовая надбавка за первый визит. Теперь считается один раз.</span></li>
+  <li><b>Ночная надбавка бралась второй раз</b>
+    <span class="было">+840 ₽ поверх уже учтённых</span>
+    <span>В ночной смене, в круглосуточном уходе и у сиделки с проживанием
+    двадцать процентов за ночь уже сидят в цене.</span></li>
+  <li><b>Бот зацикливался на рубеже анкеты</b>
+    <span class="было">один и тот же вопрос без конца</span>
+    <span>«Продолжить» — это и вариант ответа, и служебное слово «повтори вопрос».
+    Побеждало второе, и написавший его словом, а не номером, получал тот же вопрос
+    заново. Выйти из круга словами было нельзя.</span></li>
+</ul>
+
+<p>Арифметика теперь живёт в двух местах: <code>прайс.py</code> для службы и
+JavaScript для телефона. Проверка гоняет настоящий код страницы настоящим движком
+и сверяет с модулем на двенадцати сочетаниях. Разойдутся — семья увидела бы
+на экране одну сумму, а в договоре другую.</p>
+
+<h2>Что выложить на Cloudflare</h2>
+
+<p>Файлы изменились, поэтому папку надо выложить заново целиком.</p>
+
+<ol class="steps">
+  <li><b>dash.cloudflare.com</b> → Workers &amp; Pages → проект <code>sdut</code>
+  → Create new deployment.</li>
+  <li>Перетащите <b>папку <code>webapp</code> целиком</b>. В ней:
+    <code>index.html</code> — теперь это само приложение;
+    <code>guide.html</code> — справочник одной страницей;
+    <code>app.html</code> — переадресация для старых ссылок;
+    папка <code>img</code>.</li>
+  <li>Адрес остаётся прежним. В настройках MAX менять ничего не надо.</li>
+</ol>
+
+<div class="card note">
+  <span class="h">Не выкладывайте лишнего</span>
+  <p><code>token.txt</code>, <code>survey_responses.json</code>,
+  <code>crm_data.json</code>, <code>operators.json</code>, папку <code>outbox</code>.
+  В папке <code>webapp</code> их и нет — проверьте только, что перетаскиваете
+  именно её, а не всю папку с ботом.</p>
+</div>
+
+<h2>Что осталось за рамками</h2>
+
+<p>Прайс вшит в страницу при сборке. Поменяете цены — правится
+<code>прайс.py</code>, запускается <code>python scripts/собрать_данные.py</code>,
+и папка выкладывается заново. Отдельного места, где цены можно было бы поменять
+мышкой, пока нет: это уже сервер, а не статические файлы.</p>
+
+<p>Каталог 50 услуг сейчас работает как отметки для координатора. Из него можно
+собирать содержание договора автоматически — но это разговор про CRM, не про
+страницу.</p>
+
+<footer>
+АНО «Система долговременного ухода», Тольятти.<br>
+Ветка <code>claude/max-bot-complete-analysis-gcgbtm</code>, 991 проверка зелёная.
+</footer>
+
+</div>
+</body>
+</html>
