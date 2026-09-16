@@ -667,14 +667,20 @@ footer{margin-top:2.5rem;padding-top:1.4rem;border-top:1px solid var(--line-stro
   });
 
   /* ---------------- загрузка шкалы ---------------- */
+  // Данные вшиты в страницу при сборке, а не подгружаются файлами.
+  // Так было сначала, и на Cloudflare это не заработало: имена файлов
+  // были кириллицей, браузер запрашивал их процентным кодированием,
+  // и статический хостинг их не находил — поиск, калькулятор и анкета
+  // молча оставались пустыми. Вшитые данные нельзя не найти, и
+  // страница работает даже открытая с диска, без всякого сервера.
+  var ВШИТО = /*ДАННЫЕ*/{}/*КОНЕЦ*/;
   function взять(имя){
-    return fetch(имя).then(function(r){
-      if (!r.ok) throw new Error(имя + ': ' + r.status);
-      return r.json();
-    });
+    var d = ВШИТО[имя];
+    return d ? Promise.resolve(d)
+             : Promise.reject(new Error('нет данных: ' + имя));
   }
 
-  взять('шкала.json').then(function(d){ ШКАЛА = d; рисоватьШкалу(); })
+  взять('scale.json').then(function(d){ ШКАЛА = d; рисоватьШкалу(); })
     .catch(function(){
       document.getElementById('scale').innerHTML =
         '<div class="card"><span class="h">Шкала не загрузилась</span>' +
@@ -683,7 +689,7 @@ footer{margin-top:2.5rem;padding-top:1.4rem;border-top:1px solid var(--line-stro
       document.getElementById('result').hidden = true;
     });
 
-  взять('база.json').then(function(d){ БАЗА = d; рисоватьПоиск(); })
+  взять('kb.json').then(function(d){ БАЗА = d; рисоватьПоиск(); })
     .catch(function(){
       document.getElementById('find-out').innerHTML =
         '<p class="empty">Материалы не загрузились. Проверьте соединение ' +
@@ -691,7 +697,7 @@ footer{margin-top:2.5rem;padding-top:1.4rem;border-top:1px solid var(--line-stro
         'материалам.</p>';
     });
 
-  взять('анкета.json').then(function(d){ АНКЕТА = d; рисоватьАнкету(); })
+  взять('survey.json').then(function(d){ АНКЕТА = d; рисоватьАнкету(); })
     .catch(function(){
       document.getElementById('form').innerHTML =
         '<p class="empty">Анкета не загрузилась. Её всегда можно пройти в самом боте.</p>';

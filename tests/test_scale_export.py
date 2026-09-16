@@ -21,13 +21,13 @@ import pytest
 import scale_731 as шкала
 
 КОРЕНЬ = pathlib.Path(__file__).resolve().parent.parent
-ВЫГРУЗКА = КОРЕНЬ / "webapp" / "шкала.json"
+ВЫГРУЗКА = КОРЕНЬ / "webapp" / "scale.json"
 
 
 @pytest.fixture(scope="module")
 def данные() -> dict:
     if not ВЫГРУЗКА.exists():
-        pytest.fail("нет webapp/шкала.json — запустите scripts/собрать_данные.py")
+        pytest.fail("нет webapp/scale.json — запустите scripts/собрать_данные.py")
     return json.loads(ВЫГРУЗКА.read_text(encoding="utf-8"))
 
 
@@ -83,7 +83,7 @@ def test_выгрузка_совпадает_с_текущим_кодом():
         capture_output=True, text=True, cwd=КОРЕНЬ,
     )
     assert готово.returncode == 0, готово.stderr
-    файлы = ["webapp/шкала.json", "webapp/база.json", "webapp/анкета.json"]
+    файлы = ["webapp/scale.json", "webapp/kb.json", "webapp/survey.json"]
     проверка = subprocess.run(["git", "diff", "--stat", "--"] + файлы,
                               capture_output=True, text=True, cwd=КОРЕНЬ)
     assert проверка.stdout.strip() == "", (
@@ -105,21 +105,21 @@ def test_каждая_позиция_спрашивает_человечески
 
 # ------------------------------------------- база статей и анкета
 
-БАЗА = КОРЕНЬ / "webapp" / "база.json"
-АНКЕТА = КОРЕНЬ / "webapp" / "анкета.json"
+БАЗА = КОРЕНЬ / "webapp" / "kb.json"
+АНКЕТА = КОРЕНЬ / "webapp" / "survey.json"
 
 
 @pytest.fixture(scope="module")
 def база() -> dict:
     if not БАЗА.exists():
-        pytest.fail("нет webapp/база.json — запустите scripts/собрать_данные.py")
+        pytest.fail("нет webapp/kb.json — запустите scripts/собрать_данные.py")
     return json.loads(БАЗА.read_text(encoding="utf-8"))
 
 
 @pytest.fixture(scope="module")
 def анкета() -> dict:
     if not АНКЕТА.exists():
-        pytest.fail("нет webapp/анкета.json — запустите scripts/собрать_данные.py")
+        pytest.fail("нет webapp/survey.json — запустите scripts/собрать_данные.py")
     return json.loads(АНКЕТА.read_text(encoding="utf-8"))
 
 
@@ -209,3 +209,77 @@ def test_у_каждого_вопроса_с_ветвлением_есть_пр�
     правила = {в["id"]: в.get("когда") for в in анкета["вопросы"]}
     забыли = [в["id"] for в in QUESTIONS if в.get("when") and not правила.get(в["id"])]
     assert забыли == [], забыли
+
+
+# ------------------------------------- мини-приложение как один файл
+
+СТРАНИЦА = КОРЕНЬ / "webapp" / "app.html"
+ШАБЛОН = КОРЕНЬ / "шаблоны" / "приложение.html"
+
+
+def test_страница_собрана():
+    assert СТРАНИЦА.exists(), "нет webapp/app.html — запустите scripts/собрать_данные.py"
+
+
+def test_данные_вшиты_в_страницу():
+    """Сначала данные лежали отдельными файлами, и на Cloudflare это
+    не заработало: имена были кириллицей, браузер запрашивал их
+    процентным кодированием, хостинг не находил — поиск, калькулятор
+    и анкета молча оставались пустыми.
+
+    Один файл нельзя разложить наполовину.
+    """
+    текст = СТРАНИЦА.read_text(encoding="utf-8")
+    assert "fetch(" not in текст, "страница снова что-то подгружает"
+    for имя in ("scale.json", "kb.json", "survey.json"):
+        assert f'"{имя}"' in текст, f"данные {имя} не вшиты"
+
+
+def test_в_webapp_нет_кириллических_имён():
+    """Статические хостинги и не-ASCII имена — источник тихих ошибок:
+    файл лежит, а по ссылке его нет.
+
+    Проверяются файлы, которые запрашивает браузер. Страницы, которые
+    служба выкладывала до бота, оставлены как есть — на них никто
+    не ссылается из кода.
+    """
+    свои = {"app.html", "index.html", "scale.json", "kb.json", "survey.json"}
+    плохие = [
+        п.name for п in (КОРЕНЬ / "webapp").iterdir()
+        if п.name in свои and not п.name.isascii()
+    ]
+    assert плохие == [], плохие
+
+
+def test_имена_данных_в_шаблоне_совпадают_с_вшитыми():
+    """Разойдутся — страница откроется пустой и без единой ошибки
+    в консоли. Ровно это и случилось при первой сборке."""
+    import re
+
+    шаблон = ШАБЛОН.read_text(encoding="utf-8")
+    просит = set(re.findall(r"взять\('([^']+)'\)", шаблон))
+    assert просит == {"scale.json", "kb.json", "survey.json"}, просит
+
+
+def test_ссылки_между_справочником_и_приложением_живые():
+    """Кнопка мини-приложения в MAX открывает корень, то есть
+    справочник. Без ссылки оттуда приложение недостижимо."""
+    справочник = (КОРЕНЬ / "webapp" / "index.html").read_text(encoding="utf-8")
+    приложение = СТРАНИЦА.read_text(encoding="utf-8")
+
+    assert 'href="app.html"' in справочник, "из справочника не попасть в приложение"
+    assert 'href="index.html"' in приложение, "из приложения не вернуться"
+
+
+def test_страница_совпадает_с_шаблоном_и_данными():
+    готово = subprocess.run(
+        [sys.executable, str(КОРЕНЬ / "scripts" / "собрать_данные.py")],
+        capture_output=True, text=True, cwd=КОРЕНЬ,
+    )
+    assert готово.returncode == 0, готово.stderr
+    проверка = subprocess.run(["git", "diff", "--stat", "--", "webapp/app.html"],
+                              capture_output=True, text=True, cwd=КОРЕНЬ)
+    assert проверка.stdout.strip() == "", (
+        "webapp/app.html отстал от шаблона или данных — "
+        "запустите scripts/собрать_данные.py и закоммитьте"
+    )
