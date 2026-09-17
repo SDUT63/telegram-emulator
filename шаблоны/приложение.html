@@ -226,6 +226,39 @@ p{margin:0 0 1rem}
 .split .r.sum span:last-child{color:var(--accent)}
 .split .bar{display:flex;height:8px;border-radius:4px;overflow:hidden;margin:.5rem 0 .2rem}
 .split .bar i{display:block;height:100%}
+.cover{background:var(--ok-bg);border-radius:8px;padding:.85rem .95rem;
+  margin-bottom:.9rem;
+  /* Итог приклеен к верху экрана и накрывал бы этот блок при переходе
+     к нему по ссылке. Отступ прокрутки оставляет место под него. */
+  scroll-margin-top:9rem}
+#p-cost h3{scroll-margin-top:9rem}
+.cover b{color:var(--ok);display:block;margin-bottom:.3rem}
+.cover .two{display:flex;height:12px;border-radius:6px;overflow:hidden;
+  margin:.55rem 0 .4rem}
+.cover .two i{display:block;height:100%}
+.cover .two .mine{background:var(--accent)}
+.cover .two .theirs{background:var(--ok)}
+.cover .legend{display:flex;justify-content:space-between;gap:.8rem;
+  font-size:.86rem;color:var(--ink-soft);flex-wrap:wrap}
+.cover .legend b{display:inline;font-weight:600;color:inherit}
+.cover .legend .k{display:inline-block;width:9px;height:9px;border-radius:2px;
+  margin-right:.3rem;vertical-align:.02em}
+.cover .legend .k.mine{background:var(--accent)}
+.cover .legend .k.theirs{background:var(--ok)}
+.prog{background:var(--surface);border:1px solid var(--line);border-radius:8px;
+  margin-bottom:.5rem;overflow:hidden}
+.prog > summary{padding:.75rem .95rem;cursor:pointer;list-style:none;
+  font-weight:600;font-size:.95rem;line-height:1.35}
+.prog > summary::-webkit-details-marker{display:none}
+.prog > summary::after{content:"▾";float:right;color:var(--ink-faint);font-weight:400}
+.prog[open] > summary::after{content:"▴"}
+.prog .who{display:block;font-family:var(--mono);font-size:.66rem;
+  letter-spacing:.08em;text-transform:uppercase;color:var(--ok);
+  font-weight:500;margin-bottom:.25rem}
+.prog .inner{padding:0 .95rem .9rem;font-size:.92rem;color:var(--ink-soft)}
+.prog .inner p{margin:0 0 .55rem}
+.prog .inner .law{display:block;padding-top:.55rem;border-top:1px solid var(--line);
+  font-size:.82rem;color:var(--ink-faint)}
 .why-list{list-style:none;margin:0 0 1rem;padding:0}
 .why-list li{padding:.7rem 0;border-bottom:1px solid var(--line)}
 .why-list b{display:block;font-weight:600;font-size:.96rem;margin-bottom:.15rem}
@@ -400,6 +433,14 @@ footer{margin-top:2.5rem;padding-top:1.4rem;border-top:1px solid var(--line-stro
     <h3>Из чего складывается сумма</h3>
     <div class="lines" id="cost-lines"></div>
   </div>
+
+  <div class="cover" id="cost-cover" hidden></div>
+
+  <h3>Чем закрывается разница</h3>
+  <p class="note">Цена назначена по рынку, а не по себестоимости. Разрыв
+  служба закрывает из программ — это и есть то, ради чего она
+  некоммерческая. Прятать тут нечего.</p>
+  <div id="cost-programs"></div>
 
   <h3>Из чего складывается час</h3>
   <p class="note" id="split-note"></p>
@@ -986,6 +1027,10 @@ footer{margin-top:2.5rem;padding-top:1.4rem;border-top:1px solid var(--line-stro
         id: п.id, раздел: 'Регулярный пакет', название: п.название,
         цена: п.цена, часов: п.часов_в_месяц, единица: 'месяц',
         ночная: false, уровень: п.уровень,
+        // Без этих двух полей блок покрытия у пакетов просто исчезал:
+        // человек, выбравший пакет, переставал видеть, что часть часа
+        // оплачивает не он.
+        покрытие: п.покрытие, доля_семьи: п.доля_семьи,
         входит: п.кому + '. ' + п.график + ' — около ' +
                 Math.round(п.часов_в_месяц) + ' часов в месяц. ' + п.входит
       });
@@ -1219,14 +1264,49 @@ footer{margin-top:2.5rem;padding-top:1.4rem;border-top:1px solid var(--line-stro
     });
   }
 
+  function рисоватьПокрытие(){
+    var поз = позиция();
+    var узел = document.getElementById('cost-cover');
+    if (!поз || поз.покрытие === undefined || !поз.покрытие){
+      узел.hidden = true;
+      return;
+    }
+    var часов = поз.единица === 'месяц' ? поз.часов : поз.часов;
+    var мой = Math.round(поз.цена / часов);
+    var их = поз.покрытие;
+    var всего = мой + их;
+    узел.hidden = false;
+    узел.innerHTML =
+      '<b>Час стоит ' + рубли(всего) + ', вы платите ' + рубли(мой) + '</b>' +
+      'Остальное за этот час закрывают программы — система долговременного ' +
+      'ухода, реестр поставщиков, гранты.' +
+      '<div class="two"><i class="mine" style="width:' +
+      Math.round(мой / всего * 100) + '%"></i><i class="theirs" style="width:' +
+      Math.round(их / всего * 100) + '%"></i></div>' +
+      '<div class="legend"><span><i class="k mine"></i>вы — <b>' +
+      рубли(мой) + '</b> (' + поз.доля_семьи + ' %)</span>' +
+      '<span><i class="k theirs"></i>программы — <b>' + рубли(их) + '</b></span></div>';
+  }
+
+  function рисоватьПрограммы(){
+    document.getElementById('cost-programs').innerHTML =
+      ПРАЙС.программы.map(function(п){
+        return '<details class="prog"><summary><span class="who">' +
+          экранировать(п.кому) + '</span>' + экранировать(п.название) +
+          '</summary><div class="inner"><p>' + экранировать(п.что_закрывает) +
+          '</p><p><b>Как попасть.</b> ' + экранировать(п.как_попасть) + '</p>' +
+          '<span class="law">' + экранировать(п.основание) + '</span></div></details>';
+      }).join('');
+  }
+
   function рисоватьРазбор(){
     var цвета = ['var(--accent)', 'var(--ok)', 'var(--warn)',
                  'var(--line-strong)', 'var(--ink-faint)'];
-    var всего = ПРАЙС.разбор_цена;
+    var всего = ПРАЙС.разбор_часа.reduce(function(с, р){ return с + р.рублей; }, 0);
     document.getElementById('split-note').textContent =
-      'Час у подопечного при визите на ' + ПРАЙС.разбор_блок +
-      ' часа. Той же формулой посчитан весь прайс: меняется длина визита — ' +
-      'меняется доля дороги, и вместе с ней цена часа.';
+      'Во что обходится час у подопечного при визите на ' + ПРАЙС.разбор_блок +
+      ' часа. Сумма строк больше цены на экране — цену задаёт рынок, ' +
+      'а разницу закрывают программы.';
     var полосы = ПРАЙС.разбор_часа.map(function(р, i){
       return '<i style="width:' + (р.рублей / всего * 100) + '%;background:' +
         цвета[i % цвета.length] + '"></i>';
@@ -1237,16 +1317,21 @@ footer{margin-top:2.5rem;padding-top:1.4rem;border-top:1px solid var(--line-stro
         return '<div class="r"><span>' + экранировать(р.строка) + '</span><span>' +
           рубли(р.рублей) + '</span></div>';
       }).join('') +
-      '<div class="r sum"><span>Час у подопечного</span><span>' +
-      рубли(всего) + '</span></div>';
+      '<div class="r sum"><span>Час обходится службе</span><span>' +
+      рубли(всего) + '</span></div>' +
+      '<div class="r"><span>Из них платит семья</span><span>' +
+      рубли(ПРАЙС.разбор_цена) + '</span></div>';
 
     document.getElementById('cost-market').innerHTML =
       'В Тольятти частные объявления начинаются от <b>' +
-      рубли(ПРАЙС.рынок.частник_в_час) + ' в час</b>, агентство с проживанием — от <b>' +
-      рубли(ПРАЙС.рынок.агентство_проживание_сутки) + ' в сутки</b>. У службы дороже, ' +
-      'и вот за что. Законный минимум ставки помощника при полной занятости — ' +
+      рубли(ПРАЙС.рынок.частник_в_час) + ' в час</b>, агентства просят <b>' +
+      рубли(ПРАЙС.рынок.агентство_в_час[0]) + ' – ' +
+      рубли(ПРАЙС.рынок.агентство_в_час[1]) + ' в час</b>, с проживанием — от <b>' +
+      рубли(ПРАЙС.рынок.агентство_проживание_сутки) + ' в сутки</b>. Служба ' +
+      'держится в этих же деньгах, хотя её час обходится дороже. Законный ' +
+      'минимум ставки помощника при полной занятости — ' +
       рубли(ПРАЙС.минимальная_ставка) + ' в час: ниже него трудовой договор ' +
-      'заключить нельзя.';
+      'заключить нельзя, и частник за 160 ₽ дешевле ровно на это.';
 
     document.getElementById('cost-why').innerHTML =
       ПРАЙС.почему_столько.map(function(п){
@@ -1271,6 +1356,7 @@ footer{margin-top:2.5rem;padding-top:1.4rem;border-top:1px solid var(--line-stro
     рисоватьКоличество();
     рисоватьПоправки();
     рисоватьИтог();
+    if (ПРАЙС.программы) рисоватьПокрытие();
   }
 
   function текстРасчёта(){
@@ -1404,6 +1490,8 @@ footer{margin-top:2.5rem;padding-top:1.4rem;border-top:1px solid var(--line-stro
       ПРАЙС = d;
       рисоватьСтоимость();
       рисоватьСутки();
+      рисоватьПрограммы();
+      рисоватьПокрытие();
       рисоватьРазбор();
       рисоватьКаталог();
       рисоватьНеВходит();
