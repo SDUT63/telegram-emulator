@@ -22,7 +22,34 @@
   --mono:"IBM Plex Mono",Consolas,monospace;
   color-scheme: light dark;
 }
-@media (prefers-color-scheme:dark){:root{
+/* Не только цвета страницы, но и то, что рисует сам браузер:
+   поля ввода, полосы прокрутки, встроенные кнопки. Без этого
+   выбранная светлая тема на тёмном телефоне давала белую
+   страницу с чёрными полями ввода. */
+:root[data-theme="light"]{ color-scheme: light; }
+:root[data-theme="dark"]{ color-scheme: dark; }
+/* Тёмные цвета описаны дважды нарочно.
+
+   Первый блок — для тех, кто ничего не выбирал: тема идёт от
+   телефона. Условие :root:not([data-theme="light"]) нужно, чтобы
+   явно выбранная светлая тема побеждала тёмный телефон.
+
+   Второй — для тех, кто выбрал тёмную сам, независимо от телефона.
+
+   Без этого переключателя телефон в ночном режиме запирал
+   приложение в тёмной теме навсегда. */
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --ground:#101614; --surface:#171F1D; --surface-2:#1E2826;
+    --ink:#E5EBE8; --ink-soft:#A8B7B2; --ink-faint:#7E8E89;
+    --line:#293430; --line-strong:#3A4844;
+    --accent:#63B4AB; --accent-soft:#1D302E;
+    --ok:#6DBB8E; --ok-bg:#1A2B22;
+    --warn:#D2A648; --warn-bg:#2C2617;
+    --stop:#DE7A6D; --stop-bg:#2E1C19;
+  }
+}
+:root[data-theme="dark"]{
   --ground:#101614; --surface:#171F1D; --surface-2:#1E2826;
   --ink:#E5EBE8; --ink-soft:#A8B7B2; --ink-faint:#7E8E89;
   --line:#293430; --line-strong:#3A4844;
@@ -30,7 +57,7 @@
   --ok:#6DBB8E; --ok-bg:#1A2B22;
   --warn:#D2A648; --warn-bg:#2C2617;
   --stop:#DE7A6D; --stop-bg:#2E1C19;
-}}
+}
 *{box-sizing:border-box}
 html,body{margin:0;padding:0}
 body{background:var(--ground);color:var(--ink);font-family:var(--sans);
@@ -47,7 +74,15 @@ body{background:var(--ground);color:var(--ink);font-family:var(--sans);
 /* ---------- шапка ---------- */
 header{padding-block:2rem 1.2rem}
 .eyebrow{font-family:var(--mono);font-size:.72rem;letter-spacing:.14em;
-  text-transform:uppercase;color:var(--accent);margin:0 0 .7rem}
+  text-transform:uppercase;color:var(--accent);margin:0 0 .7rem;
+  display:flex;align-items:center;gap:.6rem;flex-wrap:wrap}
+.theme{margin-left:auto;display:flex;gap:2px;background:var(--surface-2);
+  border-radius:999px;padding:2px}
+.theme button{font-family:var(--mono);font-size:.64rem;letter-spacing:.06em;
+  text-transform:uppercase;padding:.3rem .55rem;border-radius:999px;border:0;
+  background:transparent;color:var(--ink-faint);cursor:pointer;line-height:1}
+.theme button[aria-pressed="true"]{background:var(--surface);color:var(--accent);
+  font-weight:500;box-shadow:0 1px 3px rgba(0,0,0,.12)}
 h1{font-family:var(--serif);font-weight:700;font-size:clamp(1.8rem,6.5vw,2.5rem);
   line-height:1.12;margin:0 0 .7rem;text-wrap:balance}
 .lede{color:var(--ink-soft);margin:0;font-size:1.03rem}
@@ -267,6 +302,43 @@ p{margin:0 0 1rem}
 .prog .inner p{margin:0 0 .55rem}
 .prog .inner .law{display:block;padding-top:.55rem;border-top:1px solid var(--line);
   font-size:.82rem;color:var(--ink-faint)}
+.scale{background:var(--surface);border:1px solid var(--line);border-radius:9px;
+  padding:.9rem 1rem;margin-bottom:.9rem}
+.scale .row{margin-bottom:.75rem}
+.scale .row:last-child{margin-bottom:0}
+.scale .hd{display:flex;justify-content:space-between;gap:.7rem;
+  align-items:baseline;font-size:.92rem}
+.scale .hd b{font-weight:600}
+.scale .hd .rub{font-family:var(--mono);font-variant-numeric:tabular-nums;
+  white-space:nowrap;flex:0 0 auto;color:var(--ink-soft)}
+.scale .track{height:9px;border-radius:5px;background:var(--surface-2);
+  margin:.3rem 0;overflow:hidden}
+.scale .track i{display:block;height:100%;background:var(--line-strong)}
+.scale .row.mine .hd b, .scale .row.mine .hd .rub{color:var(--accent)}
+.scale .row.mine .track i{background:var(--accent)}
+.scale .why{color:var(--ink-faint);font-size:.83rem;line-height:1.4}
+.price-hint{background:var(--accent-soft);border-radius:9px;padding:.9rem 1rem;
+  margin-bottom:1rem}
+.price-hint .n{font-family:var(--mono);font-size:1.5rem;font-weight:500;
+  color:var(--accent);display:block;line-height:1.2;
+  font-variant-numeric:tabular-nums}
+.price-hint .t{display:block;color:var(--ink-soft);font-size:.92rem;
+  margin-top:.25rem;line-height:1.45}
+.price-hint .go{display:inline-block;margin-top:.6rem;font-size:.9rem;
+  color:var(--accent);background:none;border:0;padding:0;cursor:pointer;
+  text-decoration:underline;font-family:var(--sans)}
+.cities{width:100%;border-collapse:collapse;font-size:.88rem;min-width:26rem}
+.cities th{text-align:left;font-family:var(--mono);font-size:.64rem;
+  letter-spacing:.07em;text-transform:uppercase;color:var(--accent);
+  font-weight:500;padding:.35rem .6rem .35rem 0;
+  border-bottom:1px solid var(--line-strong);white-space:nowrap}
+.cities td{padding:.45rem .6rem .45rem 0;border-bottom:1px solid var(--line);
+  vertical-align:top}
+.cities td:last-child,.cities th:last-child{padding-right:0}
+.cities .r{font-family:var(--mono);font-variant-numeric:tabular-nums;
+  white-space:nowrap;text-align:right}
+.cities tr.наш{background:var(--accent-soft)}
+.cities tr.наш td{font-weight:600;color:var(--accent)}
 .why-list{list-style:none;margin:0 0 1rem;padding:0}
 .why-list li{padding:.7rem 0;border-bottom:1px solid var(--line)}
 .why-list b{display:block;font-weight:600;font-size:.96rem;margin-bottom:.15rem}
@@ -401,7 +473,13 @@ footer{margin-top:2.5rem;padding-top:1.4rem;border-top:1px solid var(--line-stro
 <div class="wrap">
 
 <header>
-  <p class="eyebrow">Навигатор помощи · АНО «СДУТ»</p>
+  <p class="eyebrow">Навигатор помощи · АНО «СДУТ»
+    <span class="theme" id="theme" role="group" aria-label="Тема оформления">
+      <button type="button" data-theme-pick="light" aria-pressed="false">Светлая</button>
+      <button type="button" data-theme-pick="dark" aria-pressed="false">Тёмная</button>
+      <button type="button" data-theme-pick="auto" aria-pressed="true">Как в телефоне</button>
+    </span>
+  </p>
   <h1>Помощь дома</h1>
   <p class="lede">Посчитать, на какую помощь можно рассчитывать, и разобраться, как её получить.</p>
 </header>
@@ -566,9 +644,20 @@ footer{margin-top:2.5rem;padding-top:1.4rem;border-top:1px solid var(--line-stro
   <p class="note" id="split-note"></p>
   <div class="split" id="cost-split"></div>
 
-  <h3>Почему дороже объявления на доске</h3>
+  <h3>Где эта цена на фоне рынка</h3>
+  <div class="scale" id="cost-scale"></div>
   <div class="market" id="cost-market"></div>
   <ul class="why-list" id="cost-why"></ul>
+
+  <details class="grp">
+    <summary>Сколько стоит уход в других городах</summary>
+    <div class="inner">
+      <p class="note">Рынок в Москве и в райцентре различается вчетверо.
+      Цены — нижняя граница «от», как их публикуют.</p>
+      <div class="scroll"><table class="cities" id="cost-cities"></table></div>
+      <p class="note" id="cost-customs"></p>
+    </div>
+  </details>
 
   <h3>Круглые сутки: три способа и разница между ними</h3>
   <div class="cmp" id="cost-round"></div>
@@ -670,6 +759,32 @@ footer{margin-top:2.5rem;padding-top:1.4rem;border-top:1px solid var(--line-stro
 <script>
 (function(){
   "use strict";
+
+  /* ---------------- тема ----------------
+     Пока темы не было в настройках, приложение брало её только
+     у телефона: ночной режим в телефоне — вечная тёмная тема
+     в приложении, и переключить нечем. Выбор запоминается
+     в этом телефоне и переживает перезагрузку страницы. */
+  function поставитьТему(выбор){
+    var корень = document.documentElement;
+    if (выбор === 'light' || выбор === 'dark') корень.setAttribute('data-theme', выбор);
+    else корень.removeAttribute('data-theme');
+    [].forEach.call(document.querySelectorAll('[data-theme-pick]'), function(к){
+      к.setAttribute('aria-pressed',
+        к.getAttribute('data-theme-pick') === выбор ? 'true' : 'false');
+    });
+    try { localStorage.setItem('sdut-theme', выбор); } catch(e){}
+  }
+
+  (function(){
+    var было = 'auto';
+    try { было = localStorage.getItem('sdut-theme') || 'auto'; } catch(e){}
+    поставитьТему(было);
+    document.getElementById('theme').addEventListener('click', function(ev){
+      var кнопка = ev.target.closest && ev.target.closest('[data-theme-pick]');
+      if (кнопка) поставитьТему(кнопка.getAttribute('data-theme-pick'));
+    });
+  })();
 
   /* ---------------- вкладки ---------------- */
   var tabs = [].slice.call(document.querySelectorAll('.tab'));
@@ -1159,6 +1274,18 @@ footer{margin-top:2.5rem;padding-top:1.4rem;border-top:1px solid var(--line-stro
         экранировать(д.текст) + '</p></div>';
     }).join('');
 
+    var цена = шаблон.сколько
+      ? '<div class="price-hint"><span class="n">' +
+        рубли(шаблон.сколько.в_месяц) + ' в месяц</span>' +
+        '<span class="t">Порядок суммы, если весь этот уход берёт на себя ' +
+        'служба: ' + экранировать(шаблон.сколько.название.toLowerCase()) +
+        ', ' + рубли(шаблон.сколько.в_час) + ' за час у подопечного. ' +
+        'Из каждого часа вы платите ' + шаблон.сколько.доля_семьи +
+        ' %, остальное закрывают программы.</span>' +
+        '<button type="button" class="go" id="plan-cost">Посчитать точнее ' +
+        'и посмотреть, что положено бесплатно</button></div>'
+      : '';
+
     var железо = шаблон.оборудование.length
       ? '<h3>Минимум оборудования</h3><ul class="plain">' +
         шаблон.оборудование.map(function(о){
@@ -1177,12 +1304,27 @@ footer{margin-top:2.5rem;padding-top:1.4rem;border-top:1px solid var(--line-stro
       '<h3>' + экранировать(шаблон.название) + '</h3>' +
       '<p class="who">' + экранировать(шаблон.кому) + '</p>' +
       '<span class="hrs">' + экранировать(часовВДень(шаблон)) + '</span></div>' +
-      части + частота + следить +
+      цена + части + частота + следить +
       (уточн ? '<h3>На что обратить внимание именно вам</h3>' + уточн : '') +
       железо + примечания +
       '<p class="note">' + экранировать(ПЛАН.оговорка) + '</p>' +
       '<button class="send" id="plan-send">Собрать план для координатора</button>' +
       '<div id="plan-dump"></div>';
+
+    var кнопкаЦена = document.getElementById('plan-cost');
+    if (кнопкаЦена) кнопкаЦена.addEventListener('click', function(){
+      if (шаблон.сколько && ПРАЙС){
+        var поз = шаблон.сколько.позиция;
+        ВЫБОР.раздел = (поз.indexOf('level') === 0)
+          ? 'Регулярный пакет' : 'Круглосуточно';
+        ВЫБОР.позиция = поз;
+        ВЫБОР.сколько = 1;
+        ВЫБОР.выбрано = true;
+        save('sdut-cost', ВЫБОР);
+        рисоватьСтоимость();
+      }
+      document.getElementById('tab-cost').click();
+    });
 
     var кнопкаЖелезо = document.getElementById('plan-gear');
     if (кнопкаЖелезо) кнопкаЖелезо.addEventListener('click', function(){
@@ -1216,6 +1358,12 @@ footer{margin-top:2.5rem;padding-top:1.4rem;border-top:1px solid var(--line-stro
     if (шаблон.оборудование.length){
       строки.push('', 'Минимум оборудования:');
       шаблон.оборудование.forEach(function(о){ строки.push('  • ' + о); });
+    }
+    if (шаблон.сколько){
+      строки.push('', 'Порядок суммы, если уход берёт служба: ' +
+        рубли(шаблон.сколько.в_месяц) + ' в месяц (' +
+        шаблон.сколько.название + '). Из каждого часа семья платит ' +
+        шаблон.сколько.доля_семьи + ' %, остальное закрывают программы.');
     }
     строки.push('', ПЛАН.оговорка);
     return строки.join('\n');
@@ -1835,6 +1983,36 @@ footer{margin-top:2.5rem;padding-top:1.4rem;border-top:1px solid var(--line-stro
       }).join('');
   }
 
+  function рисоватьШкалуРынка(){
+    var где = ПРАЙС.где_на_рынке;
+    document.getElementById('cost-scale').innerHTML =
+      где.шкала.map(function(с){
+        var моя = с.что === 'Наша цена';
+        return '<div class="row' + (моя ? ' mine' : '') + '">' +
+          '<div class="hd"><b>' + экранировать(с.что) + '</b>' +
+          '<span class="rub">' + рубли(с.рублей) + ' в час</span></div>' +
+          '<div class="track"><i style="width:' +
+          Math.round(с.рублей / где.предел * 100) + '%"></i></div>' +
+          '<div class="why">' + экранировать(с.пояснение) + '</div></div>';
+      }).join('');
+
+    document.getElementById('cost-cities').innerHTML =
+      '<tr><th>Город</th><th>Частник</th><th>Служба</th><th>Сутки</th>' +
+      '<th>Проживание</th></tr>' +
+      ПРАЙС.города.map(function(г){
+        return '<tr' + (г.наш ? ' class="наш"' : '') + '><td>' +
+          экранировать(г.название) + '</td><td class="r">' +
+          рубли(г.частник_час) + '</td><td class="r">' + г.вилка[0] +
+          '–' + рубли(г.вилка[1]) + '</td><td class="r">' + рубли(г.сутки) +
+          '</td><td class="r">' + рубли(г.проживание_месяц) + '</td></tr>';
+      }).join('');
+
+    document.getElementById('cost-customs').textContent =
+      'На рынке принято: ' + ПРАЙС.обычаи_рынка.map(function(о){
+        return о.что.toLowerCase() + ' ' + о.сколько;
+      }).join('; ') + '.';
+  }
+
   function рисоватьРазбор(){
     var цвета = ['var(--accent)', 'var(--ok)', 'var(--warn)',
                  'var(--line-strong)', 'var(--ink-faint)'];
@@ -2071,6 +2249,7 @@ footer{margin-top:2.5rem;padding-top:1.4rem;border-top:1px solid var(--line-stro
       ПРАЙС = d;
       рисоватьСтоимость();
       рисоватьСутки();
+      рисоватьШкалуРынка();
       рисоватьПрограммы();
       рисоватьПокрытие();
       рисоватьРазбор();
