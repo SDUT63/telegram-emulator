@@ -337,6 +337,9 @@ p{margin:0 0 1rem}
 .price-hint .go{display:inline-block;margin-top:.6rem;font-size:.9rem;
   color:var(--accent);background:none;border:0;padding:0;cursor:pointer;
   text-decoration:underline;font-family:var(--sans)}
+/* Обёртка была в разметке, но без стиля: таблица городов шире
+   телефона, и вся страница уезжала вбок. */
+.scroll{overflow-x:auto;-webkit-overflow-scrolling:touch;max-width:100%}
 .cities{width:100%;border-collapse:collapse;font-size:.88rem;min-width:26rem}
 .cities th{text-align:left;font-family:var(--mono);font-size:.64rem;
   letter-spacing:.07em;text-transform:uppercase;color:var(--accent);
