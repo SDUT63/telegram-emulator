@@ -1,0 +1,231 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Путь человека и этапы запуска</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Literata:opsz,wght@7..72,600;7..72,700&family=Golos+Text:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+:root{
+  --ground:#F2F5F3; --surface:#FFFFFF; --surface-2:#E9EFEC;
+  --ink:#14201E; --ink-soft:#4B5A56; --ink-faint:#748480;
+  --line:#D9E2DE; --line-strong:#B9C7C2;
+  --accent:#1B5A55; --accent-soft:#D6E6E3;
+  --ok:#2C6647; --ok-bg:#DCEBE2;
+  --warn:#83600F; --warn-bg:#F2E8CE;
+  --stop:#9C382E; --stop-bg:#F5DDD9;
+  --serif:"Literata",Georgia,serif;
+  --sans:"Golos Text","Helvetica Neue",Arial,sans-serif;
+  --mono:"IBM Plex Mono",Consolas,monospace;
+  color-scheme: light dark;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --ground:#101614; --surface:#171F1D; --surface-2:#1E2826;
+  --ink:#E5EBE8; --ink-soft:#A8B7B2; --ink-faint:#7E8E89;
+  --line:#293430; --line-strong:#3A4844;
+  --accent:#63B4AB; --accent-soft:#1D302E;
+  --ok:#6DBB8E; --ok-bg:#1A2B22;
+  --warn:#D2A648; --warn-bg:#2C2617;
+  --stop:#DE7A6D; --stop-bg:#2E1C19;
+}}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0}
+body{background:var(--ground);color:var(--ink);font-family:var(--sans);
+  font-size:17px;line-height:1.62;-webkit-text-size-adjust:100%}
+.wrap{max-width:42rem;margin:0 auto;padding-inline:20px;padding-block:2.2rem 4rem}
+.eyebrow{font-family:var(--mono);font-size:.72rem;letter-spacing:.14em;
+  text-transform:uppercase;color:var(--accent);margin:0 0 .7rem}
+h1{font-family:var(--serif);font-weight:700;font-size:clamp(1.75rem,6vw,2.4rem);
+  line-height:1.14;margin:0 0 .6rem;text-wrap:balance}
+.lede{color:var(--ink-soft);margin:0 0 2rem;font-size:1.05rem}
+h2{font-family:var(--serif);font-weight:600;font-size:1.35rem;line-height:1.25;
+  margin:2.8rem 0 .6rem;text-wrap:balance}
+h3{font-size:1rem;font-weight:600;margin:1.7rem 0 .45rem}
+p{margin:0 0 .9rem}
+ul,ol{margin:0 0 1rem;padding-left:1.3rem}
+li{margin-bottom:.45rem}
+code{font-family:var(--mono);font-size:.87em;background:var(--surface-2);
+  padding:.1rem .3rem;border-radius:4px}
+.flow{list-style:none;padding:0;margin:0 0 1.4rem;counter-reset:ш}
+.flow li{counter-increment:ш;position:relative;padding-left:2.6rem;
+  padding-bottom:1.1rem;border-left:2px solid var(--line-strong);
+  margin-left:.9rem}
+.flow li:last-child{border-left-color:transparent;padding-bottom:0}
+.flow li::before{content:counter(ш);position:absolute;left:-.95rem;top:0;
+  font-family:var(--mono);font-size:.78rem;width:1.8rem;height:1.8rem;
+  border-radius:50%;background:var(--accent);color:#fff;
+  display:flex;align-items:center;justify-content:center;font-weight:500}
+.flow b{display:block;font-weight:600;margin-bottom:.15rem}
+.flow span{color:var(--ink-soft);font-size:.94rem}
+.stage{background:var(--surface);border:1px solid var(--line);border-radius:9px;
+  padding:1rem 1.1rem;margin-bottom:.9rem}
+.stage .tag{font-family:var(--mono);font-size:.68rem;letter-spacing:.08em;
+  text-transform:uppercase;padding:.15rem .45rem;border-radius:4px;
+  margin-bottom:.4rem;display:inline-block}
+.stage.done .tag{background:var(--ok-bg);color:var(--ok)}
+.stage.next .tag{background:var(--warn-bg);color:var(--warn)}
+.stage.later .tag{background:var(--surface-2);color:var(--ink-faint)}
+.stage b{display:block;font-weight:600;margin-bottom:.3rem}
+.stage p{margin:0;color:var(--ink-soft);font-size:.95rem}
+.stage p + p{margin-top:.55rem}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:9px;
+  padding:1rem 1.1rem;margin-bottom:.9rem}
+.card.note{border-left:3px solid var(--warn);background:var(--warn-bg)}
+.card.note p,.card.note b{color:var(--warn)}
+.card.stop{border-left:3px solid var(--stop);background:var(--stop-bg)}
+.card.stop p,.card.stop b{color:var(--stop)}
+.card b{display:block;margin-bottom:.3rem}
+.card p{margin:0;color:var(--ink-soft);font-size:.95rem}
+footer{margin-top:3rem;padding-top:1.3rem;border-top:1px solid var(--line-strong);
+  color:var(--ink-faint);font-size:.85rem}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<p class="eyebrow">АНО «СДУТ» · 18 сентября 2026</p>
+<h1>Путь человека и этапы запуска</h1>
+<p class="lede">Как это работает сейчас — от первого сообщения боту до плана ухода
+со сметой. И что остаётся на потом, включая карту передвижения помощника.</p>
+
+<h2>Как человек проходит путь сегодня</h2>
+
+<ol class="flow">
+  <li><b>Пишет боту</b>
+    <span>Из социальной рекламы, холодным трафиком. Первое, что видит, —
+    короткое согласие на обработку данных, а не стена текста.</span></li>
+  <li><b>Оставляет контакты</b>
+    <span>Кто обращается, кем приходится, имя, телефон, когда звонить, адрес,
+    возраст, что беспокоит, что нужнее всего. Одиннадцать вопросов, и на них
+    отвечают словами, а не только кнопками.</span></li>
+  <li><b>Выбирает, что дальше</b>
+    <span>Три выхода, и это главная развилка. Продолжить подробные вопросы
+    здесь. Открыть приложение — те же вопросы, но сразу с планом и ценами.
+    Или просто ждать звонка: координатор свяжется в любом случае.</span></li>
+  <li><b>Открывает приложение по ссылке</b>
+    <span>Ответы уже внутри: анкета заполнена, вводить заново нечего. Ссылка
+    личная, данные едут в части адреса после решётки — на сервер она
+    не отправляется и в журналах хостинга не оседает.</span></li>
+  <li><b>Отвечает на девять вопросов об устройстве дня</b>
+    <span>Ни один не повторяет бота: там спрашивали, какой человек, здесь —
+    как устроены день и дом. Где проходит день, сколько раз подходить, есть ли
+    кому быть ночью, сколько рук при перемещении.</span></li>
+  <li><b>Получает план ухода</b>
+    <span>Распорядок по частям суток с действиями из перечня Приказа № 731,
+    частота того, что забывают, минимум оборудования, признаки для звонка —
+    и порядок суммы в месяц.</span></li>
+  <li><b>Смотрит цену и оборудование</b>
+    <span>Калькулятор открывается уже с подставленной позицией. Видно, где эта
+    цена на фоне рынка и какую часть часа закрывают программы. В оборудовании
+    первым экраном — что положено даром.</span></li>
+  <li><b>Отправляет всё координатору одним сообщением</b>
+    <span>План, расчёт и заявку на оборудование можно собрать в текст и
+    отправить в бот. Координатор приходит на выезд, уже зная, что нужно.</span></li>
+</ol>
+
+<div class="card">
+  <b>Что здесь важно</b>
+  <p>Человек нигде не отвечает дважды. Бот спрашивает о человеке, приложение —
+  об устройстве дня, и пересечения проверяются автоматически: если вопрос
+  в приложении станет слишком похож на вопрос бота, проверка упадёт. Она уже
+  один раз сработала — «в какое время помощь нужнее всего» оказалось слишком
+  близко к «что нужнее всего» у бота.</p>
+</div>
+
+<h2>Этапы</h2>
+
+<div class="stage done">
+  <span class="tag">сделано</span>
+  <b>1. Бот, приложение и перенос между ними</b>
+  <p>Анкета, распознавание угрозы жизни, CRM для координатора, справочник
+  с поиском и картинками, план ухода, калькулятор стоимости, аренда
+  оборудования. Ответы переносятся из бота в приложение ссылкой.</p>
+  <p>Цены выведены из рынка своего города, а не назначены: пять уровней
+  от Москвы до райцентра, модель проверяет сама себя по наблюдению.</p>
+</div>
+
+<div class="stage next">
+  <span class="tag">сейчас</span>
+  <b>2. Тестовый запуск</b>
+  <p>Выложить приложение, включить бота на постоянно, дать первую рекламу
+  небольшим объёмом. Смотреть на воронку: сколько дошло до контактов, сколько
+  открыло приложение, сколько дошло до плана.</p>
+  <p>Параллельно — включение в реестр поставщиков социальных услуг. Без него
+  платный контур не сходится: без программ выход в ноль наступает при
+  2 719 часах в месяц вместо 605.</p>
+</div>
+
+<div class="stage later">
+  <span class="tag">после теста</span>
+  <b>3. Статус визита: «помощник выехал»</b>
+  <p>Человек хочет знать не координаты помощника, а когда тот будет.
+  Это решается без карты и без сервера слежения: координатор или помощник
+  отмечает в CRM «выехал» — бот присылает сообщение «помощник выехал,
+  будет примерно через сорок минут».</p>
+  <p>Делается за пару дней, закрывает девяносто процентов потребности
+  и не требует ни согласия на геолокацию, ни отдельного приложения
+  для помощника.</p>
+</div>
+
+<div class="stage later">
+  <span class="tag">после теста</span>
+  <b>4. Карта передвижения помощника</b>
+  <p>То, о чём вы говорили. Делается последним — и вот что для этого нужно
+  собрать заранее.</p>
+</div>
+
+<h3>Что требует карта</h3>
+<ul>
+  <li><b>Сервер.</b> Сейчас приложение — статические файлы на Cloudflare:
+  там нечему принимать координаты и негде их держать. Нужен работающий
+  сервер с постоянным адресом.</li>
+  <li><b>Приложение для помощника.</b> Телефон помощника должен отправлять
+  положение. Это отдельная программа или веб-страница, открытая всю смену,
+  и она съедает заряд.</li>
+  <li><b>Согласие помощника.</b> Отслеживание работника — обработка его
+  персональных данных. Нужно письменное согласие, ограничение рабочим
+  временем и запись в трудовом договоре. Следить круглосуточно нельзя.</li>
+  <li><b>Что видит семья.</b> Не точку на карте по имени, а «помощник в пути,
+  расчётное время — 14:30». Точная геопозиция сотрудника, доступная клиенту, —
+  это лишнее и для помощника небезопасно.</li>
+</ul>
+
+<div class="card note">
+  <b>Мой совет по порядку</b>
+  <p>Третий этап стоит сделать сразу после теста, а четвёртый — только если
+  после третьего люди всё равно будут спрашивать «а где он сейчас». Обычно
+  не спрашивают: вопрос «когда» закрывается сообщением, а не картой.</p>
+</div>
+
+<h2>Чего не хватает для запуска</h2>
+
+<div class="card stop">
+  <b>Телефон службы не заполнен</b>
+  <p>В реквизитах пусто, и приложение честно ведёт всех в бот. Для рекламы
+  нужен телефон, по которому берут трубку: часть людей звонит, а не пишет,
+  и терять их жалко. Заполняется в <code>организация.py</code>.</p>
+</div>
+
+<div class="card stop">
+  <b>Руководитель не указан</b>
+  <p>В реквизитах пустое поле «кто действует от лица организации». Это
+  понадобится в первом же договоре.</p>
+</div>
+
+<div class="card note">
+  <b>Банковские реквизиты для пожертвований</b>
+  <p>Тоже пусты, и это пока правильно: пустой счёт лучше выдуманного.
+  Но пожертвования — один из источников, которыми закрывается разрыв между
+  ценой и себестоимостью, и без счёта они не придут.</p>
+</div>
+
+<footer>
+АНО «Система долговременного ухода», Тольятти.<br>
+1070 проверок зелёные. Ветка <code>claude/max-bot-complete-analysis-gcgbtm</code>.
+</footer>
+
+</div>
+</body>
+</html>

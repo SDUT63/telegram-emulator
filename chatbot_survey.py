@@ -26,7 +26,8 @@ import consent_forms
 import fallback
 import файловый_замок
 import survey_questions
-from survey_questions import CHECKPOINT_ID, QUESTIONS, STOP_OPTION
+from survey_questions import (APP_OPTION, CHECKPOINT_ID, QUESTIONS,
+                              STOP_OPTION)
 
 МЕСЯЦЫ = ("января", "февраля", "марта", "апреля", "мая", "июня", "июля",
           "августа", "сентября", "октября", "ноября", "декабря")
@@ -67,6 +68,22 @@ HELP = (
     "отмена — прервать\n\n"
     "Анкета сохраняется. Можно закрыть и вернуться позже — "
     "продолжим с того же места."
+)
+
+В_ПРИЛОЖЕНИЕ = (
+    "Открывайте — ваши ответы уже внутри, заново их вводить не нужно.\n\n"
+    "Там короткий опросник об устройстве дня, и по нему сразу сложится "
+    "план ухода: распорядок, что делать по часам, какое оборудование "
+    "нужно и сколько это будет стоить. Координатор всё равно свяжется "
+    "с вами — приложение не вместо него, а чтобы разговор был короче.\n\n"
+    "Ссылка личная: в ней то, что вы рассказали. Пересылать её другим "
+    "не стоит."
+)
+
+ПОПРОБУЙТЕ_ПРИЛОЖЕНИЕ = (
+    "Пока ждёте звонка, можно посмотреть приложение: там план ухода "
+    "по короткому опроснику, расчёт часов, стоимость и аренда "
+    "оборудования. Ваши ответы уже внутри ссылки."
 )
 
 DONE_FULL = (
@@ -792,9 +809,6 @@ class Survey:
                    | APP_WORDS):
             self.understood(user_id)
 
-        if low in APP_WORDS:
-            return self.приглашение_в_приложение(user_id)
-
         if low in RESTART_WORDS:
             return self.restart_after_consent(user_id)
         if low in HELP_WORDS:
@@ -850,9 +864,18 @@ class Survey:
         # «Продолжить» стоит первым вариантом, и написавший его словом
         # вместо номера получал тот же вопрос заново. И так до конца:
         # выйти из этого круга словами было нельзя.
-        if low in CONTINUE_WORDS:
+        # «Продолжить» и «приложение» — это и служебные слова, и
+        # варианты ответа на рубеже анкеты. Пока они перехватывались
+        # раньше вопроса, написавший их словом получал не то: «продолжить»
+        # возвращало тот же вопрос по кругу, «приложение» — общую ссылку
+        # вместо ответа. Сначала пробуем как ответ, и только потом как
+        # команду.
+        служебное = low in CONTINUE_WORDS or low in APP_WORDS
+        if служебное:
             ответ_ли = bool(question.get("options")) and self._check(question, text)[0]
             if not ответ_ли:
+                if low in APP_WORDS:
+                    return self.приглашение_в_приложение(user_id)
                 return self._ask(user_id, step)
 
         if low in SKIP_WORDS:
@@ -1117,12 +1140,20 @@ class Survey:
                 person["alerts"].append(note)
 
         # Человек решил не проходить подробную часть
-        if question["id"] == CHECKPOINT_ID and value == STOP_OPTION:
+        if question["id"] == CHECKPOINT_ID and value in (STOP_OPTION, APP_OPTION):
             person["step"] = len(QUESTIONS)
             person["finished"] = datetime.now().isoformat(timespec="seconds")
             self.save()
             self.export_csv()
-            return prefix + DONE_SHORT
+            if value == APP_OPTION:
+                # Те же вопросы, но в приложении, где к ним прилагаются
+                # план ухода, стоимость и оборудование. Ответы уезжают
+                # вместе со ссылкой: отвечать дважды человек не станет
+                # и правильно сделает.
+                return prefix + В_ПРИЛОЖЕНИЕ + "\n\n" + \
+                    self.ссылка_в_приложение(user_id)
+            return prefix + DONE_SHORT + "\n\n" + ПОПРОБУЙТЕ_ПРИЛОЖЕНИЕ + \
+                "\n" + self.ссылка_в_приложение(user_id)
 
         # Что сказать сразу после этого ответа — например, какое согласие
         # понадобится. Идёт после предупреждений: сначала здоровье,
@@ -1142,7 +1173,9 @@ class Survey:
             person["finished"] = datetime.now().isoformat(timespec="seconds")
             self.save()
             self.export_csv()
-            return prefix + DONE_FULL + "\n\n" + self.summary(user_id)
+            return (prefix + DONE_FULL + "\n\n" + self.summary(user_id) +
+                    "\n\n" + ПОПРОБУЙТЕ_ПРИЛОЖЕНИЕ + "\n" +
+                    self.ссылка_в_приложение(user_id))
 
         self.save()
         return prefix + self._ask(user_id, person["step"])
