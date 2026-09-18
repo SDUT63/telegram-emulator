@@ -232,7 +232,8 @@ def test_данные_вшиты_в_страницу():
     """
     текст = СТРАНИЦА.read_text(encoding="utf-8")
     assert "fetch(" not in текст, "страница снова что-то подгружает"
-    for имя in ("scale.json", "kb.json", "survey.json", "price.json"):
+    for имя in ("scale.json", "kb.json", "survey.json", "price.json",
+                "care.json", "gear.json"):
         assert f'"{имя}"' in текст, f"данные {имя} не вшиты"
 
 
@@ -245,7 +246,7 @@ def test_в_webapp_нет_кириллических_имён():
     не ссылается из кода.
     """
     свои = {"app.html", "index.html", "scale.json", "kb.json",
-            "survey.json", "price.json"}
+            "survey.json", "price.json", "care.json", "gear.json"}
     плохие = [
         п.name for п in (КОРЕНЬ / "webapp").iterdir()
         if п.name in свои and not п.name.isascii()
@@ -260,7 +261,8 @@ def test_имена_данных_в_шаблоне_совпадают_с_вши�
 
     шаблон = ШАБЛОН.read_text(encoding="utf-8")
     просит = set(re.findall(r"взять\('([^']+)'\)", шаблон))
-    assert просит == {"scale.json", "kb.json", "survey.json", "price.json"}, просит
+    assert просит == {"scale.json", "kb.json", "survey.json", "price.json",
+                      "care.json", "gear.json"}, просит
 
 
 def test_длинной_страницы_справочника_больше_нет():

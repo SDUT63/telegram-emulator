@@ -285,6 +285,89 @@ p{margin:0 0 1rem}
 .linkish{background:none;border:0;padding:0;font:inherit;color:var(--accent);
   text-decoration:underline;cursor:pointer}
 
+/* ---------- план ухода ---------- */
+.cq{background:var(--surface);border:1px solid var(--line);border-radius:8px;
+  padding:.85rem .95rem;margin-bottom:.6rem}
+.cq .t{display:block;font-size:.99rem;font-weight:500;margin-bottom:.15rem}
+.cq .why{display:block;color:var(--ink-faint);font-size:.83rem;
+  margin-bottom:.6rem;line-height:1.4}
+.cq .opt{display:block;width:100%;text-align:left;font-family:var(--sans);
+  font-size:.93rem;padding:.55rem .7rem;margin-bottom:.3rem;border-radius:6px;
+  border:1px solid var(--line-strong);background:transparent;color:var(--ink-soft);
+  cursor:pointer;line-height:1.3}
+.cq .opt[aria-pressed="true"]{border-color:var(--accent);background:var(--accent-soft);
+  color:var(--accent);font-weight:600}
+.plan{background:var(--surface);border:1px solid var(--line-strong);
+  border-radius:10px;padding:1rem 1.1rem;margin-bottom:1rem;
+  box-shadow:0 2px 14px rgba(0,0,0,.06)}
+.plan .kind{font-family:var(--mono);font-size:.7rem;letter-spacing:.1em;
+  text-transform:uppercase;color:var(--accent);display:block;margin-bottom:.3rem}
+.plan h3{font-family:var(--serif);font-size:1.25rem;font-weight:600;
+  margin:0 0 .3rem}
+.plan .who{color:var(--ink-soft);font-size:.94rem;margin:0 0 .5rem}
+.plan .hrs{display:inline-block;font-family:var(--mono);font-size:.85rem;
+  background:var(--accent-soft);color:var(--accent);padding:.2rem .5rem;
+  border-radius:5px}
+.part{margin-bottom:1rem}
+.part .hd{display:flex;align-items:baseline;gap:.6rem;margin-bottom:.4rem}
+.part .hd b{font-family:var(--serif);font-size:1.05rem;font-weight:600}
+.part .hd i{flex:1 1 auto;height:1px;background:var(--line-strong);font-style:normal}
+.part ul{list-style:none;margin:0;padding:0}
+.part li{display:flex;gap:.6rem;align-items:flex-start;padding:.45rem 0;
+  border-bottom:1px solid var(--line);font-size:.94rem;line-height:1.45}
+.part li:last-child{border-bottom:0}
+.part li .no{font-family:var(--mono);font-size:.74rem;color:var(--ink-faint);
+  background:var(--surface-2);border-radius:4px;padding:.1rem .3rem;
+  flex:0 0 auto;margin-top:.15rem}
+.freq{background:var(--warn-bg);border-radius:8px;padding:.8rem .95rem;
+  margin-bottom:.9rem}
+.freq b{color:var(--warn);display:block;margin-bottom:.35rem;font-size:.95rem}
+.freq .r{display:block;font-size:.91rem;color:var(--warn);padding:.25rem 0;
+  line-height:1.45}
+.freq .r span{font-weight:600}
+.watch{background:var(--stop-bg);border-radius:8px;padding:.8rem .95rem;
+  margin-bottom:.9rem}
+.watch b{color:var(--stop);display:block;margin-bottom:.35rem;font-size:.95rem}
+.watch li{color:var(--stop);font-size:.91rem;line-height:1.45;margin-bottom:.2rem}
+.watch ul{margin:0;padding-left:1.1rem}
+.tip{background:var(--surface);border:1px solid var(--line);
+  border-left:3px solid var(--accent);border-radius:8px;
+  padding:.8rem .95rem;margin-bottom:.6rem}
+.tip b{display:block;font-size:.95rem;margin-bottom:.2rem}
+.tip p{margin:0;color:var(--ink-soft);font-size:.91rem}
+
+/* ---------- аренда оборудования ---------- */
+.gear{background:var(--surface);border:1px solid var(--line);border-radius:8px;
+  padding:.85rem .95rem;margin-bottom:.6rem}
+.gear .top{display:flex;justify-content:space-between;gap:.8rem;
+  align-items:baseline}
+.gear .name{font-weight:600;font-size:.97rem;line-height:1.3}
+.gear .rub{font-family:var(--mono);font-size:.95rem;font-weight:500;
+  color:var(--accent);white-space:nowrap;flex:0 0 auto;
+  font-variant-numeric:tabular-nums}
+.gear .rub small{display:block;font-size:.72rem;color:var(--ink-faint);
+  text-align:right;font-weight:400}
+.gear .what{display:block;color:var(--ink-soft);font-size:.89rem;
+  margin-top:.4rem;line-height:1.45}
+.gear .row{display:flex;gap:.5rem;align-items:center;margin-top:.6rem;
+  flex-wrap:wrap}
+.gear .take{font-family:var(--sans);font-size:.88rem;padding:.4rem .8rem;
+  border-radius:6px;border:1px solid var(--line-strong);background:transparent;
+  color:var(--ink-soft);cursor:pointer}
+.gear .take[aria-pressed="true"]{border-color:var(--accent);
+  background:var(--accent);color:#fff;font-weight:500}
+.badge{font-family:var(--mono);font-size:.68rem;letter-spacing:.06em;
+  text-transform:uppercase;padding:.15rem .4rem;border-radius:4px}
+.badge.free{background:var(--ok-bg);color:var(--ok)}
+.badge.maybe{background:var(--warn-bg);color:var(--warn)}
+.free-first{background:var(--ok-bg);border-radius:8px;padding:.9rem 1rem;
+  margin-bottom:1rem}
+.free-first b{color:var(--ok);display:block;margin-bottom:.3rem}
+.free-first .w{display:block;padding:.5rem 0;border-top:1px solid rgba(0,0,0,.06);
+  font-size:.91rem;color:var(--ok);line-height:1.45}
+.free-first .w:first-of-type{border-top:0}
+.free-first .w b{display:inline;margin:0}
+
 /* ---------- чек-лист найма ---------- */
 .check{list-style:none;margin:0;padding:0}
 .check li{display:flex;gap:.75rem;align-items:flex-start;padding:.7rem 0;
@@ -330,15 +413,37 @@ footer{margin-top:2.5rem;padding-top:1.4rem;border-top:1px solid var(--line-stro
 </div>
 
 <div class="tabs" role="tablist">
-  <button class="tab" id="tab-find" role="tab" aria-selected="true" aria-controls="p-find">Справочник</button>
+  <button class="tab" id="tab-plan" role="tab" aria-selected="true" aria-controls="p-plan">План ухода</button>
+  <button class="tab" id="tab-find" role="tab" aria-selected="false" aria-controls="p-find">Справочник</button>
   <button class="tab" id="tab-calc" role="tab" aria-selected="false" aria-controls="p-calc">Сколько часов положено</button>
-  <button class="tab" id="tab-form" role="tab" aria-selected="false" aria-controls="p-form">Анкета</button>
   <button class="tab" id="tab-cost" role="tab" aria-selected="false" aria-controls="p-cost">Сколько стоит</button>
-  <button class="tab" id="tab-docs" role="tab" aria-selected="false" aria-controls="p-docs">Что собрать</button>
+  <button class="tab" id="tab-gear" role="tab" aria-selected="false" aria-controls="p-gear">Оборудование</button>
+  <button class="tab" id="tab-form" role="tab" aria-selected="false" aria-controls="p-form">Анкета</button>
 </div>
 
+<!-- ============ ПЛАН УХОДА ============ -->
+<section id="p-plan" role="tabpanel" aria-labelledby="tab-plan">
+  <h2>Предварительный план ухода</h2>
+  <p class="sub">Девять вопросов о том, как устроены день и дом, — и вы увидите
+  распорядок с конкретными действиями, частотой и минимумом оборудования.
+  Про самого человека спросит бот: здесь эти вопросы не повторяются.</p>
+
+  <div class="result" id="plan-top">
+    <div class="line">
+      <span class="lvl" id="plan-count">Отвечено 0</span>
+      <span class="num" id="plan-of">из 9</span>
+    </div>
+    <div class="bar"><i id="plan-bar"></i></div>
+    <div class="hrs" id="plan-hint">План появится после первых ответов.
+    Ничего никуда не отправляется.</div>
+  </div>
+
+  <div id="plan-form"></div>
+  <div id="plan-out"></div>
+</section>
+
 <!-- ============ СПРАВОЧНИК ============ -->
-<section id="p-find" role="tabpanel" aria-labelledby="tab-find">
+<section id="p-find" role="tabpanel" aria-labelledby="tab-find" hidden>
   <h2>Материалы службы</h2>
   <p class="sub" id="find-sub">Всё, что знает бот, — здесь целиком. Напишите своими
   словами: «пролежни», «маме нечем платить», «как оформить инвалидность».</p>
@@ -393,6 +498,13 @@ footer{margin-top:2.5rem;padding-top:1.4rem;border-top:1px solid var(--line-stro
   </div>
   <div id="form"></div>
   <div id="form-send"></div>
+
+  <h3>Что собрать к разговору</h3>
+  <p class="note">Заранее собирать всё не нужно — координатор скажет, что
+  понадобится именно вам. Этот список на случай, если хочется подготовиться.
+  Отметки сохраняются в этом телефоне.</p>
+  <ul class="check" id="docs-check"></ul>
+  <a class="cta" href="https://max.ru/id6320093220_bot">Написать координатору в MAX</a>
 </section>
 
 <!-- ============ СТОИМОСТЬ ============ -->
@@ -506,14 +618,44 @@ footer{margin-top:2.5rem;padding-top:1.4rem;border-top:1px solid var(--line-stro
   <a class="cta" href="https://max.ru/id6320093220_bot">Написать координатору в MAX</a>
 </section>
 
-<!-- ============ ДОКУМЕНТЫ ============ -->
-<section id="p-docs" role="tabpanel" aria-labelledby="tab-docs" hidden>
-  <h2>Что собрать</h2>
-  <p class="sub">Заранее собирать всё не нужно — координатор скажет, что понадобится
-  именно вам. Этот список на случай, если хочется подготовиться.</p>
-  <ul class="check" id="docs-check"></ul>
-  <p class="note">Отметки сохраняются в этом телефоне. Ничего никуда не отправляется.</p>
-  <a class="cta" href="https://max.ru/id6320093220_bot">Написать координатору в MAX</a>
+<!-- ============ ОБОРУДОВАНИЕ ============ -->
+<section id="p-gear" role="tabpanel" aria-labelledby="tab-gear" hidden>
+  <h2>Оборудование: аренда и что положено даром</h2>
+  <p class="sub">Кровать покупают за шестьдесят тысяч, когда она нужна
+  на три месяца. Сначала посмотрите, что положено бесплатно.</p>
+
+  <div class="free-first" id="gear-free"></div>
+
+  <div class="result" id="gear-top">
+    <div class="line">
+      <span class="lvl" id="gear-what">Ничего не выбрано</span>
+      <span class="num" id="gear-sum">—</span>
+    </div>
+    <div class="hrs" id="gear-hint">Отметьте нужное — посчитаем аренду
+    и сравним с покупкой.</div>
+    <p class="note" id="gear-note"></p>
+  </div>
+
+  <div class="group">
+    <h3>На сколько месяцев</h3>
+    <div class="step">
+      <button type="button" id="gear-minus" aria-label="Меньше">−</button>
+      <span class="n" id="gear-n">1</span>
+      <button type="button" id="gear-plus" aria-label="Больше">+</button>
+      <span class="unit" id="gear-unit">месяц</span>
+    </div>
+  </div>
+
+  <div id="gear-list"></div>
+
+  <h3>Почему аренда, а не покупка</h3>
+  <ul class="plain" id="gear-why"></ul>
+
+  <h3>Условия</h3>
+  <ul class="plain" id="gear-terms"></ul>
+
+  <button class="send" id="gear-send">Собрать заявку для координатора</button>
+  <div id="gear-out"></div>
 </section>
 
 <footer>
@@ -533,6 +675,7 @@ footer{margin-top:2.5rem;padding-top:1.4rem;border-top:1px solid var(--line-stro
   var tabs = [].slice.call(document.querySelectorAll('.tab'));
   tabs.forEach(function(t){
     t.addEventListener('click', function(){
+      if (t.id === 'tab-gear' && ЖЕЛЕЗО) рисоватьЖелезо();
       tabs.forEach(function(o){
         var panel = document.getElementById(o.getAttribute('aria-controls'));
         var on = (o === t);
@@ -888,6 +1031,380 @@ footer{margin-top:2.5rem;padding-top:1.4rem;border-top:1px solid var(--line-stro
     if (!поле) return;
     ОТВЕТЫ_АНКЕТЫ[поле.getAttribute('data-q')] = поле.value;
     save('sdut-form', ОТВЕТЫ_АНКЕТЫ);
+  });
+
+  /* ---------------- план ухода ----------------
+     Опросник про устройство дня и дома. С анкетой бота не
+     пересекается ни одним вопросом: там спрашивают, какой человек,
+     здесь — как устроен его день. Проверка tests/test_care.py
+     следит, чтобы так и осталось. */
+  var ПЛАН = null, ОТВЕТЫ_ПЛАНА = load('sdut-plan');
+
+  function planОтмечен(вопрос, вариант){
+    var было = ОТВЕТЫ_ПЛАНА[вопрос.id] || '';
+    return вопрос.несколько
+      ? было.split('; ').indexOf(вариант) >= 0
+      : было === вариант;
+  }
+
+  function рисоватьОпросник(){
+    var корень = document.getElementById('plan-form');
+    корень.innerHTML = ПЛАН.вопросы.map(function(в){
+      return '<div class="cq"><span class="t">' + экранировать(в.текст) + '</span>' +
+        (в.зачем ? '<span class="why">' + экранировать(в.зачем) + '</span>' : '') +
+        в.варианты.map(function(вар){
+          return '<button type="button" class="opt" data-pq="' + в.id +
+            '" data-pv="' + экранировать(вар) + '" aria-pressed="' +
+            (planОтмечен(в, вар) ? 'true' : 'false') + '">' +
+            экранировать(вар) + '</button>';
+        }).join('') + '</div>';
+    }).join('');
+
+    var отвечено = ПЛАН.вопросы.filter(function(в){
+      return ОТВЕТЫ_ПЛАНА[в.id];
+    }).length;
+    document.getElementById('plan-count').textContent = 'Отвечено ' + отвечено;
+    document.getElementById('plan-of').textContent = 'из ' + ПЛАН.вопросы.length;
+    document.getElementById('plan-bar').style.width =
+      (отвечено / ПЛАН.вопросы.length * 100) + '%';
+    рисоватьШаблон(отвечено);
+  }
+
+  /* Тот же подбор, что в уход.py: правила по порядку, побеждает
+     первое подошедшее — от самого тяжёлого к самому лёгкому.
+     Разойдётся — человек с лежачим близким получит план прогулок. */
+  function подобратьШаблон(){
+    for (var i = 0; i < ПЛАН.правила.length; i++){
+      var правило = ПЛАН.правила[i], подходит = true;
+      for (var ключ in правило['если']){
+        var было = String(ОТВЕТЫ_ПЛАНА[ключ] || '');
+        var годные = правило['если'][ключ], нашлось = false;
+        for (var j = 0; j < годные.length; j++){
+          if (было.indexOf(годные[j]) >= 0){ нашлось = true; break; }
+        }
+        if (!нашлось){ подходит = false; break; }
+      }
+      if (подходит){
+        var ид = правило.шаблон;
+        return ПЛАН.шаблоны.filter(function(ш){ return ш.id === ид; })[0] || null;
+      }
+    }
+    return null;
+  }
+
+  function уточнения(){
+    return ПЛАН.добавки.filter(function(д){
+      var было = String(ОТВЕТЫ_ПЛАНА[д.ключ] || '');
+      return д['если'].some(function(з){ return было.indexOf(з) >= 0; });
+    });
+  }
+
+  function частиСуток(шаблон){
+    // Почти постоянно — значит все части суток: отмечать «когда
+    // нужнее» тут бессмысленно, и половина плана иначе не появится.
+    if (String(ОТВЕТЫ_ПЛАНА['раз'] || '').indexOf('Почти постоянно') >= 0)
+      return шаблон.блоки;
+    var отмечено = String(ОТВЕТЫ_ПЛАНА['когда'] || '');
+    var лежит = String(ОТВЕТЫ_ПЛАНА['день'] || '').indexOf('В кровати') >= 0;
+    var выбрано = шаблон.блоки.filter(function(б){
+      return отмечено.indexOf(б.когда) >= 0 || (лежит && б.время === 'Ночь');
+    });
+    return выбрано.length ? выбрано : шаблон.блоки;
+  }
+
+  function часовВДень(шаблон){
+    return String(ОТВЕТЫ_ПЛАНА['раз'] || '').indexOf('Почти постоянно') >= 0
+      ? 'больше 8 часов в день' : шаблон.часов_в_день;
+  }
+
+  function рисоватьШаблон(отвечено){
+    var узел = document.getElementById('plan-out');
+    var подсказка = document.getElementById('plan-hint');
+    var шаблон = подобратьШаблон();
+
+    if (!шаблон){
+      узел.innerHTML = '';
+      подсказка.textContent = отвечено
+        ? 'Ответьте, где человек проводит день, — с этого начинается план.'
+        : 'План появится после первых ответов. Ничего никуда не отправляется.';
+      return;
+    }
+    подсказка.textContent = 'План готов. Чем больше ответов, тем он точнее.';
+
+    var части = частиСуток(шаблон).map(function(б){
+      return '<div class="part"><div class="hd"><b>' + экранировать(б.время) +
+        '</b><i></i></div><ul>' + б.дела.map(function(д){
+          return '<li><span class="no">' + д.номер + '</span><span>' +
+            экранировать(д.текст) + '</span></li>';
+        }).join('') + '</ul></div>';
+    }).join('');
+
+    var частота = шаблон.частота.length
+      ? '<div class="freq"><b>Что делают по часам, а не по самочувствию</b>' +
+        шаблон.частота.map(function(ч){
+          return '<span class="r"><span>' + экранировать(ч.что) + '.</span> ' +
+            экранировать(ч.как) + '</span>';
+        }).join('') + '</div>'
+      : '';
+
+    var следить = шаблон.следить.length
+      ? '<div class="watch"><b>Когда звонить, не дожидаясь визита</b><ul>' +
+        шаблон.следить.map(function(с){
+          return '<li>' + экранировать(с) + '</li>';
+        }).join('') + '</ul></div>'
+      : '';
+
+    var уточн = уточнения().map(function(д){
+      return '<div class="tip"><b>' + экранировать(д.заголовок) + '</b><p>' +
+        экранировать(д.текст) + '</p></div>';
+    }).join('');
+
+    var железо = шаблон.оборудование.length
+      ? '<h3>Минимум оборудования</h3><ul class="plain">' +
+        шаблон.оборудование.map(function(о){
+          return '<li>' + экранировать(о) + '</li>';
+        }).join('') + '</ul>' +
+        '<button class="send" id="plan-gear">Посмотреть, что из этого ' +
+        'положено даром и почём аренда</button>'
+      : '';
+
+    var примечания = (шаблон.примечания || []).map(function(п){
+      return '<p class="note">' + экранировать(п) + '</p>';
+    }).join('');
+
+    узел.innerHTML =
+      '<div class="plan"><span class="kind">Предварительный план</span>' +
+      '<h3>' + экранировать(шаблон.название) + '</h3>' +
+      '<p class="who">' + экранировать(шаблон.кому) + '</p>' +
+      '<span class="hrs">' + экранировать(часовВДень(шаблон)) + '</span></div>' +
+      части + частота + следить +
+      (уточн ? '<h3>На что обратить внимание именно вам</h3>' + уточн : '') +
+      железо + примечания +
+      '<p class="note">' + экранировать(ПЛАН.оговорка) + '</p>' +
+      '<button class="send" id="plan-send">Собрать план для координатора</button>' +
+      '<div id="plan-dump"></div>';
+
+    var кнопкаЖелезо = document.getElementById('plan-gear');
+    if (кнопкаЖелезо) кнопкаЖелезо.addEventListener('click', function(){
+      ВЫБРАНО_ПО_ПЛАНУ = шаблон.id;
+      document.getElementById('tab-gear').click();
+    });
+    document.getElementById('plan-send').addEventListener('click', собратьПлан);
+  }
+
+  function текстПлана(){
+    var шаблон = подобратьШаблон();
+    if (!шаблон) return '';
+    var строки = ['Предварительный план ухода, СДУТ', '',
+                  шаблон.название + ' — ' + часовВДень(шаблон), ''];
+    ПЛАН.вопросы.forEach(function(в){
+      if (ОТВЕТЫ_ПЛАНА[в.id]) строки.push(в.текст + ' — ' + ОТВЕТЫ_ПЛАНА[в.id]);
+    });
+    частиСуток(шаблон).forEach(function(б){
+      строки.push('', б.время + ':');
+      б.дела.forEach(function(д){ строки.push('  ' + д.номер + '. ' + д.текст); });
+    });
+    if (шаблон.частота.length){
+      строки.push('', 'По часам:');
+      шаблон.частота.forEach(function(ч){ строки.push('  ' + ч.что + ' — ' + ч.как); });
+    }
+    var у = уточнения();
+    if (у.length){
+      строки.push('', 'Отдельно:');
+      у.forEach(function(д){ строки.push('  ' + д.заголовок + ': ' + д.текст); });
+    }
+    if (шаблон.оборудование.length){
+      строки.push('', 'Минимум оборудования:');
+      шаблон.оборудование.forEach(function(о){ строки.push('  • ' + о); });
+    }
+    строки.push('', ПЛАН.оговорка);
+    return строки.join('\n');
+  }
+
+  function собратьПлан(){
+    var текст = текстПлана();
+    var узел = document.getElementById('plan-dump');
+    узел.innerHTML = '<textarea class="dump" id="plan-text" readonly></textarea>' +
+      '<div class="sent">Скопируйте и отправьте в бот — координатор увидит план ' +
+      'и уточнит его на выезде. Заодно он задаст вопросы про самого человека: ' +
+      'их здесь не было специально, чтобы не спрашивать дважды.</div>' +
+      '<a class="cta" href="https://max.ru/id6320093220_bot">Открыть бот в MAX</a>';
+    var поле = document.getElementById('plan-text');
+    поле.value = текст;
+    поле.focus(); поле.select();
+    try { navigator.clipboard && navigator.clipboard.writeText(текст); } catch(e){}
+  }
+
+  document.addEventListener('click', function(ev){
+    var кнопка = ev.target.closest ? ev.target.closest('.cq .opt') : null;
+    if (!кнопка) return;
+    var q = кнопка.getAttribute('data-pq'), v = кнопка.getAttribute('data-pv');
+    var вопрос = ПЛАН.вопросы.filter(function(в){ return в.id === q; })[0];
+    if (вопрос && вопрос.несколько){
+      var было = (ОТВЕТЫ_ПЛАНА[q] || '').split('; ').filter(Boolean);
+      var где = было.indexOf(v);
+      if (где >= 0) было.splice(где, 1); else было.push(v);
+      ОТВЕТЫ_ПЛАНА[q] = было.join('; ');
+    } else {
+      ОТВЕТЫ_ПЛАНА[q] = (ОТВЕТЫ_ПЛАНА[q] === v) ? '' : v;
+    }
+    save('sdut-plan', ОТВЕТЫ_ПЛАНА);
+    рисоватьОпросник();
+  });
+
+  /* ---------------- аренда оборудования ---------------- */
+  var ЖЕЛЕЗО = null, ВЫБРАНО_ПО_ПЛАНУ = '';
+  var ВЫБОР_ЖЕЛЕЗА = load('sdut-gear');
+  if (!ВЫБОР_ЖЕЛЕЗА.взято) ВЫБОР_ЖЕЛЕЗА.взято = {};
+  if (!ВЫБОР_ЖЕЛЕЗА.месяцев) ВЫБОР_ЖЕЛЕЗА.месяцев = 1;
+
+  function рисоватьБесплатное(){
+    document.getElementById('gear-free').innerHTML =
+      '<b>Сначала — что положено даром</b>' +
+      ЖЕЛЕЗО.сначала_бесплатно.map(function(п){
+        return '<span class="w"><b>' + экранировать(п.что) + '.</b> ' +
+          экранировать(п.как) + '</span>';
+      }).join('');
+    document.getElementById('gear-why').innerHTML =
+      ЖЕЛЕЗО.почему_аренда.map(function(п){
+        return '<li>' + экранировать(п) + '</li>';
+      }).join('');
+    document.getElementById('gear-terms').innerHTML =
+      ЖЕЛЕЗО.условия.map(function(у){
+        return '<li>' + экранировать(у) + '</li>';
+      }).join('') +
+      '<li>Доставка и сборка — ' + рубли(ЖЕЛЕЗО.доставка.цена) + '. ' +
+      экранировать(ЖЕЛЕЗО.доставка.условие) + '</li>' +
+      '<li class="note">Цены рыночные: ' + экранировать(ЖЕЛЕЗО.откуда) + '.</li>';
+  }
+
+  function значокИПРА(средство){
+    if (средство.ипра === 'да')
+      return '<span class="badge free">по ИПРА бесплатно</span>';
+    if (средство.ипра === 'иногда')
+      return '<span class="badge maybe">иногда по ИПРА</span>';
+    if (средство.ипра === 'по паллиативу')
+      return '<span class="badge free">по паллиативному статусу</span>';
+    return '';
+  }
+
+  function рисоватьЖелезо(){
+    var подсветить = ВЫБРАНО_ПО_ПЛАНУ;
+    document.getElementById('gear-list').innerHTML =
+      ЖЕЛЕЗО.группы.map(function(г){
+        var свои = ЖЕЛЕЗО.средства.filter(function(с){ return с.группа === г; });
+        return '<div class="sect">' + экранировать(г) + '</div>' +
+          свои.map(function(с){
+            var нужно = подсветить && с.шаблоны.indexOf(подсветить) >= 0;
+            return '<div class="gear"><div class="top">' +
+              '<span class="name">' + экранировать(с.название) +
+              (нужно ? ' <span class="badge maybe">нужно по вашему плану</span>' : '') +
+              '</span><span class="rub">' + рубли(с.аренда) +
+              '<small>в месяц</small></span></div>' +
+              '<span class="what">' + экранировать(с.зачем) + '</span>' +
+              '<div class="row"><button type="button" class="take" data-gear="' +
+              с.id + '" aria-pressed="' +
+              (ВЫБОР_ЖЕЛЕЗА.взято[с.id] ? 'true' : 'false') + '">' +
+              (ВЫБОР_ЖЕЛЕЗА.взято[с.id] ? '✓ выбрано' : 'Выбрать') + '</button>' +
+              значокИПРА(с) +
+              '<span class="badge">купить ' + рубли(с.покупка) + '</span>' +
+              (с.залог ? '<span class="badge">залог ' + рубли(с.залог) + '</span>' : '') +
+              '</div></div>';
+          }).join('');
+      }).join('');
+  }
+
+  /* Та же арифметика, что в тср.за_месяцы. */
+  function счётЖелеза(){
+    var взято = ЖЕЛЕЗО.средства.filter(function(с){
+      return ВЫБОР_ЖЕЛЕЗА.взято[с.id];
+    });
+    var месяцев = Math.max(1, ВЫБОР_ЖЕЛЕЗА.месяцев);
+    var аренда = взято.reduce(function(с, п){ return с + п.аренда; }, 0) * месяцев;
+    var залог = взято.reduce(function(с, п){ return с + п.залог; }, 0);
+    var покупка = взято.reduce(function(с, п){ return с + п.покупка; }, 0);
+    var доставка = взято.length ? ЖЕЛЕЗО.доставка.цена : 0;
+    return {
+      взято: взято, месяцев: месяцев, аренда: аренда, залог: залог,
+      покупка: покупка, доставка: доставка, итого: аренда + доставка,
+      выгоднее_купить: взято.length > 0 && аренда >= покупка,
+      по_ипра: взято.filter(function(с){ return с.ипра === 'да'; })
+    };
+  }
+
+  function рисоватьСчётЖелеза(){
+    var счёт = счётЖелеза();
+    var что = document.getElementById('gear-what');
+    var сумма = document.getElementById('gear-sum');
+    var подсказка = document.getElementById('gear-hint');
+    var сноска = document.getElementById('gear-note');
+
+    document.getElementById('gear-n').textContent = ВЫБОР_ЖЕЛЕЗА.месяцев;
+    document.getElementById('gear-unit').textContent =
+      множ(ВЫБОР_ЖЕЛЕЗА.месяцев, ЕДИНИЦЫ['месяц']);
+
+    if (!счёт.взято.length){
+      что.textContent = 'Ничего не выбрано';
+      сумма.textContent = '—';
+      подсказка.textContent = 'Отметьте нужное — посчитаем аренду и сравним ' +
+        'с покупкой.';
+      сноска.textContent = '';
+      return;
+    }
+    что.textContent = счёт.взято.length + ' ' +
+      множ(счёт.взято.length, ['позиция', 'позиции', 'позиций']) +
+      ' на ' + счёт.месяцев + ' ' + множ(счёт.месяцев, ЕДИНИЦЫ['месяц']);
+    сумма.textContent = рубли(счёт.итого);
+    подсказка.textContent = 'Аренда ' + рубли(счёт.аренда) + ' + доставка ' +
+      рубли(счёт.доставка) +
+      (счёт.залог ? '. Залог ' + рубли(счёт.залог) + ' возвращается' : '');
+
+    var примечания = [];
+    if (счёт.выгоднее_купить){
+      примечания.push('За ' + счёт.месяцев + ' ' +
+        множ(счёт.месяцев, ЕДИНИЦЫ['месяц']) + ' аренда догнала покупку (' +
+        рубли(счёт.покупка) + '). На такой срок дешевле купить — скажите об ' +
+        'этом координатору, мы не будем спорить.');
+    }
+    if (счёт.по_ипра.length){
+      примечания.push('Из выбранного по ИПРА положено бесплатно: ' +
+        счёт.по_ипра.map(function(с){ return с.название; }).join(', ') +
+        '. Сначала впишите в программу — платить, возможно, не придётся.');
+    }
+    сноска.textContent = примечания.join(' ');
+  }
+
+  function текстЖелеза(){
+    var счёт = счётЖелеза();
+    var строки = ['Заявка на оборудование, СДУТ', ''];
+    if (!счёт.взято.length) return строки.concat(['Ничего не выбрано.']).join('\n');
+    строки.push('Срок: ' + счёт.месяцев + ' ' +
+                множ(счёт.месяцев, ЕДИНИЦЫ['месяц']), '');
+    счёт.взято.forEach(function(с){
+      строки.push('• ' + с.название + ' — ' + рубли(с.аренда) + ' в месяц' +
+        (с.ипра === 'да' ? ' (может быть положено по ИПРА)' : ''));
+    });
+    строки.push('', 'Аренда: ' + рубли(счёт.аренда),
+                'Доставка и сборка: ' + рубли(счёт.доставка));
+    if (счёт.залог) строки.push('Залог (возвращается): ' + рубли(счёт.залог));
+    строки.push('Итого к оплате: ' + рубли(счёт.итого));
+    if (счёт.по_ипра.length){
+      строки.push('', 'Проверить по ИПРА: ' +
+        счёт.по_ипра.map(function(с){ return с.название; }).join(', '));
+    }
+    return строки.join('\n');
+  }
+
+  document.addEventListener('click', function(ev){
+    var кнопка = ev.target.closest ? ev.target.closest('.take[data-gear]') : null;
+    if (!кнопка) return;
+    var ид = кнопка.getAttribute('data-gear');
+    if (ВЫБОР_ЖЕЛЕЗА.взято[ид]) delete ВЫБОР_ЖЕЛЕЗА.взято[ид];
+    else ВЫБОР_ЖЕЛЕЗА.взято[ид] = true;
+    save('sdut-gear', ВЫБОР_ЖЕЛЕЗА);
+    кнопка.setAttribute('aria-pressed', ВЫБОР_ЖЕЛЕЗА.взято[ид] ? 'true' : 'false');
+    кнопка.textContent = ВЫБОР_ЖЕЛЕЗА.взято[ид] ? '✓ выбрано' : 'Выбрать';
+    рисоватьСчётЖелеза();
   });
 
   /* ---------------- перенос ответов из бота ----------------
@@ -1441,6 +1958,30 @@ footer{margin-top:2.5rem;padding-top:1.4rem;border-top:1px solid var(--line-stro
     рисоватьСтоимость();
   });
 
+  document.getElementById('gear-minus').addEventListener('click', function(){
+    ВЫБОР_ЖЕЛЕЗА.месяцев = Math.max(1, ВЫБОР_ЖЕЛЕЗА.месяцев - 1);
+    save('sdut-gear', ВЫБОР_ЖЕЛЕЗА);
+    рисоватьСчётЖелеза();
+  });
+  document.getElementById('gear-plus').addEventListener('click', function(){
+    ВЫБОР_ЖЕЛЕЗА.месяцев = Math.min(24, ВЫБОР_ЖЕЛЕЗА.месяцев + 1);
+    save('sdut-gear', ВЫБОР_ЖЕЛЕЗА);
+    рисоватьСчётЖелеза();
+  });
+  document.getElementById('gear-send').addEventListener('click', function(){
+    var текст = текстЖелеза();
+    var узел = document.getElementById('gear-out');
+    узел.innerHTML = '<textarea class="dump" id="gear-dump" readonly></textarea>' +
+      '<div class="sent">Скопируйте и отправьте в бот. Координатор сначала ' +
+      'проверит, что из этого положено бесплатно, и только потом посчитает ' +
+      'аренду.</div>' +
+      '<a class="cta" href="https://max.ru/id6320093220_bot">Открыть бот в MAX</a>';
+    var поле = document.getElementById('gear-dump');
+    поле.value = текст;
+    поле.focus(); поле.select();
+    try { navigator.clipboard && navigator.clipboard.writeText(текст); } catch(e){}
+  });
+
   document.getElementById('cost-minus').addEventListener('click', function(){
     ВЫБОР.сколько = Math.max(1, ВЫБОР.сколько - 1);
     save('sdut-cost', ВЫБОР);
@@ -1503,6 +2044,27 @@ footer{margin-top:2.5rem;padding-top:1.4rem;border-top:1px solid var(--line-stro
         '<p class="empty">Материалы не загрузились. Проверьте соединение ' +
         'и откройте страницу заново — или спросите в боте, он отвечает по тем же ' +
         'материалам.</p>';
+    });
+
+  взять('care.json').then(function(d){ ПЛАН = d; рисоватьОпросник(); })
+    .catch(function(){
+      document.getElementById('plan-form').innerHTML =
+        '<p class="empty">Опросник не загрузился. План ухода составит ' +
+        'координатор — напишите в бот.</p>';
+      document.getElementById('plan-top').hidden = true;
+    });
+
+  взять('gear.json').then(function(d){
+      ЖЕЛЕЗО = d;
+      рисоватьБесплатное();
+      рисоватьЖелезо();
+      рисоватьСчётЖелеза();
+    })
+    .catch(function(){
+      document.getElementById('gear-list').innerHTML =
+        '<p class="empty">Список оборудования не загрузился. ' +
+        'Спросите у координатора — он знает, что есть в прокате сейчас.</p>';
+      document.getElementById('gear-top').hidden = true;
     });
 
   взять('price.json').then(function(d){
