@@ -376,6 +376,10 @@ p{margin:0 0 1rem}
 .cq{background:var(--surface);border:1px solid var(--line);border-radius:8px;
   padding:.85rem .95rem;margin-bottom:.6rem}
 .cq .t{display:block;font-size:.99rem;font-weight:500;margin-bottom:.15rem}
+.many{display:inline-block;font-family:var(--mono);font-size:.62rem;
+  letter-spacing:.06em;text-transform:uppercase;color:var(--accent);
+  background:var(--accent-soft);border-radius:4px;padding:.1rem .35rem;
+  margin-left:.45rem;vertical-align:.08em;font-weight:500}
 .cq .why{display:block;color:var(--ink-faint);font-size:.83rem;
   margin-bottom:.6rem;line-height:1.4}
 .cq .opt{display:block;width:100%;text-align:left;font-family:var(--sans);
@@ -1131,7 +1135,10 @@ footer{margin-top:2.5rem;padding-top:1.4rem;border-top:1px solid var(--line-stro
           экранировать(ОТВЕТЫ_АНКЕТЫ[в.id] || '') + '" ' +
           (в.вид === 'phone' ? 'inputmode="tel" placeholder="8 917 000 00 00"' : '') + '>';
       }
-      return '<div class="fq"><span class="t">' + экранировать(в.текст) + '</span>' + тело + '</div>';
+      var много = в.несколько
+        ? '<span class="many">можно отметить несколько</span>' : '';
+      return '<div class="fq"><span class="t">' + экранировать(в.текст) + много +
+        '</span>' + тело + '</div>';
     }).join('');
 
     var всего = видимые.length;
@@ -1218,7 +1225,12 @@ footer{margin-top:2.5rem;padding-top:1.4rem;border-top:1px solid var(--line-stro
   function рисоватьОпросник(){
     var корень = document.getElementById('plan-form');
     корень.innerHTML = ПЛАН.вопросы.map(function(в){
-      return '<div class="cq"><span class="t">' + экранировать(в.текст) + '</span>' +
+      // Что можно отметить несколько вариантов, из вида кнопок
+      // не следует никак: человек выбирает один и идёт дальше.
+      var много = в.несколько
+        ? '<span class="many">можно отметить несколько</span>' : '';
+      return '<div class="cq"><span class="t">' + экранировать(в.текст) + много +
+        '</span>' +
         (в.зачем ? '<span class="why">' + экранировать(в.зачем) + '</span>' : '') +
         в.варианты.map(function(вар){
           return '<button type="button" class="opt" data-pq="' + в.id +
