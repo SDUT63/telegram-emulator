@@ -10,9 +10,12 @@
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Literata:opsz,wght@7..72,600;7..72,700&family=Golos+Text:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
 <style>
 :root{
-  --ground:#F2F5F3; --surface:#FFFFFF; --surface-2:#E9EFEC;
+  /* Страница на белом — как паблик службы. Карточки держатся
+     на рамке, а не на заливке: заливка на белом читается как
+     баннер, а нам нужен документ. */
+  --ground:#FFFFFF; --surface:#FFFFFF; --surface-2:#F2F5F3;
   --ink:#14201E; --ink-soft:#4B5A56; --ink-faint:#748480;
-  --line:#D9E2DE; --line-strong:#B9C7C2;
+  --line:#E4EAE7; --line-strong:#CBD6D2;
   --accent:#1B5A55; --accent-soft:#D6E6E3;
   --ok:#2C6647; --ok-bg:#DCEBE2;
   --warn:#83600F; --warn-bg:#F2E8CE;
@@ -40,7 +43,7 @@
    приложение в тёмной теме навсегда. */
 @media (prefers-color-scheme:dark){
   :root:not([data-theme="light"]){
-    --ground:#101614; --surface:#171F1D; --surface-2:#1E2826;
+    --ground:#0E1412; --surface:#161E1C; --surface-2:#1D2725;
     --ink:#E5EBE8; --ink-soft:#A8B7B2; --ink-faint:#7E8E89;
     --line:#293430; --line-strong:#3A4844;
     --accent:#63B4AB; --accent-soft:#1D302E;
@@ -50,7 +53,7 @@
   }
 }
 :root[data-theme="dark"]{
-  --ground:#101614; --surface:#171F1D; --surface-2:#1E2826;
+  --ground:#0E1412; --surface:#161E1C; --surface-2:#1D2725;
   --ink:#E5EBE8; --ink-soft:#A8B7B2; --ink-faint:#7E8E89;
   --line:#293430; --line-strong:#3A4844;
   --accent:#63B4AB; --accent-soft:#1D302E;
@@ -66,8 +69,8 @@ body{background:var(--ground);color:var(--ink);font-family:var(--sans);
 .wrap{max-width:40rem;margin:0 auto;padding-inline:20px;padding-block:0 5rem}
 
 /* ---------- экстренное ---------- */
-.emergency{background:var(--stop-bg);border-radius:8px;padding:1rem 1.1rem;
-  margin-block:1.4rem;border-left:4px solid var(--stop)}
+.emergency{background:var(--stop-bg);border-radius:8px;padding:.7rem .9rem;
+  margin-block:1.1rem;border-left:3px solid var(--stop);font-size:.95rem}
 .emergency b{color:var(--stop)}
 .emergency a{color:var(--stop);font-weight:600}
 
@@ -76,20 +79,27 @@ header{padding-block:2rem 1.2rem}
 .eyebrow{font-family:var(--mono);font-size:.72rem;letter-spacing:.14em;
   text-transform:uppercase;color:var(--accent);margin:0 0 .7rem;
   display:flex;align-items:center;gap:.6rem;flex-wrap:wrap}
-.theme{margin-left:auto;display:flex;gap:2px;background:var(--surface-2);
-  border-radius:999px;padding:2px}
-.theme button{font-family:var(--mono);font-size:.64rem;letter-spacing:.06em;
-  text-transform:uppercase;padding:.3rem .55rem;border-radius:999px;border:0;
-  background:transparent;color:var(--ink-faint);cursor:pointer;line-height:1}
-.theme button[aria-pressed="true"]{background:var(--surface);color:var(--accent);
-  font-weight:500;box-shadow:0 1px 3px rgba(0,0,0,.12)}
+.theme{margin-left:auto;display:flex;gap:.5rem}
+.theme button{font-family:var(--mono);font-size:.62rem;letter-spacing:.06em;
+  text-transform:uppercase;padding:0;border:0;background:none;
+  color:var(--ink-faint);cursor:pointer;line-height:1;
+  border-bottom:1px solid transparent}
+.theme button[aria-pressed="true"]{color:var(--accent);
+  border-bottom-color:var(--accent)}
 h1{font-family:var(--serif);font-weight:700;font-size:clamp(1.8rem,6.5vw,2.5rem);
   line-height:1.12;margin:0 0 .7rem;text-wrap:balance}
 .lede{color:var(--ink-soft);margin:0;font-size:1.03rem}
 
 /* ---------- вкладки ---------- */
+/* Вкладок шесть, в ширину телефона они не помещаются. Полоска
+   уезжает вправо, и без подсказки человек не догадывается, что
+   там что-то есть: тень у правого края — и есть подсказка. */
+.tabs-wrap{position:relative;margin-block:1.4rem 1.8rem}
+.tabs-wrap::after{content:"";position:absolute;right:0;top:0;bottom:2px;
+  width:2.2rem;pointer-events:none;
+  background:linear-gradient(to right,transparent,var(--ground))}
 .tabs{display:flex;gap:.4rem;overflow-x:auto;scrollbar-width:none;
-  margin-block:1.6rem 1.8rem;padding-bottom:2px}
+  padding-bottom:2px}
 .tabs::-webkit-scrollbar{display:none}
 .tab{flex:0 0 auto;font-family:var(--sans);font-size:.92rem;font-weight:500;
   padding:.5rem .9rem;border-radius:999px;border:1px solid var(--line-strong);
@@ -98,17 +108,17 @@ h1{font-family:var(--serif);font-weight:700;font-size:clamp(1.8rem,6.5vw,2.5rem)
 
 h2{font-family:var(--serif);font-weight:600;font-size:1.4rem;line-height:1.25;
   margin:0 0 .5rem;text-wrap:balance}
-h3{font-size:1rem;font-weight:600;margin:1.8rem 0 .5rem}
-.sub{color:var(--ink-soft);margin:0 0 1.5rem}
+h3{font-size:1rem;font-weight:600;margin:2rem 0 .6rem}
+.sub{color:var(--ink-soft);margin:0 0 1.6rem;font-size:.98rem}
 p{margin:0 0 1rem}
 
 /* ---------- калькулятор ---------- */
 .group{margin-bottom:1.6rem}
 .group h3{font-family:var(--mono);font-size:.74rem;letter-spacing:.1em;
   text-transform:uppercase;color:var(--accent);margin:0 0 .7rem;font-weight:500}
-.q{background:var(--surface);border:1px solid var(--line);border-radius:8px;
-  padding:.85rem .95rem;margin-bottom:.6rem}
-.q .t{display:block;margin-bottom:.6rem;font-size:.97rem}
+.q{border-bottom:1px solid var(--line);padding:.7rem 0}
+.q:last-child{border-bottom:0}
+.q .t{display:block;margin-bottom:.5rem;font-size:.95rem}
 .opts{display:grid;grid-template-columns:repeat(3,1fr);gap:.35rem}
 .opts button{font-family:var(--sans);font-size:.85rem;padding:.5rem .2rem;
   border-radius:6px;border:1px solid var(--line-strong);background:transparent;
@@ -317,8 +327,8 @@ p{margin:0 0 1rem}
 .scale .row.mine .hd b, .scale .row.mine .hd .rub{color:var(--accent)}
 .scale .row.mine .track i{background:var(--accent)}
 .scale .why{color:var(--ink-faint);font-size:.83rem;line-height:1.4}
-.price-hint{background:var(--accent-soft);border-radius:9px;padding:.9rem 1rem;
-  margin-bottom:1rem}
+.price-hint{background:var(--surface-2);border-radius:9px;padding:.9rem 1rem;
+  margin:0 0 1.4rem}
 .price-hint .n{font-family:var(--mono);font-size:1.5rem;font-weight:500;
   color:var(--accent);display:block;line-height:1.2;
   font-variant-numeric:tabular-nums}
@@ -348,6 +358,11 @@ p{margin:0 0 1rem}
 .market b{color:var(--ink)}
 
 /* ---------- перенос ответов из бота ---------- */
+.paste-box{background:var(--surface-2);border-radius:9px;padding:1rem;
+  margin-bottom:1.2rem}
+.paste-box b{display:block;margin-bottom:.25rem}
+.paste-box p{margin:0;color:var(--ink-soft);font-size:.91rem}
+.paste-box .send{margin-top:.7rem}
 .carry{background:var(--ok-bg);border-radius:8px;padding:.85rem .95rem;
   margin-bottom:1rem;font-size:.93rem;color:var(--ok)}
 .carry b{display:block;margin-bottom:.2rem}
@@ -369,18 +384,18 @@ p{margin:0 0 1rem}
   cursor:pointer;line-height:1.3}
 .cq .opt[aria-pressed="true"]{border-color:var(--accent);background:var(--accent-soft);
   color:var(--accent);font-weight:600}
-.plan{background:var(--surface);border:1px solid var(--line-strong);
-  border-radius:10px;padding:1rem 1.1rem;margin-bottom:1rem;
-  box-shadow:0 2px 14px rgba(0,0,0,.06)}
+.plan{border-bottom:2px solid var(--accent);padding:0 0 1.1rem;
+  margin:0 0 1.6rem}
 .plan .kind{font-family:var(--mono);font-size:.7rem;letter-spacing:.1em;
   text-transform:uppercase;color:var(--accent);display:block;margin-bottom:.3rem}
-.plan h3{font-family:var(--serif);font-size:1.25rem;font-weight:600;
-  margin:0 0 .3rem}
+.plan h3{font-family:var(--serif);font-size:1.45rem;font-weight:600;
+  margin:0 0 .35rem;line-height:1.2}
 .plan .who{color:var(--ink-soft);font-size:.94rem;margin:0 0 .5rem}
 .plan .hrs{display:inline-block;font-family:var(--mono);font-size:.85rem;
   background:var(--accent-soft);color:var(--accent);padding:.2rem .5rem;
   border-radius:5px}
 .part{margin-bottom:1rem}
+.part{scroll-margin-top:8rem}
 .part .hd{display:flex;align-items:baseline;gap:.6rem;margin-bottom:.4rem}
 .part .hd b{font-family:var(--serif);font-size:1.05rem;font-weight:600}
 .part .hd i{flex:1 1 auto;height:1px;background:var(--line-strong);font-style:normal}
@@ -391,22 +406,47 @@ p{margin:0 0 1rem}
 .part li .no{font-family:var(--mono);font-size:.74rem;color:var(--ink-faint);
   background:var(--surface-2);border-radius:4px;padding:.1rem .3rem;
   flex:0 0 auto;margin-top:.15rem}
-.freq{background:var(--warn-bg);border-radius:8px;padding:.8rem .95rem;
-  margin-bottom:.9rem}
-.freq b{color:var(--warn);display:block;margin-bottom:.35rem;font-size:.95rem}
-.freq .r{display:block;font-size:.91rem;color:var(--warn);padding:.25rem 0;
+/* Два блока, которые и правда надо выделить: что делать по часам
+   и когда звонить. Остальное на этой вкладке — обычный текст:
+   когда выделено всё, не выделено ничего. */
+.freq{border-left:3px solid var(--warn);padding:.15rem 0 .15rem 1rem;
+  margin:0 0 1.4rem}
+.freq b{display:block;margin-bottom:.4rem;font-size:.95rem}
+.freq .r{display:block;font-size:.91rem;color:var(--ink-soft);padding:.25rem 0;
   line-height:1.45}
-.freq .r span{font-weight:600}
-.watch{background:var(--stop-bg);border-radius:8px;padding:.8rem .95rem;
-  margin-bottom:.9rem}
+.freq .r span{font-weight:600;color:var(--ink)}
+.watch{background:var(--stop-bg);border-radius:9px;padding:.85rem 1rem;
+  margin:0 0 1.4rem;scroll-margin-top:8rem}
 .watch b{color:var(--stop);display:block;margin-bottom:.35rem;font-size:.95rem}
-.watch li{color:var(--stop);font-size:.91rem;line-height:1.45;margin-bottom:.2rem}
+.watch li,.watch p{color:var(--stop);font-size:.91rem;line-height:1.45;
+  margin:0 0 .2rem}
 .watch ul{margin:0;padding-left:1.1rem}
-.tip{background:var(--surface);border:1px solid var(--line);
-  border-left:3px solid var(--accent);border-radius:8px;
-  padding:.8rem .95rem;margin-bottom:.6rem}
-.tip b{display:block;font-size:.95rem;margin-bottom:.2rem}
+.tip{border-left:2px solid var(--accent-soft);padding:.1rem 0 .1rem .9rem;
+  margin-bottom:1rem}
+.tip b{display:block;font-size:.95rem;margin-bottom:.15rem}
 .tip p{margin:0;color:var(--ink-soft);font-size:.91rem}
+
+/* Раскрывашка для всего, что читают один раз. Без неё экран
+   становится полотном, и человек закрывает его, не дойдя до того,
+   ради чего пришёл. */
+.fold{border-top:1px solid var(--line);margin:0}
+.fold + .fold{border-top:1px solid var(--line)}
+.fold > summary{padding:.85rem 0;cursor:pointer;list-style:none;
+  font-size:.96rem;font-weight:500;display:flex;align-items:center;gap:.5rem}
+.fold > summary::-webkit-details-marker{display:none}
+.fold > summary::after{content:"+";margin-left:auto;color:var(--ink-faint);
+  font-family:var(--mono);font-size:1.1rem;line-height:1}
+.fold[open] > summary::after{content:"–"}
+.fold .cnt{font-family:var(--mono);font-size:.72rem;color:var(--accent);
+  background:var(--accent-soft);border-radius:999px;padding:.12rem .45rem}
+.fold .inner{padding:0 0 1rem}
+.fold .inner > p{color:var(--ink-soft);font-size:.91rem}
+.fold .inner > p:last-child{margin-bottom:0}
+
+.invite{border:1px dashed var(--line-strong);border-radius:9px;
+  padding:.9rem 1rem;margin:1.2rem 0}
+.invite b{display:block;margin-bottom:.25rem}
+.invite p{margin:0 0 .5rem;color:var(--ink-soft);font-size:.92rem}
 
 /* ---------- аренда оборудования ---------- */
 .gear{background:var(--surface);border:1px solid var(--line);border-radius:8px;
@@ -475,36 +515,35 @@ footer{margin-top:2.5rem;padding-top:1.4rem;border-top:1px solid var(--line-stro
 <header>
   <p class="eyebrow">Навигатор помощи · АНО «СДУТ»
     <span class="theme" id="theme" role="group" aria-label="Тема оформления">
-      <button type="button" data-theme-pick="light" aria-pressed="false">Светлая</button>
+      <button type="button" data-theme-pick="light" aria-pressed="true">Светлая</button>
       <button type="button" data-theme-pick="dark" aria-pressed="false">Тёмная</button>
-      <button type="button" data-theme-pick="auto" aria-pressed="true">Как в телефоне</button>
+      <button type="button" data-theme-pick="auto" aria-pressed="false">Авто</button>
     </span>
   </p>
   <h1>Помощь дома</h1>
-  <p class="lede">Посчитать, на какую помощь можно рассчитывать, и разобраться, как её получить.</p>
+  <p class="lede">План ухода, расчёт часов и стоимости, оборудование — для семьи,
+  которая ухаживает дома.</p>
 </header>
 
 <div class="emergency">
-  <b>Если человеку плохо прямо сейчас</b> — звоните <a href="tel:103">103</a>,
-  с мобильного также <a href="tel:112">112</a>. Круглосуточно, бесплатно,
-  без направления. Всё остальное подождёт.
+  <b>Плохо прямо сейчас</b> — <a href="tel:103">103</a> или
+  <a href="tel:112">112</a>. Круглосуточно и бесплатно.
 </div>
 
-<div class="tabs" role="tablist">
+<div class="tabs-wrap"><div class="tabs" role="tablist">
   <button class="tab" id="tab-plan" role="tab" aria-selected="true" aria-controls="p-plan">План ухода</button>
-  <button class="tab" id="tab-find" role="tab" aria-selected="false" aria-controls="p-find">Справочник</button>
-  <button class="tab" id="tab-calc" role="tab" aria-selected="false" aria-controls="p-calc">Сколько часов положено</button>
-  <button class="tab" id="tab-cost" role="tab" aria-selected="false" aria-controls="p-cost">Сколько стоит</button>
-  <button class="tab" id="tab-gear" role="tab" aria-selected="false" aria-controls="p-gear">Оборудование</button>
   <button class="tab" id="tab-form" role="tab" aria-selected="false" aria-controls="p-form">Анкета</button>
-</div>
+  <button class="tab" id="tab-calc" role="tab" aria-selected="false" aria-controls="p-calc">Часы</button>
+  <button class="tab" id="tab-cost" role="tab" aria-selected="false" aria-controls="p-cost">Стоимость</button>
+  <button class="tab" id="tab-gear" role="tab" aria-selected="false" aria-controls="p-gear">Оборудование</button>
+  <button class="tab" id="tab-find" role="tab" aria-selected="false" aria-controls="p-find">Справочник</button>
+</div></div>
 
 <!-- ============ ПЛАН УХОДА ============ -->
 <section id="p-plan" role="tabpanel" aria-labelledby="tab-plan">
   <h2>Предварительный план ухода</h2>
-  <p class="sub">Девять вопросов о том, как устроены день и дом, — и вы увидите
-  распорядок с конкретными действиями, частотой и минимумом оборудования.
-  Про самого человека спросит бот: здесь эти вопросы не повторяются.</p>
+  <p class="sub">Девять вопросов о дне и доме — и готов распорядок с действиями,
+  частотой и оборудованием.</p>
 
   <div class="result" id="plan-top">
     <div class="line">
@@ -523,8 +562,8 @@ footer{margin-top:2.5rem;padding-top:1.4rem;border-top:1px solid var(--line-stro
 <!-- ============ СПРАВОЧНИК ============ -->
 <section id="p-find" role="tabpanel" aria-labelledby="tab-find" hidden>
   <h2>Материалы службы</h2>
-  <p class="sub" id="find-sub">Всё, что знает бот, — здесь целиком. Напишите своими
-  словами: «пролежни», «маме нечем платить», «как оформить инвалидность».</p>
+  <p class="sub" id="find-sub">Напишите своими словами: «пролежни», «нечем
+  платить», «как оформить инвалидность».</p>
   <input class="search" id="q" type="search" enterkeyhint="search"
          placeholder="Что случилось или о чём спросить" autocomplete="off">
   <div id="find-out"></div>
@@ -533,8 +572,7 @@ footer{margin-top:2.5rem;padding-top:1.4rem;border-top:1px solid var(--line-stro
 <!-- ============ КАЛЬКУЛЯТОР ============ -->
 <section id="p-calc" role="tabpanel" aria-labelledby="tab-calc" hidden>
   <h2>Сколько часов помощи положено</h2>
-  <p class="sub">Двадцать одна позиция из оценочной шкалы приказа. Отметьте, что человек
-  может делать сам — счёт идёт сразу.</p>
+  <p class="sub">Отметьте, что человек может делать сам. Счёт идёт сразу.</p>
   <div class="result" id="result">
     <div class="line">
       <span class="lvl" id="lvl">Отмечено 0 из 21</span>
@@ -550,47 +588,46 @@ footer{margin-top:2.5rem;padding-top:1.4rem;border-top:1px solid var(--line-stro
 
 <!-- ============ АНКЕТА ============ -->
 <section id="p-form" role="tabpanel" aria-labelledby="tab-form" hidden>
-  <h2>Анкета для координатора</h2>
-  <p class="sub">Те же вопросы, что задаёт бот. Заполнять дважды не нужно: если вы
-  уже отвечали в чате, напишите боту «приложение» — он пришлёт ссылку, в которой
-  ответы уже лежат.</p>
+  <h2>Анкета</h2>
+  <p class="sub">Вставьте сюда ответы из бота — и план ухода станет точнее.</p>
+
   <div class="carry" id="carry" hidden></div>
-  <details class="grp" id="carry-box">
-    <summary>Перенести ответы из бота вручную</summary>
-    <div class="inner">
-      <p class="note">Если ссылка не открылась, скопируйте из чата сообщение бота
-      «Что записано» целиком и вставьте сюда. Ничего никуда не отправляется —
-      разбор идёт прямо в телефоне.</p>
-      <textarea class="paste" id="paste" placeholder="Что записано:&#10;• Кому нужна помощь&#10;  о близком"></textarea>
-      <button class="send" id="paste-go">Разобрать и заполнить</button>
-      <div id="paste-out"></div>
+
+  <div class="paste-box" id="carry-box">
+    <b>Скопируйте из чата сообщение бота «Что записано»</b>
+    <p>Целиком, вместе со строками вопросов. Ничего никуда не отправляется:
+    разбор идёт в этом телефоне.</p>
+    <textarea class="paste" id="paste" placeholder="Что записано:&#10;&#10;• Вы обращаетесь о себе, о близком человеке или по работе?&#10;  О близком человеке"></textarea>
+    <button class="send" id="paste-go">Разобрать и заполнить</button>
+    <div id="paste-out"></div>
+  </div>
+
+  <details class="fold">
+    <summary>Или ответить здесь<span class="cnt" id="form-left"></span></summary>
+    <div class="inner" id="form-wrap">
+
+      <div id="form"></div>
+      <div id="form-send"></div>
     </div>
   </details>
-  <div class="result" id="form-top">
-    <div class="line">
-      <span class="lvl" id="form-count">Отвечено 0</span>
-      <span class="num" id="form-of">из 0</span>
-    </div>
-    <div class="bar"><i id="form-bar"></i></div>
-    <div class="hrs">Ничего никуда не отправляется, пока вы сами не нажмёте кнопку внизу.</div>
-  </div>
-  <div id="form"></div>
-  <div id="form-send"></div>
 
-  <h3>Что собрать к разговору</h3>
-  <p class="note">Заранее собирать всё не нужно — координатор скажет, что
-  понадобится именно вам. Этот список на случай, если хочется подготовиться.
-  Отметки сохраняются в этом телефоне.</p>
-  <ul class="check" id="docs-check"></ul>
+  <details class="fold">
+    <summary>Что собрать к разговору<span class="cnt">7</span></summary>
+    <div class="inner">
+      <p>Заранее собирать всё не нужно — координатор скажет, что понадобится
+      именно вам. Отметки сохраняются в этом телефоне.</p>
+      <ul class="check" id="docs-check"></ul>
+    </div>
+  </details>
+
   <a class="cta" href="https://max.ru/id6320093220_bot">Написать координатору в MAX</a>
 </section>
 
 <!-- ============ СТОИМОСТЬ ============ -->
 <section id="p-cost" role="tabpanel" aria-labelledby="tab-cost" hidden>
   <h2>Сколько стоит уход</h2>
-  <p class="sub" id="cost-sub">Служба подбирает помощника по договору с семьёй —
-  в частном порядке. Это не социальный пакет: сколько часов положено бесплатно,
-  считает вкладка «Сколько часов положено».</p>
+  <p class="sub" id="cost-sub">Платный уход по договору. Что положено бесплатно —
+  на вкладке «Часы».</p>
 
   <div class="result" id="cost-top">
     <div class="line">
@@ -618,100 +655,102 @@ footer{margin-top:2.5rem;padding-top:1.4rem;border-top:1px solid var(--line-stro
   </div>
 
   <div class="group">
-    <h3>Что усложняет уход</h3>
-    <ul class="adds" id="cost-adds"></ul>
-  </div>
-
-  <div class="group">
-    <h3>Что снижает цену</h3>
-    <ul class="adds" id="cost-cuts"></ul>
-  </div>
-
-  <div class="group">
     <h3>Из чего складывается сумма</h3>
     <div class="lines" id="cost-lines"></div>
   </div>
 
+  <details class="fold">
+    <summary>Что усложняет уход<span class="cnt" id="adds-n"></span></summary>
+    <div class="inner"><ul class="adds" id="cost-adds"></ul></div>
+  </details>
+
+  <details class="fold">
+    <summary>Что снижает цену<span class="cnt" id="cuts-n"></span></summary>
+    <div class="inner"><ul class="adds" id="cost-cuts"></ul></div>
+  </details>
+
   <div class="cover" id="cost-cover" hidden></div>
 
-  <h3>Чем закрывается разница</h3>
-  <p class="note">Цена назначена по рынку, а не по себестоимости. Разрыв
-  служба закрывает из программ — это и есть то, ради чего она
-  некоммерческая. Прятать тут нечего.</p>
-  <div id="cost-programs"></div>
-
-  <h3>Из чего складывается час</h3>
-  <p class="note" id="split-note"></p>
-  <div class="split" id="cost-split"></div>
-
-  <h3>Где эта цена на фоне рынка</h3>
-  <div class="scale" id="cost-scale"></div>
-  <div class="market" id="cost-market"></div>
-  <ul class="why-list" id="cost-why"></ul>
-
-  <details class="grp">
-    <summary>Сколько стоит уход в других городах</summary>
+  <details class="fold">
+    <summary>Чем закрывается разница<span class="cnt" id="prog-n"></span></summary>
     <div class="inner">
-      <p class="note">Рынок в Москве и в райцентре различается вчетверо.
-      Цены — нижняя граница «от», как их публикуют.</p>
+      <p>Цена назначена по рынку, а не по себестоимости. Разрыв служба
+      закрывает из программ — это и есть то, ради чего она некоммерческая.</p>
+      <div class="cover" id="cost-cover" hidden></div>
+      <div id="cost-programs"></div>
+    </div>
+  </details>
+
+  <details class="fold">
+    <summary>Где эта цена на фоне рынка</summary>
+    <div class="inner">
+      <div class="scale" id="cost-scale"></div>
+      <div class="market" id="cost-market"></div>
+      <ul class="why-list" id="cost-why"></ul>
+      <p>Рынок в Москве и в райцентре различается вчетверо. Цены — нижняя
+      граница «от», как их публикуют.</p>
       <div class="scroll"><table class="cities" id="cost-cities"></table></div>
       <p class="note" id="cost-customs"></p>
     </div>
   </details>
 
-  <h3>Круглые сутки: три способа и разница между ними</h3>
-  <div class="cmp" id="cost-round"></div>
+  <details class="fold">
+    <summary>Из чего складывается час</summary>
+    <div class="inner">
+      <p class="note" id="split-note"></p>
+      <div class="split" id="cost-split"></div>
+    </div>
+  </details>
 
-  <h3>Что входит в уход</h3>
-  <p class="note">Пятьдесят услуг из приложения № 6 к Приказу № 731 — тот же перечень,
-  по которому собирается и социальный пакет. Отметьте нужное: отметки попадут
-  в расчёт для координатора.</p>
-  <div id="cost-catalog"></div>
+  <details class="fold">
+    <summary>Круглые сутки: три способа</summary>
+    <div class="inner"><div class="cmp" id="cost-round"></div></div>
+  </details>
 
-  <h3>Что в уход не входит</h3>
-  <div id="cost-not"></div>
+  <details class="fold">
+    <summary>Что входит в уход<span class="cnt">50</span></summary>
+    <div class="inner">
+      <p>Перечень приложения № 6 к Приказу № 731 — тот же, по которому
+      собирается и социальный пакет. Отметки попадут в расчёт.</p>
+      <div id="cost-catalog"></div>
+    </div>
+  </details>
 
-  <h3>Условия</h3>
-  <ul class="plain" id="cost-terms"></ul>
+  <details class="fold">
+    <summary>Что в уход не входит<span class="cnt">7</span></summary>
+    <div class="inner"><div id="cost-not"></div></div>
+  </details>
+
+  <details class="fold">
+    <summary>Условия</summary>
+    <div class="inner"><ul class="plain" id="cost-terms"></ul></div>
+  </details>
 
   <button class="send" id="cost-send">Собрать расчёт для координатора</button>
   <div id="cost-out"></div>
 
-  <h3>Если нанимаете помощника сами</h3>
-  <p class="note">Служба нанимает помощников по трудовому договору и отвечает
-  за замену и качество. Если вы ищете сиделку сами — вот что стоит спросить
-  до того, как договоритесь.</p>
-  <ul class="check" id="hire-check"></ul>
+  <details class="fold">
+    <summary>Если нанимаете помощника сами</summary>
+    <div class="inner">
+      <p>Служба нанимает помощников по трудовому договору и отвечает за замену
+      и качество. Если вы ищете сиделку сами — вот что спросить до того,
+      как договоритесь.</p>
+      <ul class="check" id="hire-check"></ul>
+      <p><b>Когда стоит насторожиться.</b> Не даёт документы и не хочет договор.
+      Обещает «вылечить» или отменяет назначения врача. Просит доступ
+      к банковской карте или документам на квартиру. Человек стал молчаливым,
+      боится или появились синяки — это разговор не с сиделкой,
+      а с координатором, и сразу.</p>
+    </div>
+  </details>
 
-  <h3>Когда стоит насторожиться</h3>
-  <div class="card flag">
-    <span class="h">Не даёт документы и не хочет договор</span>
-    <p>Без договора нельзя ни спросить за качество, ни расстаться без скандала.</p>
-  </div>
-  <div class="card flag">
-    <span class="h">Обещает «вылечить» или отменяет назначения врача</span>
-    <p>Помощник по уходу не лечит. Отмена лекарств — повод прекратить сразу.</p>
-  </div>
-  <div class="card flag">
-    <span class="h">Просит доступ к банковской карте или документам на квартиру</span>
-    <p>Покупки — по чекам и наличным. Ничего больше.</p>
-  </div>
-  <div class="card flag">
-    <span class="h">Человек стал молчаливым, боится или появились синяки</span>
-    <p>Это разговор не с сиделкой, а с координатором службы. Сразу.</p>
-  </div>
-
-  <!-- Телефон службы в справочнике не заполнен (phone: "" в настройках
-       организация.py), и ставить сюда выдуманный нельзя: человек позвонит
-       в никуда. Ведём в бота — его адрес настоящий и работает. -->
   <a class="cta" href="https://max.ru/id6320093220_bot">Написать координатору в MAX</a>
 </section>
 
 <!-- ============ ОБОРУДОВАНИЕ ============ -->
 <section id="p-gear" role="tabpanel" aria-labelledby="tab-gear" hidden>
   <h2>Оборудование: аренда и что положено даром</h2>
-  <p class="sub">Кровать покупают за шестьдесят тысяч, когда она нужна
-  на три месяца. Сначала посмотрите, что положено бесплатно.</p>
+  <p class="sub">Сначала — что положено бесплатно, потом цена аренды.</p>
 
   <div class="free-first" id="gear-free"></div>
 
@@ -777,8 +816,11 @@ footer{margin-top:2.5rem;padding-top:1.4rem;border-top:1px solid var(--line-stro
   }
 
   (function(){
-    var было = 'auto';
-    try { было = localStorage.getItem('sdut-theme') || 'auto'; } catch(e){}
+    // По умолчанию светлая: это тема паблика службы, и человек,
+    // пришедший из соцсетей, должен увидеть знакомое. Ночной режим
+    // телефона её больше не перебивает — но выбрать тёмную можно.
+    var было = 'light';
+    try { было = localStorage.getItem('sdut-theme') || 'light'; } catch(e){}
     поставитьТему(было);
     document.getElementById('theme').addEventListener('click', function(ev){
       var кнопка = ev.target.closest && ev.target.closest('[data-theme-pick]');
@@ -798,6 +840,8 @@ footer{margin-top:2.5rem;padding-top:1.4rem;border-top:1px solid var(--line-stro
         if (panel) panel.hidden = !on;
       });
       window.scrollTo({top: 0, behavior: 'smooth'});
+      if (t.scrollIntoView) t.scrollIntoView({block: 'nearest', inline: 'center',
+                                              behavior: 'smooth'});
     });
   });
 
@@ -1011,14 +1055,21 @@ footer{margin-top:2.5rem;padding-top:1.4rem;border-top:1px solid var(--line-stro
       '</div></details>';
   }
 
+  /* Раньше здесь разворачивались все двести сорок две статьи разом:
+     страница уезжала на двадцать три тысячи пикселей, и человек
+     видел полотно вместо справочника. Теперь сначала разделы,
+     статьи — когда раздел открыли. */
   function поРазделам(){
-    var разделы = {};
+    var разделы = {}, порядок = [];
     БАЗА.статьи.forEach(function(с){
-      (разделы[с.раздел] = разделы[с.раздел] || []).push(с);
+      if (!разделы[с.раздел]){ разделы[с.раздел] = []; порядок.push(с.раздел); }
+      разделы[с.раздел].push(с);
     });
-    return Object.keys(разделы).map(function(р){
-      return '<div class="sect">' + экранировать(р) + ' · ' + разделы[р].length + '</div>' +
-        разделы[р].map(карточка).join('');
+    return порядок.map(function(р){
+      return '<details class="fold"><summary>' + экранировать(р) +
+        '<span class="cnt">' + разделы[р].length + '</span></summary>' +
+        '<div class="inner">' + разделы[р].map(карточка).join('') +
+        '</div></details>';
     }).join('');
   }
 
@@ -1085,9 +1136,8 @@ footer{margin-top:2.5rem;padding-top:1.4rem;border-top:1px solid var(--line-stro
 
     var всего = видимые.length;
     var отвечено = видимые.filter(function(в){ return ОТВЕТЫ_АНКЕТЫ[в.id]; }).length;
-    document.getElementById('form-count').textContent = 'Отвечено ' + отвечено;
-    document.getElementById('form-of').textContent = 'из ' + всего;
-    document.getElementById('form-bar').style.width = всего ? (отвечено / всего * 100) + '%' : '0';
+    var счётчик = document.getElementById('form-left');
+    if (счётчик) счётчик.textContent = отвечено + ' из ' + всего;
     рисоватьОтправку(отвечено);
   }
 
@@ -1139,6 +1189,9 @@ footer{margin-top:2.5rem;padding-top:1.4rem;border-top:1px solid var(--line-stro
     }
     save('sdut-form', ОТВЕТЫ_АНКЕТЫ);
     рисоватьАнкету();
+    // Ответ анкеты мог уточнить план: кожа, боль, память меняют его
+    // содержимое, и узнать об этом человек должен сразу.
+    if (ПЛАН) рисоватьОпросник();
   });
 
   document.addEventListener('input', function(ev){
@@ -1207,6 +1260,36 @@ footer{margin-top:2.5rem;padding-top:1.4rem;border-top:1px solid var(--line-stro
     return null;
   }
 
+  function изАнкеты(){
+    if (!ПЛАН.из_анкеты) return [];
+    return ПЛАН.из_анкеты.filter(function(у){
+      var было = String(ОТВЕТЫ_АНКЕТЫ[у.ключ] || '').toLowerCase();
+      return у['если'].some(function(з){
+        return было.indexOf(з.toLowerCase()) >= 0;
+      });
+    });
+  }
+
+  function расхождения(){
+    if (!ПЛАН.противоречия) return [];
+    return ПЛАН.противоречия.filter(function(п){
+      var анкета = String(ОТВЕТЫ_АНКЕТЫ[п.ключ_анкеты] || '').toLowerCase();
+      var план = String(ОТВЕТЫ_ПЛАНА[п.ключ_плана] || '').toLowerCase();
+      return п.если_анкета.some(function(з){ return анкета.indexOf(з.toLowerCase()) >= 0; })
+          && п.если_план.some(function(з){ return план.indexOf(з.toLowerCase()) >= 0; });
+    });
+  }
+
+  function точностьПлана(){
+    var полезные = {};
+    (ПЛАН.из_анкеты || []).forEach(function(у){ полезные[у.ключ] = true; });
+    var учтено = Object.keys(полезные).filter(function(к){
+      return ОТВЕТЫ_АНКЕТЫ[к];
+    }).length;
+    return {учтено: учтено,
+            степень: учтено >= 3 ? 'Уточнённый план' : 'Первичная оценка'};
+  }
+
   function уточнения(){
     return ПЛАН.добавки.filter(function(д){
       var было = String(ОТВЕТЫ_ПЛАНА[д.ключ] || '');
@@ -1241,10 +1324,18 @@ footer{margin-top:2.5rem;padding-top:1.4rem;border-top:1px solid var(--line-stro
       узел.innerHTML = '';
       подсказка.textContent = отвечено
         ? 'Ответьте, где человек проводит день, — с этого начинается план.'
-        : 'План появится после первых ответов. Ничего никуда не отправляется.';
+        : 'План появится после первых ответов.';
       return;
     }
-    подсказка.textContent = 'План готов. Чем больше ответов, тем он точнее.';
+
+    var точность = точностьПлана();
+    var споры = расхождения();
+    var изБота = изАнкеты();
+    var свои = уточнения();
+    подсказка.textContent = точность.учтено
+      ? 'План уточнён по ' + точность.учтено + ' ' +
+        множ(точность.учтено, ['ответу', 'ответам', 'ответам']) + ' из анкеты.'
+      : 'План готов. Вставьте анкету из бота — станет точнее.';
 
     var части = частиСуток(шаблон).map(function(б){
       return '<div class="part"><div class="hd"><b>' + экранировать(б.время) +
@@ -1254,8 +1345,16 @@ footer{margin-top:2.5rem;padding-top:1.4rem;border-top:1px solid var(--line-stro
         }).join('') + '</ul></div>';
     }).join('');
 
+    // Расхождение между анкетой и опросником — единственное, что
+    // показываем во всю ширину и красным: план на неверной посылке
+    // выглядит так же уверенно, как правильный.
+    var спорно = споры.map(function(с){
+      return '<div class="watch"><b>Ответы расходятся</b><p>' +
+        экранировать(с.текст) + '</p></div>';
+    }).join('');
+
     var частота = шаблон.частота.length
-      ? '<div class="freq"><b>Что делают по часам, а не по самочувствию</b>' +
+      ? '<div class="freq"><b>По часам, а не по самочувствию</b>' +
         шаблон.частота.map(function(ч){
           return '<span class="r"><span>' + экранировать(ч.что) + '.</span> ' +
             экранировать(ч.как) + '</span>';
@@ -1269,45 +1368,58 @@ footer{margin-top:2.5rem;padding-top:1.4rem;border-top:1px solid var(--line-stro
         }).join('') + '</ul></div>'
       : '';
 
-    var уточн = уточнения().map(function(д){
+    // Всё, что читают один раз, — под раскрывашку. Иначе экран
+    // превращается в полотно, и человек закрывает его, не дочитав
+    // до того, ради чего пришёл.
+    function свёрток(заголовок, сколько, внутри, открыт){
+      if (!внутри) return '';
+      return '<details class="fold"' + (открыт ? ' open' : '') +
+        '><summary>' + экранировать(заголовок) +
+        (сколько ? '<span class="cnt">' + сколько + '</span>' : '') +
+        '</summary><div class="inner">' + внутри + '</div></details>';
+    }
+
+    var советы = (изБота.concat(свои)).map(function(д){
       return '<div class="tip"><b>' + экранировать(д.заголовок) + '</b><p>' +
         экранировать(д.текст) + '</p></div>';
     }).join('');
 
+    var железо = шаблон.оборудование.map(function(о){
+      return '<li>' + экранировать(о) + '</li>';
+    }).join('');
+    if (железо) железо = '<ul class="plain">' + железо + '</ul>' +
+      '<button class="send" id="plan-gear">Что положено даром и почём аренда</button>';
+
     var цена = шаблон.сколько
       ? '<div class="price-hint"><span class="n">' +
         рубли(шаблон.сколько.в_месяц) + ' в месяц</span>' +
-        '<span class="t">Порядок суммы, если весь этот уход берёт на себя ' +
-        'служба: ' + экранировать(шаблон.сколько.название.toLowerCase()) +
-        ', ' + рубли(шаблон.сколько.в_час) + ' за час у подопечного. ' +
-        'Из каждого часа вы платите ' + шаблон.сколько.доля_семьи +
-        ' %, остальное закрывают программы.</span>' +
-        '<button type="button" class="go" id="plan-cost">Посчитать точнее ' +
-        'и посмотреть, что положено бесплатно</button></div>'
+        '<span class="t">Если весь этот уход берёт служба. Из каждого часа ' +
+        'вы платите ' + шаблон.сколько.доля_семьи + ' %, остальное ' +
+        'закрывают программы.</span>' +
+        '<button type="button" class="go" id="plan-cost">Посчитать точнее' +
+        '</button></div>'
       : '';
 
-    var железо = шаблон.оборудование.length
-      ? '<h3>Минимум оборудования</h3><ul class="plain">' +
-        шаблон.оборудование.map(function(о){
-          return '<li>' + экранировать(о) + '</li>';
-        }).join('') + '</ul>' +
-        '<button class="send" id="plan-gear">Посмотреть, что из этого ' +
-        'положено даром и почём аренда</button>'
-      : '';
-
-    var примечания = (шаблон.примечания || []).map(function(п){
-      return '<p class="note">' + экранировать(п) + '</p>';
-    }).join('');
+    var приглашение = точность.учтено ? '' :
+      '<div class="invite"><b>План можно сделать точнее</b>' +
+      '<p>Если вы отвечали боту, вставьте оттуда анкету — план учтёт ' +
+      'состояние кожи, боль, память и то, как человек ест.</p>' +
+      '<button type="button" class="go" id="plan-form-go">Перейти к анкете' +
+      '</button></div>';
 
     узел.innerHTML =
-      '<div class="plan"><span class="kind">Предварительный план</span>' +
-      '<h3>' + экранировать(шаблон.название) + '</h3>' +
+      '<div class="plan"><span class="kind">' + экранировать(точность.степень) +
+      '</span><h3>' + экранировать(шаблон.название) + '</h3>' +
       '<p class="who">' + экранировать(шаблон.кому) + '</p>' +
       '<span class="hrs">' + экранировать(часовВДень(шаблон)) + '</span></div>' +
-      цена + части + частота + следить +
-      (уточн ? '<h3>На что обратить внимание именно вам</h3>' + уточн : '') +
-      железо + примечания +
-      '<p class="note">' + экранировать(ПЛАН.оговорка) + '</p>' +
+      спорно + части + частота + следить + цена +
+      свёрток('Что учесть именно вам', (изБота.length + свои.length) || '',
+              советы, false) +
+      свёрток('Минимум оборудования', шаблон.оборудование.length, железо, false) +
+      свёрток('Оговорки', '', (шаблон.примечания || []).concat([ПЛАН.оговорка])
+              .map(function(п){ return '<p>' + экранировать(п) + '</p>'; })
+              .join(''), false) +
+      приглашение +
       '<button class="send" id="plan-send">Собрать план для координатора</button>' +
       '<div id="plan-dump"></div>';
 
@@ -1331,6 +1443,12 @@ footer{margin-top:2.5rem;padding-top:1.4rem;border-top:1px solid var(--line-stro
       ВЫБРАНО_ПО_ПЛАНУ = шаблон.id;
       document.getElementById('tab-gear').click();
     });
+
+    var кнопкаАнкета = document.getElementById('plan-form-go');
+    if (кнопкаАнкета) кнопкаАнкета.addEventListener('click', function(){
+      document.getElementById('tab-form').click();
+    });
+
     document.getElementById('plan-send').addEventListener('click', собратьПлан);
   }
 
@@ -1350,10 +1468,15 @@ footer{margin-top:2.5rem;padding-top:1.4rem;border-top:1px solid var(--line-stro
       строки.push('', 'По часам:');
       шаблон.частота.forEach(function(ч){ строки.push('  ' + ч.что + ' — ' + ч.как); });
     }
-    var у = уточнения();
+    var у = изАнкеты().concat(уточнения());
     if (у.length){
       строки.push('', 'Отдельно:');
       у.forEach(function(д){ строки.push('  ' + д.заголовок + ': ' + д.текст); });
+    }
+    var споры = расхождения();
+    if (споры.length){
+      строки.push('', 'Ответы расходятся:');
+      споры.forEach(function(с){ строки.push('  ' + с.текст); });
     }
     if (шаблон.оборудование.length){
       строки.push('', 'Минимум оборудования:');
@@ -1439,9 +1562,20 @@ footer{margin-top:2.5rem;padding-top:1.4rem;border-top:1px solid var(--line-stro
   function рисоватьЖелезо(){
     var подсветить = ВЫБРАНО_ПО_ПЛАНУ;
     document.getElementById('gear-list').innerHTML =
-      ЖЕЛЕЗО.группы.map(function(г){
+      ЖЕЛЕЗО.группы.map(function(г, номер){
         var свои = ЖЕЛЕЗО.средства.filter(function(с){ return с.группа === г; });
-        return '<div class="sect">' + экранировать(г) + '</div>' +
+        var взято = свои.filter(function(с){ return ВЫБОР_ЖЕЛЕЗА.взято[с.id]; }).length;
+        var нужных = подсветить
+          ? свои.filter(function(с){ return с.шаблоны.indexOf(подсветить) >= 0; }).length
+          : 0;
+        // Открыт только первый раздел и те, где что-то выбрано или
+        // нужно по плану: двадцать позиций разом — это уже каталог,
+        // а не помощь.
+        var открыт = номер === 0 || взято > 0 || нужных > 0;
+        return '<details class="fold"' + (открыт ? ' open' : '') +
+          '><summary>' + экранировать(г) + '<span class="cnt">' +
+          (взято ? 'выбрано ' + взято : свои.length) + '</span></summary>' +
+          '<div class="inner">' +
           свои.map(function(с){
             var нужно = подсветить && с.шаблоны.indexOf(подсветить) >= 0;
             return '<div class="gear"><div class="top">' +
@@ -1458,7 +1592,7 @@ footer{margin-top:2.5rem;padding-top:1.4rem;border-top:1px solid var(--line-stro
               '<span class="badge">купить ' + рубли(с.покупка) + '</span>' +
               (с.залог ? '<span class="badge">залог ' + рубли(с.залог) + '</span>' : '') +
               '</div></div>';
-          }).join('');
+          }).join('') + '</div></details>';
       }).join('');
   }
 
@@ -1668,6 +1802,7 @@ footer{margin-top:2.5rem;padding-top:1.4rem;border-top:1px solid var(--line-stro
     поле.value = '';
     рисоватьАнкету();
     показатьПеренос(сколько);
+    if (ПЛАН) рисоватьОпросник();
   });
 
   /* ---------------- калькулятор стоимости ---------------- */
@@ -1821,10 +1956,27 @@ footer{margin-top:2.5rem;padding-top:1.4rem;border-top:1px solid var(--line-stro
         '<span class="why">' + экранировать(почему) + '</span></span>' +
         '<span class="pct' + (п.скидка ? ' down' : '') + '">' + знак + '</span></li>';
     }
-    document.getElementById('cost-adds').innerHTML =
-      ПРАЙС.поправки.filter(function(п){ return !п.скидка; }).map(строка).join('');
-    document.getElementById('cost-cuts').innerHTML =
-      ПРАЙС.поправки.filter(function(п){ return п.скидка; }).map(строка).join('');
+    var надбавки = ПРАЙС.поправки.filter(function(п){ return !п.скидка; });
+    var скидки = ПРАЙС.поправки.filter(function(п){ return п.скидка; });
+    document.getElementById('cost-adds').innerHTML = надбавки.map(строка).join('');
+    document.getElementById('cost-cuts').innerHTML = скидки.map(строка).join('');
+    // Сколько выбрано — видно, не раскрывая: иначе человек забудет,
+    // что отметил надбавку, и удивится сумме.
+    var выбрано = function(набор){
+      return набор.filter(function(п){
+        return ВЫБОР.поправки.indexOf(п.id) >= 0;
+      }).length;
+    };
+    var метка = function(ид, набор){
+      var узел = document.getElementById(ид);
+      if (!узел) return;
+      var сколько = выбрано(набор);
+      узел.textContent = сколько ? 'выбрано ' + сколько : набор.length;
+      узел.style.background = сколько ? '' : 'var(--surface-2)';
+      узел.style.color = сколько ? '' : 'var(--ink-faint)';
+    };
+    метка('adds-n', надбавки);
+    метка('cuts-n', скидки);
   }
 
   function рисоватьИтог(){
@@ -1973,6 +2125,8 @@ footer{margin-top:2.5rem;padding-top:1.4rem;border-top:1px solid var(--line-stro
   }
 
   function рисоватьПрограммы(){
+    var счёт = document.getElementById('prog-n');
+    if (счёт) счёт.textContent = ПРАЙС.программы.length;
     document.getElementById('cost-programs').innerHTML =
       ПРАЙС.программы.map(function(п){
         return '<details class="prog"><summary><span class="who">' +
@@ -2180,6 +2334,7 @@ footer{margin-top:2.5rem;padding-top:1.4rem;border-top:1px solid var(--line-stro
       if (!поле.checked && где >= 0) ВЫБОР.поправки.splice(где, 1);
       save('sdut-cost', ВЫБОР);
       рисоватьИтог();
+      рисоватьПоправки();
       return;
     }
     if (поле.hasAttribute && поле.hasAttribute('data-srv')){
@@ -2272,7 +2427,6 @@ footer{margin-top:2.5rem;padding-top:1.4rem;border-top:1px solid var(--line-stro
     .catch(function(){
       document.getElementById('form').innerHTML =
         '<p class="empty">Анкета не загрузилась. Её всегда можно пройти в самом боте.</p>';
-      document.getElementById('form-top').hidden = true;
     });
 })();
 </script>

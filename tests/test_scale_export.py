@@ -349,3 +349,35 @@ def test_тёмные_цвета_описаны_для_обоих_случаев
     assert ':root[data-theme="dark"]' in текст
     assert ':root[data-theme="light"]{ color-scheme: light; }' in текст, (
         "браузер продолжит рисовать поля ввода тёмными")
+
+
+def test_светлая_тема_по_умолчанию():
+    """Тема паблика светлая, и человек из соцсетей должен увидеть
+    знакомое. Ночной режим телефона её больше не перебивает."""
+    текст = СТРАНИЦА.read_text(encoding="utf-8")
+    assert "localStorage.getItem('sdut-theme') || 'light'" in текст
+    assert 'data-theme-pick="light" aria-pressed="true"' in текст
+
+
+def test_страница_на_белом():
+    текст = СТРАНИЦА.read_text(encoding="utf-8")
+    assert "--ground:#FFFFFF" in текст, "фон страницы не белый"
+
+
+def test_порядок_вкладок():
+    """Сначала план по девяти вопросам, потом анкета из бота —
+    и только потом часы, стоимость, оборудование и справочник."""
+    import re
+
+    текст = СТРАНИЦА.read_text(encoding="utf-8")
+    порядок = re.findall(r'<button class="tab" id="tab-(\w+)"', текст)
+    assert порядок == ["plan", "form", "calc", "cost", "gear", "find"], порядок
+
+
+def test_длинные_блоки_свёрнуты():
+    """Двести сорок две статьи разом уводили страницу на двадцать три
+    тысячи пикселей. Всё, что читают один раз, — под раскрывашкой."""
+    текст = СТРАНИЦА.read_text(encoding="utf-8")
+    assert 'class="fold"' in текст
+    # справочник больше не разворачивает все статьи сразу
+    assert "'<details class=\"fold\"><summary>' + экранировать(р)" in текст
