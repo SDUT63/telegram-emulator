@@ -116,6 +116,14 @@ p{margin:0 0 1rem}
   white-space:pre-wrap;line-height:1.55}
 .hit .src{display:block;margin-top:.7rem;padding-top:.6rem;
   border-top:1px solid var(--line);font-size:.8rem;color:var(--ink-faint)}
+/* Картинки службы — половина ценности материалов: алгоритм смены
+   белья глазами понятнее, чем текстом. Грузятся по мере надобности:
+   в статьях их два десятка, и тянуть все разом незачем. */
+.hit figure{margin:.8rem 0 0}
+.hit figure img{display:block;width:100%;height:auto;border-radius:6px;
+  background:var(--surface-2)}
+.hit figure figcaption{color:var(--ink-faint);font-size:.83rem;
+  margin-top:.4rem;line-height:1.4}
 .sect{font-family:var(--mono);font-size:.72rem;letter-spacing:.1em;
   text-transform:uppercase;color:var(--accent);margin:1.4rem 0 .6rem;font-weight:500}
 .empty{color:var(--ink-soft);padding:1rem 0}
@@ -310,7 +318,7 @@ footer{margin-top:2.5rem;padding-top:1.4rem;border-top:1px solid var(--line-stro
 <div class="wrap">
 
 <header>
-  <p class="eyebrow"><a href="guide.html" style="color:inherit;text-decoration:none">‹ Навигатор помощи</a> · АНО «СДУТ»</p>
+  <p class="eyebrow">Навигатор помощи · АНО «СДУТ»</p>
   <h1>Помощь дома</h1>
   <p class="lede">Посчитать, на какую помощь можно рассчитывать, и разобраться, как её получить.</p>
 </header>
@@ -493,7 +501,7 @@ footer{margin-top:2.5rem;padding-top:1.4rem;border-top:1px solid var(--line-stro
   </div>
 
   <!-- Телефон службы в справочнике не заполнен (phone: "" в настройках
-       guide.html), и ставить сюда выдуманный нельзя: человек позвонит
+       организация.py), и ставить сюда выдуманный нельзя: человек позвонит
        в никуда. Ведём в бота — его адрес настоящий и работает. -->
   <a class="cta" href="https://max.ru/id6320093220_bot">Написать координатору в MAX</a>
 </section>
@@ -511,8 +519,8 @@ footer{margin-top:2.5rem;padding-top:1.4rem;border-top:1px solid var(--line-stro
 <footer>
   АНО «Система долговременного ухода», Тольятти.
   Расчёт предварительный и не заменяет очную оценку.
-  <br><a href="guide.html">Справочник целиком одной страницей</a> —
-  там же согласие на обработку данных, реквизиты и источники.
+  <br>Согласие на обработку данных, реквизиты и источники — в справочнике
+  выше: наберите «согласие», «реквизиты» или «источники».
 </footer>
 
 </div>
@@ -727,9 +735,20 @@ footer{margin-top:2.5rem;padding-top:1.4rem;border-top:1px solid var(--line-stro
   }
 
   function карточка(с){
+    // Картинка вставляется ссылкой на файл, а не данными внутрь
+    // страницы: два десятка снимков весят больше четырёх мегабайт,
+    // и тянуть их при каждом открытии приложения незачем. Папка img
+    // выкладывается рядом, и браузер берёт снимок только тогда,
+    // когда человек раскрыл статью.
+    var снимок = с.картинка
+      ? '<figure><img src="' + экранировать(с.картинка) + '" alt="' +
+        экранировать(с.подпись || с.заголовок) + '" loading="lazy">' +
+        (с.подпись ? '<figcaption>' + экранировать(с.подпись) + '</figcaption>' : '') +
+        '</figure>'
+      : '';
     return '<details class="hit"><summary><span class="where">' +
       экранировать(с.раздел) + '</span>' + экранировать(с.заголовок) + '</summary>' +
-      '<div class="body">' + экранировать(с.текст) +
+      '<div class="body">' + экранировать(с.текст) + снимок +
       (с.источник ? '<span class="src">Источник: ' + экранировать(с.источник) + '</span>' : '') +
       '</div></details>';
   }
