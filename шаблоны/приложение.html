@@ -383,6 +383,11 @@ p{margin:0 0 1rem}
   letter-spacing:.06em;text-transform:uppercase;color:var(--ok);
   background:var(--ok-bg);border-radius:4px;padding:.08rem .3rem;
   margin-left:.4rem;vertical-align:.08em;font-weight:500}
+.tips{display:flex;flex-wrap:wrap;gap:.4rem;margin:.6rem 0 1rem}
+.tip-q{font:inherit;font-size:.86rem;color:var(--ink-soft);cursor:pointer;
+  background:var(--surface-2);border:1px solid var(--line);border-radius:999px;
+  padding:.3rem .7rem}
+.tip-q:hover{border-color:var(--accent);color:var(--accent)}
 .step-hd{font-size:1.02rem;margin:1.6rem 0 .2rem}
 #plan-step-sub{margin-top:0}
 .prog .state{display:inline-block;font-family:var(--mono);font-size:.6rem;
@@ -634,6 +639,7 @@ footer{margin-top:2.5rem;padding-top:1.4rem;border-top:1px solid var(--line-stro
   платить», «как оформить инвалидность».</p>
   <input class="search" id="q" type="search" enterkeyhint="search"
          placeholder="Что случилось или о чём спросить" autocomplete="off">
+  <div class="tips" id="find-tips"></div>
   <div id="find-out"></div>
 </section>
 
@@ -1077,44 +1083,156 @@ footer{margin-top:2.5rem;padding-top:1.4rem;border-top:1px solid var(--line-stro
   чеклист(document.getElementById('docs-check'), ДОКУМЕНТЫ, 'sdut-docs');
 
   /* ---------------- поиск по материалам ----------------
-     Ищем так же, как бот: по началу слова. Русский склоняется,
-     и «уровень», «уровня», «уровни» должны находиться одинаково. */
-  var БАЗА = null;
 
-  function основы(текст){
-    var слова = (текст || '').toLowerCase().replace(/ё/g,'е').match(/[а-яa-z0-9]+/g) || [];
-    return слова.filter(function(с){ return с.length >= 4 || /^\d+$/.test(с); })
-                .map(function(с){ return с.slice(0, 5); });
+     Тот же поиск, что у бота, слово в слово. Раньше здесь был свой,
+     попроще: без синонимов, без оборотов, без учёта редкости слова.
+     Человек писал «памперсы» в чат и получал ответ, писал то же
+     в приложении — и не получал ничего. Хуже того, он не мог понять,
+     почему: снаружи это одна и та же служба.
+
+     Механизм целиком приезжает данными в kb.json из knowledge.py,
+     а здесь только исполняется. Совпадение выдач на сотне живых
+     запросов сверяет tests/test_поиск.py через node: разойдутся —
+     тест упадёт, а не человек останется без ответа. */
+  var БАЗА = null, ПОИСК = null, РЕДКОСТЬ = null;
+
+  function основа(слово){
+    слово = слово.replace(/ё/g, 'е');
+    for (var i = 0; i < ПОИСК.окончания.length; i++){
+      var конец = ПОИСК.окончания[i];
+      if (слово.length - конец.length >= ПОИСК.минимум_основы &&
+          слово.slice(-конец.length) === конец){
+        слово = слово.slice(0, слово.length - конец.length);
+        break;
+      }
+    }
+    return слово.slice(0, ПОИСК.основа);
   }
 
-  function искать(запрос){
-    var нужно = основы(запрос);
-    if (!нужно.length) return [];
-    var фраза = (запрос || '').toLowerCase().replace(/ё/g,'е').trim();
-    return БАЗА.статьи.map(function(с){
-      // Места разной ценности считаем раздельно. Пока они были свалены
-      // в одну строку, «пролежни» находило статью про паллиативный
-      // статус: слово стояло у неё в ключах и весило столько же,
-      // сколько чужой заголовок.
-      var заголовок = с.заголовок.toLowerCase().replace(/ё/g,'е');
-      var ключи = с.ключи.join(' ').toLowerCase().replace(/ё/g,'е');
-      var раздел = с.раздел.toLowerCase().replace(/ё/g,'е');
-      var тело = с.текст.toLowerCase().replace(/ё/g,'е');
-      var вес = 0, совпало = 0;
-      нужно.forEach(function(о){
-        if (заголовок.indexOf(о) >= 0)      { вес += 10; совпало++; }
-        else if (ключи.indexOf(о) >= 0)     { вес += 5;  совпало++; }
-        else if (раздел.indexOf(о) >= 0)    { вес += 2;  совпало++; }
-        else if (тело.indexOf(о) >= 0)      { вес += 1;  совпало++; }
+  function основы(текст){
+    var слова = String(текст || '').toLowerCase().match(/[0-9а-яёa-z]+/g) || [];
+    var вышло = [];
+    слова.forEach(function(с){
+      if (ПОИСК.шум.indexOf(с) >= 0) return;
+      if (/^\d+$/.test(с)) вышло.push(с);
+      else if (с.length >= ПОИСК.короткие) вышло.push(основа(с));
+    });
+    return вышло;
+  }
+
+  /* Люди спрашивают своими словами, материалы написаны служебными.
+     Расширение добавляет вторые к первым — по точной форме слова,
+     а не по основе: иначе «есть ли льготы» уезжает в питание. */
+  function расширить(вопрос){
+    var низом = String(вопрос || '').toLowerCase();
+    var добавка = [];
+    (низом.match(/[а-яё]+/g) || []).forEach(function(с){
+      if (ПОИСК.синонимы[с]) добавка.push(ПОИСК.синонимы[с]);
+    });
+    Object.keys(ПОИСК.обороты).forEach(function(оборот){
+      if (низом.indexOf(оборот) >= 0) добавка.push(ПОИСК.обороты[оборот]);
+    });
+    return добавка.length ? вопрос + ' ' + добавка.join(' ') : вопрос;
+  }
+
+  // Основы статьи с весами места, где слово стоит: в заголовке оно
+  // значит больше, чем в теле. Считается один раз при загрузке.
+  function разобратьСтатьи(){
+    var в = ПОИСК.веса;
+    БАЗА.статьи.forEach(function(с){
+      var карта = {};
+      [[с.заголовок, в.заголовок], [(с.ключи || []).join(' '), в.ключи],
+       [с.раздел, в.раздел], [с.текст, в.текст]].forEach(function(пара){
+        основы(пара[0]).forEach(function(о){
+          карта[о] = (карта[о] || 0) + пара[1];
+        });
       });
-      // Запрос целиком в заголовке — это почти наверняка та статья.
-      if (фраза.length >= 4 && заголовок.indexOf(фраза) >= 0) вес += 8;
-      // Длинный запрос, совпавший одним частым словом, — обычно случайность.
-      if (нужно.length >= 3 && совпало < 2) вес = 0;
-      return {статья: с, вес: вес};
-    }).filter(function(р){ return р.вес > 0; })
-      .sort(function(a,b){ return b.вес - a.вес; })
-      .slice(0, 12).map(function(р){ return р.статья; });
+      // Одно слово, повторённое двадцать раз, не делает статью
+      // в двадцать раз более подходящей.
+      Object.keys(карта).forEach(function(о){
+        if (карта[о] > ПОИСК.потолок) карта[о] = ПОИСК.потолок;
+      });
+      с._основы = карта;
+      // Для надбавки: назвал ли человек статью её собственным именем.
+      с._вЗаголовке = {};
+      основы(с.заголовок).forEach(function(о){ с._вЗаголовке[о] = true; });
+      с._вКлючах = {};
+      основы((с.ключи || []).join(' ')).forEach(function(о){ с._вКлючах[о] = true; });
+    });
+    var изСкольких = {};
+    БАЗА.статьи.forEach(function(с){
+      Object.keys(с._основы).forEach(function(о){
+        изСкольких[о] = (изСкольких[о] || 0) + 1;
+      });
+    });
+    var всего = Math.max(БАЗА.статьи.length, 1);
+    РЕДКОСТЬ = {};
+    Object.keys(изСкольких).forEach(function(о){
+      РЕДКОСТЬ[о] = Math.log(1 + всего / изСкольких[о]);
+    });
+  }
+
+  function весСтатьи(с, спрошено){
+    var попало = спрошено.filter(function(о){ return с._основы[о] !== undefined; });
+    if (!попало.length) return 0;
+    var сумма = 0;
+    попало.forEach(function(о){
+      сумма += с._основы[о] * Math.pow(РЕДКОСТЬ[о] === undefined ? 1 : РЕДКОСТЬ[о],
+                                       ПОИСК.резкость);
+    });
+    return сумма * (1 + ПОИСК.разнообразие * (попало.length - 1));
+  }
+
+  /* Человек написал ровно то, как статья и называется, — значит,
+     её и ищет. Без этого редкость слова решала всё, и статья,
+     названная обычными словами, не находилась по собственному
+     заголовку. Считается по словам самого вопроса, без синонимов:
+     иначе расширение подберёт чужой заголовок. */
+  function надбавка(с, свои){
+    if (!свои.length) return 1;
+    var вЗаг = свои.every(function(о){ return с._вЗаголовке[о]; });
+    if (вЗаг) return ПОИСК.заголовок_целиком;
+    var вКлюч = свои.every(function(о){ return с._вКлючах[о]; });
+    return вКлюч ? ПОИСК.ключи_целиком : 1;
+  }
+
+  function искать(запрос, сколько){
+    if (!ПОИСК || !РЕДКОСТЬ) return [];
+    var спрошено = [], видели = {};
+    основы(расширить(запрос)).forEach(function(о){
+      if (!видели[о]){ видели[о] = true; спрошено.push(о); }
+    });
+    if (!спрошено.length) return [];
+    var свои = [], своиВидели = {};
+    основы(запрос).forEach(function(о){
+      if (!своиВидели[о]){ своиВидели[о] = true; свои.push(о); }
+    });
+    var нужноПопаданий = спрошено.length >= 3 ? 2 : 1;
+    var итог = [];
+    БАЗА.статьи.forEach(function(с){
+      var совпало = спрошено.filter(function(о){
+        return с._основы[о] !== undefined;
+      });
+      // Одно редкое слово решает вопрос не хуже двух частых:
+      // «пролежень» указывает точнее, чем «помощь» и «уход» вместе.
+      var редкое = совпало.some(function(о){
+        return о.length >= ПОИСК.основа - 1 &&
+               (РЕДКОСТЬ[о] === undefined ? 1 : РЕДКОСТЬ[о]) >= ПОИСК.решающее;
+      });
+      var попаданий = совпало.length + (редкое && совпало.length ? 1 : 0);
+      if (попаданий < нужноПопаданий) return;
+      var вес = весСтатьи(с, спрошено) * надбавка(с, свои);
+      if (вес < ПОИСК.порог) return;
+      итог.push({статья: с, вес: вес});
+    });
+    // Ничьи разбиваются тем же ключом, что у бота, иначе при равном
+    // весе первая строка в чате и в приложении разная.
+    итог.sort(function(a, b){
+      if (b.вес !== a.вес) return b.вес - a.вес;
+      return a.статья.сорт < b.статья.сорт ? -1
+           : (a.статья.сорт > b.статья.сорт ? 1 : 0);
+    });
+    return итог.slice(0, сколько || 12).map(function(р){ return р.статья; });
   }
 
   function экранировать(т){
@@ -1160,26 +1278,64 @@ footer{margin-top:2.5rem;padding-top:1.4rem;border-top:1px solid var(--line-stro
     }).join('');
   }
 
+  /* Подсказки под полем — не украшение. Человек, у которого дома
+     беда, не знает, какими словами тут принято спрашивать, и пустое
+     поле его останавливает. Эти четыре — самые частые обращения. */
+  var ПОДСКАЗКИ = ['пролежни', 'нечем платить', 'коляска', 'я не справляюсь'];
+
   function рисоватьПоиск(){
     var поле = document.getElementById('q');
     var вывод = document.getElementById('find-out');
     var подпись = document.getElementById('find-sub');
-    подпись.textContent = 'Все ' + БАЗА.статей + ' материалов службы — здесь целиком. ' +
-      'Напишите своими словами: «пролежни», «маме нечем платить», «как оформить инвалидность».';
+    var чипы = document.getElementById('find-tips');
+    подпись.textContent = 'Все ' + БАЗА.статей + ' материалов службы — здесь ' +
+      'целиком, и бот в чате отвечает по ним же. Спрашивайте своими словами.';
+    чипы.innerHTML = ПОДСКАЗКИ.map(function(п){
+      return '<button type="button" class="tip-q" data-q="' + экранировать(п) +
+        '">' + экранировать(п) + '</button>';
+    }).join('');
+    чипы.addEventListener('click', function(ev){
+      var к = ev.target.closest('.tip-q');
+      if (!к) return;
+      поле.value = к.getAttribute('data-q');
+      показать(поле.value);
+      поле.scrollIntoView({block: 'center'});
+    });
+
+    function показать(запрос){
+      запрос = String(запрос || '').trim();
+      if (!запрос){ вывод.innerHTML = поРазделам(); return; }
+      // Первая тройка — ровно то, что ответит бот на этот же вопрос.
+      // Ниже — остальное найденное: человек видит, что у него есть
+      // выбор, но не тонет в нём.
+      var первые = искать(запрос, 3);
+      if (!первые.length){
+        вывод.innerHTML = '<p class="empty"><b>По этим словам ничего ' +
+          'не нашлось.</b> Так же ответил бы и бот в чате: мы нарочно ' +
+          'молчим, когда не уверены, — лучше промолчать, чем ответить ' +
+          'не по делу. Попробуйте одним-двумя словами: «пролежни», ' +
+          '«коляска», «инвалидность». Или напишите вопрос в бот — ' +
+          'координатор ответит сам.</p>';
+        return;
+      }
+      var все = искать(запрос, 12);
+      var ещё = все.slice(первые.length);
+      вывод.innerHTML =
+        '<div class="sect">Так же ответит бот в чате' +
+        '<span class="cnt">' + первые.length + '</span></div>' +
+        первые.map(карточка).join('') +
+        (ещё.length
+          ? '<details class="fold"><summary>Ещё по этому вопросу' +
+            '<span class="cnt">' + ещё.length + '</span></summary>' +
+            '<div class="inner">' + ещё.map(карточка).join('') + '</div></details>'
+          : '');
+    }
+
     вывод.innerHTML = поРазделам();
     var таймер = null;
     поле.addEventListener('input', function(){
       clearTimeout(таймер);
-      таймер = setTimeout(function(){
-        var запрос = поле.value.trim();
-        if (!запрос){ вывод.innerHTML = поРазделам(); return; }
-        var найдено = искать(запрос);
-        вывод.innerHTML = найдено.length
-          ? '<div class="sect">Нашлось: ' + найдено.length + '</div>' + найдено.map(карточка).join('')
-          : '<p class="empty">По этим словам ничего не нашлось. Попробуйте одним-двумя ' +
-            'словами — «пролежни», «коляска», «инвалидность» — или напишите вопрос ' +
-            'в бот: координатор ответит сам.</p>';
-      }, 180);
+      таймер = setTimeout(function(){ показать(поле.value); }, 180);
     });
   }
 
@@ -2724,7 +2880,9 @@ footer{margin-top:2.5rem;padding-top:1.4rem;border-top:1px solid var(--line-stro
       document.getElementById('result').hidden = true;
     });
 
-  взять('kb.json').then(function(d){ БАЗА = d; рисоватьПоиск(); })
+  взять('kb.json').then(function(d){
+      БАЗА = d; ПОИСК = d.поиск; разобратьСтатьи(); рисоватьПоиск();
+    })
     .catch(function(){
       document.getElementById('find-out').innerHTML =
         '<p class="empty">Материалы не загрузились. Проверьте соединение ' +
