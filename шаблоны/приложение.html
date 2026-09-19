@@ -383,6 +383,8 @@ p{margin:0 0 1rem}
   letter-spacing:.06em;text-transform:uppercase;color:var(--ok);
   background:var(--ok-bg);border-radius:4px;padding:.08rem .3rem;
   margin-left:.4rem;vertical-align:.08em;font-weight:500}
+.step-hd{font-size:1.02rem;margin:1.6rem 0 .2rem}
+#plan-step-sub{margin-top:0}
 .prog .state{display:inline-block;font-family:var(--mono);font-size:.6rem;
   letter-spacing:.06em;text-transform:uppercase;color:var(--ok);
   background:var(--ok-bg);border-radius:4px;padding:.08rem .3rem;
@@ -550,7 +552,6 @@ footer{margin-top:2.5rem;padding-top:1.4rem;border-top:1px solid var(--line-stro
 
 <div class="tabs-wrap"><div class="tabs" role="tablist">
   <button class="tab" id="tab-plan" role="tab" aria-selected="true" aria-controls="p-plan">План ухода</button>
-  <button class="tab" id="tab-form" role="tab" aria-selected="false" aria-controls="p-form">Анкета</button>
   <button class="tab" id="tab-calc" role="tab" aria-selected="false" aria-controls="p-calc">Часы</button>
   <button class="tab" id="tab-cost" role="tab" aria-selected="false" aria-controls="p-cost">Стоимость</button>
   <button class="tab" id="tab-gear" role="tab" aria-selected="false" aria-controls="p-gear">Оборудование</button>
@@ -558,10 +559,33 @@ footer{margin-top:2.5rem;padding-top:1.4rem;border-top:1px solid var(--line-stro
 </div></div>
 
 <!-- ============ ПЛАН УХОДА ============ -->
+<!-- Одна вкладка вместо двух. Раньше человек отвечал на девять
+     вопросов здесь, а вставлял ответы бота на соседней вкладке —
+     и не понимал, зачем отвечать дважды. Теперь порядок такой же,
+     как у него в голове: сначала вставил, что уже рассказал,
+     потом дописал то, чего бот не спрашивал. -->
 <section id="p-plan" role="tabpanel" aria-labelledby="tab-plan">
   <h2>Предварительный план ухода</h2>
-  <p class="sub">Девять вопросов о дне и доме — и готов распорядок с действиями,
-  частотой и оборудованием.</p>
+  <p class="sub">Вставьте ответы из бота — и допишите то, о чём он
+  не спрашивал. Получится распорядок с действиями, частотой
+  и оборудованием.</p>
+
+  <div class="carry" id="carry" hidden></div>
+
+  <!-- Пока не вставили — открыто и занимает первый экран. Вставили —
+       сворачивается: держать перед глазами поле, которое больше не
+       нужно, значит отодвигать вниз то, ради чего человек пришёл. -->
+  <details class="fold" id="carry-box" open>
+    <summary id="carry-sum">Шаг 1. Вставьте ответы из бота</summary>
+    <div class="inner paste-box">
+      <p>Скопируйте из чата сообщение бота «Что записано» целиком, вместе
+      со строками вопросов. Ничего никуда не отправляется: разбор идёт
+      в этом телефоне. Не отвечали боту — пропустите шаг.</p>
+      <textarea class="paste" id="paste" placeholder="Что записано:&#10;&#10;• Вы обращаетесь о себе, о близком человеке или по работе?&#10;  О близком человеке"></textarea>
+      <button class="send" id="paste-go">Разобрать и заполнить</button>
+      <div id="paste-out"></div>
+    </div>
+  </details>
 
   <div class="result" id="plan-top">
     <div class="line">
@@ -573,8 +597,34 @@ footer{margin-top:2.5rem;padding-top:1.4rem;border-top:1px solid var(--line-stro
     Ничего никуда не отправляется.</div>
   </div>
 
+  <h3 class="step-hd" id="plan-step">Шаг 2. Что осталось уточнить</h3>
+  <p class="sub" id="plan-step-sub">Об этом бот не спрашивает: он узнаёт,
+  какой человек, а план собирается из того, как устроены его день и дом.</p>
+
   <div id="plan-form"></div>
+  <div id="plan-filled"></div>
   <div id="plan-out"></div>
+
+  <details class="fold">
+    <summary>Ответы из бота<span class="cnt" id="form-left"></span></summary>
+    <div class="inner" id="form-wrap">
+      <p>То, что разобрано из сообщения. Здесь же можно ответить с нуля,
+      если боту вы не писали.</p>
+      <div id="form"></div>
+      <div id="form-send"></div>
+    </div>
+  </details>
+
+  <details class="fold">
+    <summary>Что собрать к разговору<span class="cnt">7</span></summary>
+    <div class="inner">
+      <p>Заранее собирать всё не нужно — координатор скажет, что понадобится
+      именно вам. Отметки сохраняются в этом телефоне.</p>
+      <ul class="check" id="docs-check"></ul>
+    </div>
+  </details>
+
+  <a class="cta" href="https://max.ru/id6320093220_bot">Написать координатору в MAX</a>
 </section>
 
 <!-- ============ СПРАВОЧНИК ============ -->
@@ -603,43 +653,6 @@ footer{margin-top:2.5rem;padding-top:1.4rem;border-top:1px solid var(--line-stro
   </div>
 
   <div id="scale"></div>
-</section>
-
-<!-- ============ АНКЕТА ============ -->
-<section id="p-form" role="tabpanel" aria-labelledby="tab-form" hidden>
-  <h2>Анкета</h2>
-  <p class="sub">Вставьте сюда ответы из бота — и план ухода станет точнее.</p>
-
-  <div class="carry" id="carry" hidden></div>
-
-  <div class="paste-box" id="carry-box">
-    <b>Скопируйте из чата сообщение бота «Что записано»</b>
-    <p>Целиком, вместе со строками вопросов. Ничего никуда не отправляется:
-    разбор идёт в этом телефоне.</p>
-    <textarea class="paste" id="paste" placeholder="Что записано:&#10;&#10;• Вы обращаетесь о себе, о близком человеке или по работе?&#10;  О близком человеке"></textarea>
-    <button class="send" id="paste-go">Разобрать и заполнить</button>
-    <div id="paste-out"></div>
-  </div>
-
-  <details class="fold">
-    <summary>Или ответить здесь<span class="cnt" id="form-left"></span></summary>
-    <div class="inner" id="form-wrap">
-
-      <div id="form"></div>
-      <div id="form-send"></div>
-    </div>
-  </details>
-
-  <details class="fold">
-    <summary>Что собрать к разговору<span class="cnt">7</span></summary>
-    <div class="inner">
-      <p>Заранее собирать всё не нужно — координатор скажет, что понадобится
-      именно вам. Отметки сохраняются в этом телефоне.</p>
-      <ul class="check" id="docs-check"></ul>
-    </div>
-  </details>
-
-  <a class="cta" href="https://max.ru/id6320093220_bot">Написать координатору в MAX</a>
 </section>
 
 <!-- ============ СТОИМОСТЬ ============ -->
@@ -1295,27 +1308,67 @@ footer{margin-top:2.5rem;padding-top:1.4rem;border-top:1px solid var(--line-stro
       : было === вариант;
   }
 
+  function вопросПлана(в){
+    // Что можно отметить несколько вариантов, из вида кнопок
+    // не следует никак: человек выбирает один и идёт дальше.
+    var много = в.несколько
+      ? '<span class="many">можно отметить несколько</span>' : '';
+    // Что ответ пришёл из анкеты, а не от человека, — видно на
+    // самом вопросе. Иначе он решит, что это его собственный ответ.
+    var изБота = (ИЗ_АНКЕТЫ_ПЛАН[в.id] && ОТВЕТЫ_ПЛАНА[в.id])
+      ? '<span class="from-form">из вашей анкеты</span>' : '';
+    return '<div class="cq"><span class="t">' + экранировать(в.текст) + много +
+      изБота + '</span>' +
+      (в.зачем ? '<span class="why">' + экранировать(в.зачем) + '</span>' : '') +
+      в.варианты.map(function(вар){
+        return '<button type="button" class="opt" data-pq="' + в.id +
+          '" data-pv="' + экранировать(вар) + '" aria-pressed="' +
+          (planОтмечен(в, вар) ? 'true' : 'false') + '">' +
+          экранировать(вар) + '</button>';
+      }).join('') + '</div>';
+  }
+
+  /* Вопросы делятся надвое: что человеку ещё предстоит отметить —
+     открыто, что мы уже вывели из его анкеты — под раскрывашкой.
+
+     Иначе выходило нечестно к его вниманию: он вставлял анкету,
+     видел девять вопросов, восемь из которых уже отвечены, и не
+     понимал, что от него хотят. Теперь перед ним ровно то, чего
+     не хватает. */
   function рисоватьОпросник(){
-    var корень = document.getElementById('plan-form');
-    корень.innerHTML = ПЛАН.вопросы.map(function(в){
-      // Что можно отметить несколько вариантов, из вида кнопок
-      // не следует никак: человек выбирает один и идёт дальше.
-      var много = в.несколько
-        ? '<span class="many">можно отметить несколько</span>' : '';
-      // Что ответ пришёл из анкеты, а не от человека, — видно на
-      // самом вопросе. Иначе он решит, что это его собственный ответ.
-      var изБота = (ИЗ_АНКЕТЫ_ПЛАН[в.id] && ОТВЕТЫ_ПЛАНА[в.id])
-        ? '<span class="from-form">из вашей анкеты</span>' : '';
-      return '<div class="cq"><span class="t">' + экранировать(в.текст) + много +
-        изБота + '</span>' +
-        (в.зачем ? '<span class="why">' + экранировать(в.зачем) + '</span>' : '') +
-        в.варианты.map(function(вар){
-          return '<button type="button" class="opt" data-pq="' + в.id +
-            '" data-pv="' + экранировать(вар) + '" aria-pressed="' +
-            (planОтмечен(в, вар) ? 'true' : 'false') + '">' +
-            экранировать(вар) + '</button>';
-        }).join('') + '</div>';
-    }).join('');
+    var ждут = [], готовы = [];
+    ПЛАН.вопросы.forEach(function(в){
+      ((ИЗ_АНКЕТЫ_ПЛАН[в.id] && ОТВЕТЫ_ПЛАНА[в.id]) ? готовы : ждут).push(в);
+    });
+
+    document.getElementById('plan-form').innerHTML =
+      ждут.map(вопросПлана).join('');
+
+    var свёрнутые = document.getElementById('plan-filled');
+    свёрнутые.innerHTML = готовы.length
+      ? '<details class="fold"><summary>Заполнено по вашей анкете' +
+        '<span class="cnt">' + готовы.length + '</span></summary>' +
+        '<div class="inner"><p>Это мы вывели из ваших ответов боту. ' +
+        'Поправьте, если поняли не так, — план пересоберётся.</p>' +
+        готовы.map(вопросПлана).join('') + '</div></details>'
+      : '';
+
+    var заголовок = document.getElementById('plan-step');
+    var подзаголовок = document.getElementById('plan-step-sub');
+    if (готовы.length && ждут.length){
+      заголовок.textContent = 'Шаг 2. Осталось ' + ждут.length + ' ' +
+        множ(ждут.length, ['вопрос', 'вопроса', 'вопросов']);
+      подзаголовок.textContent = 'Об этом бот не спрашивает: он узнаёт, ' +
+        'какой человек, а план собирается из того, как устроены его день и дом.';
+    } else if (готовы.length){
+      заголовок.textContent = 'Шаг 2. Вопросов не осталось';
+      подзаголовок.textContent = 'Всё, что нужно для плана, видно из вашей ' +
+        'анкеты. Проверьте, что мы поняли верно.';
+    } else {
+      заголовок.textContent = 'Шаг 2. Девять вопросов о дне и доме';
+      подзаголовок.textContent = 'Об этом бот не спрашивает: он узнаёт, ' +
+        'какой человек, а план собирается из того, как устроены его день и дом.';
+    }
 
     var отвечено = ПЛАН.вопросы.filter(function(в){
       return ОТВЕТЫ_ПЛАНА[в.id];
@@ -1525,10 +1578,11 @@ footer{margin-top:2.5rem;padding-top:1.4rem;border-top:1px solid var(--line-stro
 
     var приглашение = точность.учтено ? '' :
       '<div class="invite"><b>План можно сделать точнее</b>' +
-      '<p>Если вы отвечали боту, вставьте оттуда анкету — план учтёт ' +
-      'состояние кожи, боль, память и то, как человек ест.</p>' +
-      '<button type="button" class="go" id="plan-form-go">Перейти к анкете' +
-      '</button></div>';
+      '<p>Если вы отвечали боту, вставьте оттуда ответы в поле наверху — ' +
+      'план учтёт состояние кожи, боль, память и то, как человек ест, ' +
+      'и заполнит за вас большую часть вопросов.</p>' +
+      '<button type="button" class="go" id="plan-form-go">Показать, куда ' +
+      'вставить</button></div>';
 
     узел.innerHTML =
       '<div class="plan"><span class="kind">' + экранировать(точность.степень) +
@@ -1569,7 +1623,15 @@ footer{margin-top:2.5rem;padding-top:1.4rem;border-top:1px solid var(--line-stro
 
     var кнопкаАнкета = document.getElementById('plan-form-go');
     if (кнопкаАнкета) кнопкаАнкета.addEventListener('click', function(){
-      document.getElementById('tab-form').click();
+      // Поле вставки теперь на этой же вкладке, выше. Переносить
+      // человека некуда — надо просто показать, куда вставлять.
+      var коробка = document.getElementById('carry-box');
+      var поле = document.getElementById('paste');
+      if (коробка){
+        коробка.open = true;
+        коробка.scrollIntoView({behavior: 'smooth', block: 'center'});
+      }
+      if (поле) поле.focus({preventScroll: true});
     });
 
     document.getElementById('plan-send').addEventListener('click', собратьПлан);
@@ -2030,13 +2092,32 @@ footer{margin-top:2.5rem;padding-top:1.4rem;border-top:1px solid var(--line-stro
     return найдено;
   }
 
-  function показатьПеренос(сколько){
+  function показатьПеренос(сколько, посчитано){
     var узел = document.getElementById('carry');
-    if (!сколько){ узел.hidden = true; return; }
+    var коробка = document.getElementById('carry-box');
+    var подпись = document.getElementById('carry-sum');
+    if (!сколько){
+      узел.hidden = true;
+      if (коробка) коробка.open = true;
+      if (подпись) подпись.textContent = 'Шаг 1. Вставьте ответы из бота';
+      return;
+    }
+    var заодно = [];
+    if (посчитано && посчитано.опрос)
+      заодно.push('план ухода собран по ' + посчитано.опрос + ' ' +
+        множ(посчитано.опрос, ['ответу', 'ответам', 'ответам']));
+    if (посчитано && посчитано.шкала)
+      заодно.push('в расчёте часов заполнено ' + посчитано.шкала + ' ' +
+        множ(посчитано.шкала, ['позиция', 'позиции', 'позиций']));
     узел.hidden = false;
     узел.innerHTML = '<b>Ответы из бота перенесены</b>' + сколько + ' ' +
-      множ(сколько, ['ответ', 'ответа', 'ответов']) +
-      ' уже заполнено. Проверьте и допишите, чего не хватает.';
+      множ(сколько, ['ответ', 'ответа', 'ответов']) + ' уже заполнено.' +
+      (заодно.length
+        ? ' Заодно ' + заодно.join(', ') + '. Уровень и стоимость ' +
+          'пересчитаны — проверьте, что мы поняли верно.'
+        : ' Проверьте и допишите, чего не хватает.');
+    if (коробка) коробка.open = false;
+    if (подпись) подпись.textContent = 'Шаг 1. Вставить ответы из бота ещё раз';
   }
 
   document.getElementById('paste-go').addEventListener('click', function(){
@@ -2050,22 +2131,13 @@ footer{margin-top:2.5rem;padding-top:1.4rem;border-top:1px solid var(--line-stro
         'ответы.</p>';
       return;
     }
+    вывод.innerHTML = '';
     var посчитано = пересчитатьВсё();
-    var заодно = [];
-    if (посчитано.опрос) заодно.push('план ухода собран по ' + посчитано.опрос +
-      ' ' + множ(посчитано.опрос, ['ответу', 'ответам', 'ответам']));
-    if (посчитано.шкала) заодно.push('в расчёте часов заполнено ' +
-      посчитано.шкала + ' ' +
-      множ(посчитано.шкала, ['позиция', 'позиции', 'позиций']));
-    вывод.innerHTML = '<div class="sent">Перенесено ' + сколько + ' ' +
-      множ(сколько, ['ответ', 'ответа', 'ответов']) + '.' +
-      (заодно.length ? ' Заодно ' + заодно.join(', ') +
-        '. Уровень и стоимость пересчитаны — проверьте, что мы поняли верно.'
-        : '') +
-      '</div>';
     поле.value = '';
     рисоватьАнкету();
-    показатьПеренос(сколько);
+    // Отчёт пишем над свёртком, а не внутри него: коробка сейчас
+    // закроется, и человек не увидит, что вообще что-то произошло.
+    показатьПеренос(сколько, посчитано);
   });
 
   /* ---------------- калькулятор стоимости ---------------- */
@@ -2703,7 +2775,13 @@ footer{margin-top:2.5rem;padding-top:1.4rem;border-top:1px solid var(--line-stro
   принятьИзСсылки();
 
   взять('survey.json').then(function(d){
-      АНКЕТА = d; рисоватьАнкету(); показатьПеренос(ПЕРЕНЕСЕНО);
+      АНКЕТА = d; рисоватьАнкету();
+      // Считаем не то, что приехало сейчас, а то, что вообще есть:
+      // после перезагрузки ответы уже в памяти телефона, и открывать
+      // поле вставки заново незачем.
+      показатьПеренос(Object.keys(ОТВЕТЫ_АНКЕТЫ).filter(function(к){
+        return ОТВЕТЫ_АНКЕТЫ[к];
+      }).length);
       if (ПЕРЕНЕСЕНО) пересчитатьВсё();
     })
     .catch(function(){
