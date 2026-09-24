@@ -9,6 +9,12 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Literata:opsz,wght@7..72,600;7..72,700&family=Golos+Text:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
 <style>
+/* Атрибут hidden должен скрывать всегда. Без этого правила класс
+   с display (.from-form, .many) перебивал его, и метка «из анкеты»
+   стояла на всех двадцати одной позиции шкалы — даже у того, кто
+   ничего не вставлял. Выглядело как «мы уже решили за вас». */
+[hidden]{display:none!important}
+
 :root{
   /* Страница на белом — как паблик службы. Карточки держатся
      на рамке, а не на заливке: заливка на белом читается как
@@ -993,7 +999,9 @@ footer{margin-top:2.5rem;padding-top:1.4rem;border-top:1px solid var(--line-stro
        уровень может только вырасти. Так и говорим. */
     if (отвечено < всего){
       подпись.textContent = отвечено
-        ? 'Пока не ниже: ' + уровень.название.toLowerCase()
+        // Название не понижаем в регистре: в нём римская цифра,
+        // и «ii уровень» читается как опечатка.
+        ? 'Пока не ниже: ' + уровень.название
         : 'Отмечено 0 из ' + всего;
       часы.textContent = отвечено
         ? (уровень.номер > 0
