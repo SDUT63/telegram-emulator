@@ -177,6 +177,10 @@ p{margin:0 0 1rem}
   margin-top:.4rem;line-height:1.4}
 .sect{font-family:var(--mono);font-size:.72rem;letter-spacing:.1em;
   text-transform:uppercase;color:var(--accent);margin:1.4rem 0 .6rem;font-weight:500}
+/* Счётчик в подписи раздела — плашкой и с отступом. Без этого правила
+   число прилипало к слову: «так же ответит бот в чате3». */
+.sect .cnt{display:inline-block;margin-left:.5rem;letter-spacing:0;
+  background:var(--accent-soft);border-radius:999px;padding:.08rem .45rem}
 .empty{color:var(--ink-soft);padding:1rem 0}
 
 /* ---------- анкета ---------- */
