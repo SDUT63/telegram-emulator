@@ -5,8 +5,14 @@ from typing import Any, Callable, TypeVar
 from privacy_deletion import UserDeletionMixin
 from production_outbox import DurableProductionPostgresSurvey
 from storage_postgres import _TX_CONNECTION, _TX_USER
+from max_case_bridge import MaxCaseBridge
 T=TypeVar("T")
+
 class ProductionPrivacySurvey(UserDeletionMixin, DurableProductionPostgresSurvey):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.case_bridge = MaxCaseBridge()
+
     def _delete_user_in_transaction(self,conn,uid:str)->None:
         conn.execute("INSERT INTO deleted_users(user_id) VALUES(%s) ON CONFLICT(user_id) DO UPDATE SET deleted_at=CURRENT_TIMESTAMP",(uid,))
         conn.execute("INSERT INTO deleted_event_tombstones(event_id,event_type,event_hash) SELECT event_id,event_type,event_hash FROM processed_events WHERE user_id=%s ON CONFLICT(event_id) DO UPDATE SET event_type=EXCLUDED.event_type,event_hash=EXCLUDED.event_hash,deleted_at=CURRENT_TIMESTAMP",(uid,))
@@ -15,16 +21,29 @@ class ProductionPrivacySurvey(UserDeletionMixin, DurableProductionPostgresSurvey
         conn.execute("WITH removed AS (DELETE FROM processed_events WHERE user_id=%s RETURNING event_id) DELETE FROM event_leases WHERE event_id IN (SELECT event_id FROM removed)",(uid,))
         conn.execute("DELETE FROM operator_cases WHERE user_id=%s",(uid,))
         conn.execute("DELETE FROM survey_state WHERE user_id=%s",(uid,))
+        conn.execute("DELETE FROM cases WHERE person_id IN (SELECT person_id FROM persons WHERE channel='max' AND channel_user_id=%s)",(uid,))
+        conn.execute("DELETE FROM persons WHERE channel='max' AND channel_user_id=%s",(uid,))
+
     def erase(self,user_id:str)->str:return self.delete_user(user_id)
     def export_csv(self,*args,**kwargs):return None
+
     def _mutate(self,user_id:str,event_type:str,payload:dict[str,Any],fn:Callable[[],T],duplicate:T)->T:
-        if _TX_CONNECTION.get() is not None and _TX_USER.get()==str(user_id):return fn()
+        if _TX_CONNECTION.get() is not None and _TX_USER.get()==str(user_id):
+            result = fn()
+            state = self.state.get(str(user_id)) or {}
+            self.case_bridge.sync(str(user_id), state)
+            return result
         original=super()._mutate
         def wrapped()->T:
             conn=_TX_CONNECTION.get()
-            if conn is not None:conn.execute("DELETE FROM deleted_users WHERE user_id=%s",(str(user_id),))
-            return fn()
+            if conn is not None:
+                conn.execute("DELETE FROM deleted_users WHERE user_id=%s",(str(user_id),))
+            result = fn()
+            state = self.state.get(str(user_id)) or {}
+            self.case_bridge.sync(str(user_id), state)
+            return result
         return original(user_id,event_type,payload,wrapped,duplicate)
+
     def deleted_event_tombstone(self,event_id:str):
         key=str(event_id).strip()
         if not key:return None
