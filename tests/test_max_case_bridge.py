@@ -99,5 +99,3 @@ def test_completed_max_intake_suggests_route_once():
         assert again.suggested_route["route"] == "М4"
     finally:
         _cleanup(uid)
-    finally:
-        _cleanup(uid)
