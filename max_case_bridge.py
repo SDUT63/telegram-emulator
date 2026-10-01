@@ -15,9 +15,11 @@ from cases import BOT, DRAFT, NEW, CaseService
 from cases_postgres import PostgresCaseRepository
 from consent_forms import CONSENT_VERSION, CONSENT_FULL
 from survey_questions import CHECKPOINT_ID
+from routing_rules import route as calculate_route
 
 QUESTIONNAIRE_VERSION = "max-2026-10-01-v1"
 CHANNEL = "max"
+ROUTING_RULES_VERSION = "routing-2026-10-01-v1"
 
 
 def consent_text_hash() -> str:
@@ -30,7 +32,7 @@ class MaxCaseBridge:
     def __init__(self) -> None:
         self.service = CaseService(PostgresCaseRepository())
 
-    def _open_case(self, user_id: str):
+    def open_case(self, user_id: str):
         return self.service.open_case(CHANNEL, str(user_id))
 
     def sync(self, user_id: str, state: dict[str, Any], *, create_if_missing: bool = False) -> None:
@@ -43,7 +45,7 @@ class MaxCaseBridge:
         if not consent.get("at"):
             return
 
-        case = self._open_case(str(user_id))
+        case = self.open_case(str(user_id))
         if case is None and create_if_missing:
             case = self.service.open_draft(
                 CHANNEL,
@@ -85,11 +87,32 @@ class MaxCaseBridge:
 
         # Ч7: checkpoint is one of the explicit grounds for DRAFT -> NEW.
         if case.status == DRAFT and CHECKPOINT_ID in answers:
-            self.service.transition(
+            case = self.service.transition(
                 case.case_id,
                 NEW,
                 who=BOT,
                 trigger="checkpoint",
+            )
+
+        # ROUTE is calculated only after the questionnaire is actually
+        # finished. The checkpoint is deliberately not enough: detailed
+        # answers collected after it can change the route. CASE stores the
+        # suggestion once (И5), with the exact rule version and signals.
+        if completed_at is not None and case.suggested_route is None:
+            route, reason, also = calculate_route(answers)
+            signals = [
+                f"{key}={answers[key]}"
+                for key in sorted(answers)
+                if answers.get(key)
+            ]
+            case = self.service.suggest_route(
+                case.case_id,
+                route=route,
+                reason=reason,
+                signals=signals,
+                rules_version=ROUTING_RULES_VERSION,
+                also=also,
+                who=BOT,
             )
 
     @staticmethod
