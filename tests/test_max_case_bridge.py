@@ -64,5 +64,40 @@ def test_max_checkpoint_promotes_draft_to_new():
         assert case is not None
         assert case.status == NEW
         assert case.number and case.number.startswith("SDUT-")
+        assert case.suggested_route is None
+    finally:
+        _cleanup(uid)
+
+
+def test_completed_max_intake_suggests_route_once():
+    uid = _uid()
+    try:
+        bridge = MaxCaseBridge()
+        state = {
+            "consent": {"at": "2026-10-01T12:00:00", "version": "1.0"},
+            "answers": {
+                "flags": "Ничего из этого нет",
+                "need": "Не знаю, с чего",
+                CHECKPOINT_ID: "Достаточно, свяжитесь",
+            },
+            "alerts": [],
+            "finished": "2026-10-01T12:05:00+00:00",
+        }
+        bridge.sync(uid, state, create_if_missing=True)
+        case = _service().open_case("max", uid)
+        assert case is not None
+        assert case.suggested_route is not None
+        assert case.suggested_route["route"] == "М4"
+        assert case.suggested_route["rules_version"] == "routing-2026-10-01-v1"
+
+        # The suggestion is immutable at the CASE level; a later sync cannot
+        # replace it with a different route.
+        state["answers"]["need"] = "Помощь на дому"
+        bridge.sync(uid, state)
+        again = _service().open_case("max", uid)
+        assert again is not None
+        assert again.suggested_route["route"] == "М4"
+    finally:
+        _cleanup(uid)
     finally:
         _cleanup(uid)
