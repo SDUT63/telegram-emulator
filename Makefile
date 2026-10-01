@@ -1,4 +1,4 @@
-.PHONY: help dev run-backend run-frontend test build clean docker-build docker-run install-deps install-frontend-deps init migrate lint fmt
+.PHONY: help dev run-backend run-frontend test build maxbot-run maxbot-build maxbot-test clean docker-build docker-run install-deps install-frontend-deps init migrate lint fmt
 
 # Переменные
 BINARY_NAME=telegram-emulator
@@ -103,6 +103,19 @@ build: ## Собрать бинарный файл
 	@echo "🔨 Сборка проекта..."
 	mkdir -p $(BUILD_DIR)
 	go build -o $(BUILD_DIR)/$(BINARY_NAME) cmd/emulator/main.go
+
+maxbot-run: ## Запустить чат-бот «Точка входа» для MAX (нужен MAXBOT_BOT_TOKEN)
+	@echo "🤖 Запуск чат-бота MAX..."
+	go run ./cmd/maxbot
+
+maxbot-build: ## Собрать бинарный файл чат-бота MAX
+	@echo "🔨 Сборка чат-бота MAX..."
+	mkdir -p $(BUILD_DIR)
+	go build -o $(BUILD_DIR)/maxbot ./cmd/maxbot
+
+maxbot-test: ## Запустить тесты чат-бота MAX
+	@echo "🧪 Тесты чат-бота MAX..."
+	go test ./internal/maxbot/...
 
 clean: ## Очистить build директории
 	@echo "🧹 Очистка..."
