@@ -40,7 +40,7 @@ class PostgresOutbox:
   if max_attempts<1: raise ValueError("max_attempts must be >= 1")
   self.db_url=db_url or database_url(); self.lease_seconds=lease_seconds; self.max_attempts=max_attempts; self.worker_id=worker_id or f"{socket.gethostname()}:{os.getpid()}:{uuid.uuid4().hex[:8]}"
  def _connect(self): return _connect(self.db_url)
- def enqueue(self,*,delivery_key,user_id,payload,chat_id=None,conn=None,farewell=False,attachments=None):
+ def enqueue(self,*,delivery_key,user_id,payload,chat_id=None,conn=None,farewell=False,attachments=None,case_id=None,automatic=False):
   """Persist one outbound intent.
 
   farewell=True is reserved for the deletion confirmation, the single message
@@ -69,15 +69,15 @@ class PostgresOutbox:
     if str(tombstone["payload_sha256"])!=digest: raise ValueError(f"delivery_key collision for {key!r}: retained outbound intent differs")
     if own: connection.commit()
     return 0
-   row=ask("INSERT INTO outbox_messages(delivery_key,user_id,chat_id,payload,payload_sha256,farewell) VALUES(%s,%s,%s,%s,%s,%s) ON CONFLICT(delivery_key) DO NOTHING RETURNING id",(key,uid,chat_id,Jsonb(payload),digest,bool(farewell)))
+   row=ask("INSERT INTO outbox_messages(delivery_key,user_id,chat_id,payload,payload_sha256,farewell,case_id,automatic) VALUES(%s,%s,%s,%s,%s,%s,%s,%s) ON CONFLICT(delivery_key) DO NOTHING RETURNING id",(key,uid,chat_id,Jsonb(payload),digest,bool(farewell),case_id,bool(automatic)))
    if row: message_id=int(row["id"])
    else:
-    existing=ask("SELECT id,user_id,chat_id,payload,payload_sha256 FROM outbox_messages WHERE delivery_key=%s",(key,))
+    existing=ask("SELECT id,user_id,chat_id,payload,payload_sha256,case_id,automatic FROM outbox_messages WHERE delivery_key=%s",(key,))
     if existing is None: raise RuntimeError("outbox insert disappeared unexpectedly")
     existing_payload=existing["payload"]
     if isinstance(existing_payload,str): existing_payload=json.loads(existing_payload)
     existing_chat=str(existing["chat_id"]) if existing["chat_id"] is not None else None; existing_digest=existing["payload_sha256"]
-    same_payload=str(existing["user_id"])==uid and existing_chat==chat_id and (str(existing_digest)==digest if existing_digest else dict(existing_payload)==payload)
+    same_payload=(str(existing["user_id"])==uid and existing_chat==chat_id and (str(existing_digest)==digest if existing_digest else dict(existing_payload)==payload) and existing["case_id"]==case_id and bool(existing["automatic"])==bool(automatic))
     if not same_payload: raise ValueError(f"delivery_key collision for {key!r}: existing outbound intent differs")
     message_id=int(existing["id"])
    self._store_attachments(connection, key, attachments)
@@ -138,7 +138,7 @@ class PostgresOutbox:
      digest=str(row["payload_sha256"] or payload_sha256(dict(row["payload"]))); conn.execute("UPDATE outbox_messages SET status='dead',payload=%s,payload_sha256=%s,user_id=NULL,chat_id=NULL,locked_at=NULL,locked_by=NULL,last_error=COALESCE(last_error,'worker lease expired') WHERE id=%s AND status='sending'",(Jsonb(_REDACTED_PAYLOAD),digest,int(row["id"])))
      conn.execute("DELETE FROM outbox_attachments WHERE delivery_key=(SELECT delivery_key FROM outbox_messages WHERE id=%s)",(int(row["id"]),))
     else: conn.execute("UPDATE outbox_messages SET status='pending',locked_at=NULL,locked_by=NULL WHERE id=%s AND status='sending'",(int(row["id"]),))
-   rows=conn.execute("WITH picked AS (SELECT o.id FROM outbox_messages o LEFT JOIN deleted_users d ON d.user_id=o.user_id WHERE o.status='pending' AND o.available_at<=CURRENT_TIMESTAMP AND (d.user_id IS NULL OR o.farewell) ORDER BY o.id FOR UPDATE OF o SKIP LOCKED LIMIT %s) UPDATE outbox_messages o SET status='sending',locked_at=%s,locked_by=%s,attempts=o.attempts+1 FROM picked WHERE o.id=picked.id RETURNING o.*",(limit,now,self.worker_id)).fetchall()
+   rows=conn.execute("WITH picked AS (SELECT o.id FROM outbox_messages o LEFT JOIN deleted_users d ON d.user_id=o.user_id LEFT JOIN cases c ON c.case_id=o.case_id WHERE o.status='pending' AND o.available_at<=CURRENT_TIMESTAMP AND (d.user_id IS NULL OR o.farewell) AND (NOT o.automatic OR (o.case_id IS NOT NULL AND c.status <> 'CLOSED')) ORDER BY o.id FOR UPDATE OF o SKIP LOCKED LIMIT %s) UPDATE outbox_messages o SET status='sending',locked_at=%s,locked_by=%s,attempts=o.attempts+1 FROM picked WHERE o.id=picked.id RETURNING o.*",(limit,now,self.worker_id)).fetchall()
    return [self._row(row) for row in rows]
  def mark_sent(self,message_id):
   with _connect(self.db_url) as conn:
