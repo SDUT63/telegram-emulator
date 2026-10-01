@@ -42,7 +42,7 @@ def test_max_consent_creates_domain_draft():
         bridge = MaxCaseBridge()
         state = {"consent": {"at": "2026-10-01T12:00:00", "version": "1.0"},
                  "answers": {}, "alerts": []}
-        bridge.sync(uid, state)
+        bridge.sync(uid, state, create_if_missing=True)
         cases = _service().cases_of("max", uid)
         assert len(cases) == 1
         assert cases[0].status == DRAFT
@@ -59,7 +59,7 @@ def test_max_checkpoint_promotes_draft_to_new():
         bridge = MaxCaseBridge()
         state = {"consent": {"at": "2026-10-01T12:00:00", "version": "1.0"},
                  "answers": {CHECKPOINT_ID: "Продолжить"}, "alerts": []}
-        bridge.sync(uid, state)
+        bridge.sync(uid, state, create_if_missing=True)
         case = _service().open_case("max", uid)
         assert case is not None
         assert case.status == NEW
