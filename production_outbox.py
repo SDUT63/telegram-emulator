@@ -42,7 +42,24 @@ def _enqueue_text(outbox: PostgresOutbox, conn, survey: ProductionPostgresSurvey
         # rather than append one. The worker falls back to sending when the
         # target is gone, so a stale button never leaves the person in silence.
         payload = {"kind": "max_edit", "message_id": str(edit_message_id), "text": str(text), "keyboard_rows": rows}
-    outbox.enqueue(delivery_key=delivery_key(event_id, ordinal=ordinal), user_id=str(user_id), payload=payload, conn=conn, farewell=farewell)
+    case_id = None
+    if not farewell:
+        row = conn.execute(
+            "SELECT c.case_id FROM cases c JOIN persons p ON p.person_id=c.person_id "
+            "WHERE p.channel='max' AND p.channel_user_id=%s AND c.status <> 'CLOSED' "
+            "ORDER BY c.case_id DESC LIMIT 1",
+            (str(user_id),),
+        ).fetchone()
+        case_id = int(row[0]) if row else None
+    outbox.enqueue(
+        delivery_key=delivery_key(event_id, ordinal=ordinal),
+        user_id=str(user_id),
+        payload=payload,
+        conn=conn,
+        farewell=farewell,
+        case_id=case_id,
+        automatic=not farewell,
+    )
 
 
 class DurableProductionPostgresSurvey(ProductionPostgresSurvey):
