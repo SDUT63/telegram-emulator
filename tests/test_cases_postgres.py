@@ -15,7 +15,7 @@ import pytest
 
 psycopg = pytest.importorskip("psycopg")
 
-from cases import BOT, CaseService, NEW, SAMARA  # noqa: E402
+from cases import BOT, NEW, SAMARA, SYSTEM, CaseService  # noqa: E402
 
 DSN = (os.getenv("SDUT_DATABASE_URL") or "").strip()
 pytestmark = pytest.mark.skipif(not DSN, reason="SDUT_DATABASE_URL is not configured")
@@ -463,3 +463,46 @@ def test_и16_правка_задачи_и_закрытие_не_расходя�
     второй.join(10)
     assert not ошибки, ошибки
     assert [(t.task_id, t.status) for t in s.tasks(case.case_id)] == [(задача.task_id, "cancelled")]
+
+
+def test_и7_база_не_даёт_сменить_причину_закрытия(люди):
+    """Из CLOSED в таблице 5.2 переходов нет: причина закрытия не меняется
+    и обращение не переоткрывается — даже прямым SQL. Правильный путь
+    закрытия при этом проходит и в обход модуля."""
+    s = _сервис()
+    сменить = "UPDATE cases SET close_reason = %s WHERE case_id = %s"
+
+    # Режим Б, закрыто refused → consent_not_given. Основание подходит,
+    # CHECK такое пропустил бы — остановить должен триггер.
+    экстренное = s.open_emergency("max", люди(), sign_group="не дышит", questionnaire_version="q-1")
+    s.transition(экстренное.case_id, "ASSIGNED", who="op", assigned_to="op")
+    s.transition(экстренное.case_id, "CONTACTED", who="op")
+    s.transition(экстренное.case_id, "CLOSED", who="op", reason="refused")
+    with pytest.raises(psycopg.errors.RaiseException, match="И7"):
+        _сырой(сменить, ("consent_not_given", экстренное.case_id))
+
+    # Брошенный черновик → ward_died.
+    черновик = _черновик(s, люди())
+    s.transition(черновик.case_id, "CLOSED", who=SYSTEM, reason="abandoned_draft")
+    with pytest.raises(psycopg.errors.RaiseException, match="И7"):
+        _сырой(сменить, ("ward_died", черновик.case_id))
+
+    # Обычное, закрыто refused → ward_died; и переоткрыть нельзя.
+    обычное = _к_разговору(s, люди())
+    s.transition(обычное.case_id, "CLOSED", who="op", reason="refused")
+    with pytest.raises(psycopg.errors.RaiseException, match="И7"):
+        _сырой(сменить, ("ward_died", обычное.case_id))
+    with pytest.raises(psycopg.errors.RaiseException, match="И7"):
+        _сырой("UPDATE cases SET status = 'CONTACTED', close_reason = NULL, closed_at = NULL "
+               "WHERE case_id = %s", (обычное.case_id,))
+    assert [(s.case(c.case_id).status, s.case(c.case_id).close_reason)
+            for c in (экстренное, черновик, обычное)] == [
+        ("CLOSED", "refused"), ("CLOSED", "abandoned_draft"), ("CLOSED", "refused")]
+
+    # Правильный путь: режим Б из CONTACTED → consent_not_given.
+    второе = s.open_emergency("max", люди(), sign_group="не дышит", questionnaire_version="q-1")
+    s.transition(второе.case_id, "ASSIGNED", who="op", assigned_to="op")
+    s.transition(второе.case_id, "CONTACTED", who="op")
+    _сырой("UPDATE cases SET status = 'CLOSED', close_reason = 'consent_not_given', "
+           "closed_at = now() WHERE case_id = %s", (второе.case_id,))
+    assert s.case(второе.case_id).close_reason == "consent_not_given"

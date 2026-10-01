@@ -180,7 +180,10 @@ class MemoryCaseRepository:
             raise ImmutableRecord("И2: номер обращения не меняется")
         if было.suggested_route is not None and case.suggested_route != было.suggested_route:
             raise ImmutableRecord("И5: предложенный маршрут записывается один раз")
-        # То же, что триггер cases_r3_close_rules в 015.
+        # То же, что триггер cases_r3_close_rules (015, усилен в 016).
+        if было.close_reason is not None and case.close_reason != было.close_reason:
+            raise CaseError("И7: причина закрытия не меняется, закрытое обращение "
+                            "не переоткрывается — из CLOSED переходов нет (5.2)")
         if было.close_reason is None and case.close_reason is not None:
             if было.status == "DRAFT" and case.close_reason != "abandoned_draft":
                 raise CaseError("Г5: черновик закрывается только как abandoned_draft")

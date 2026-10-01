@@ -961,6 +961,19 @@ def test_и16_хранилище_не_даёт_закрыть_с_открыто�
     assert среда.s.tasks(направленное.case_id) == []
 
 
+def test_и7_хранилище_не_даёт_сменить_причину_закрытия(среда):
+    """Из CLOSED в таблице 5.2 переходов нет: запись в обход модуля не
+    меняет причину закрытия и не переоткрывает обращение."""
+    case = среда.довести(среда.черновик(), CLOSED)            # unable_to_contact
+    repo = среда.s.repo
+    for подмена in (replace(case, close_reason="ward_died"),
+                    replace(case, status=CONTACTED, close_reason=None, closed_at=None)):
+        with pytest.raises(CaseError):
+            with repo.transaction():
+                repo.update_case(подмена)
+    assert среда.s.case(case.case_id) == case
+
+
 # И17: возврат от старшего меняет только статус (5.7)
 
 def _снимок(среда: Среда, case_id: int) -> dict:
