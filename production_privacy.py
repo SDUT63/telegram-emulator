@@ -31,7 +31,8 @@ class ProductionPrivacySurvey(UserDeletionMixin, DurableProductionPostgresSurvey
         if _TX_CONNECTION.get() is not None and _TX_USER.get()==str(user_id):
             result = fn()
             state = self.state.get(str(user_id)) or {}
-            self.case_bridge.sync(str(user_id), state)
+            create_case = event_type == "callback" and payload.get("action") == "grant_consent"
+            self.case_bridge.sync(str(user_id), state, create_if_missing=create_case)
             return result
         original=super()._mutate
         def wrapped()->T:
@@ -40,9 +41,17 @@ class ProductionPrivacySurvey(UserDeletionMixin, DurableProductionPostgresSurvey
                 conn.execute("DELETE FROM deleted_users WHERE user_id=%s",(str(user_id),))
             result = fn()
             state = self.state.get(str(user_id)) or {}
-            self.case_bridge.sync(str(user_id), state)
+            create_case = event_type == "callback" and payload.get("action") == "grant_consent"
+            self.case_bridge.sync(str(user_id), state, create_if_missing=create_case)
             return result
         return original(user_id,event_type,payload,wrapped,duplicate)
+
+    def restart_after_consent(self, user_id: str) -> str:
+        """After a closed CASE, a new intake must start with new consent."""
+        uid = str(user_id)
+        if self.case_bridge._open_case(uid) is None:
+            return self.start(uid)
+        return super().restart_after_consent(uid)
 
     def deleted_event_tombstone(self,event_id:str):
         key=str(event_id).strip()
