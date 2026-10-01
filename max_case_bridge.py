@@ -33,7 +33,7 @@ class MaxCaseBridge:
     def _open_case(self, user_id: str):
         return self.service.open_case(CHANNEL, str(user_id))
 
-    def sync(self, user_id: str, state: dict[str, Any]) -> None:
+    def sync(self, user_id: str, state: dict[str, Any], *, create_if_missing: bool = False) -> None:
         """Project the current survey milestone into the open CASE.
 
         Called inside the MAX event transaction. The CASE repository therefore
@@ -44,7 +44,7 @@ class MaxCaseBridge:
             return
 
         case = self._open_case(str(user_id))
-        if case is None:
+        if case is None and create_if_missing:
             case = self.service.open_draft(
                 CHANNEL,
                 str(user_id),
@@ -55,6 +55,9 @@ class MaxCaseBridge:
                 source="max",
                 who=BOT,
             )
+
+        if case is None:
+            return
 
         answers = dict(state.get("answers") or {})
         alerts = list(state.get("alerts") or [])
