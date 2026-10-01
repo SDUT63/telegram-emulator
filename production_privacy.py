@@ -49,7 +49,7 @@ class ProductionPrivacySurvey(UserDeletionMixin, DurableProductionPostgresSurvey
     def restart_after_consent(self, user_id: str) -> str:
         """After a closed CASE, a new intake must start with new consent."""
         uid = str(user_id)
-        if self.case_bridge._open_case(uid) is None:
+        if self.case_bridge.open_case(uid) is None:
             return self.start(uid)
         return super().restart_after_consent(uid)
 
