@@ -9,7 +9,7 @@ import os
 import re
 import threading
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 
 import pytest
 
@@ -183,23 +183,62 @@ def test_и14_все_таблицы_с_данными_человека_учте�
         "удаление по просьбе её не проверяет")
     assert set(В_ПАМЯТИ) == set(PERSON_DATA_TABLES)
 
+
+def test_и14_удаление_проходит_по_каждой_таблице(люди):
+    """Т1: до удаления в каждой таблице с данными человека есть его строка,
+    после — ни одной. Иначе проверка «пусто после удаления» ничего не
+    доказывает: таблица могла быть пустой с самого начала."""
+    from cases import (ASSIGNED, CONTACTED, CONTROL, MEDICAL_TRANSFER, REFERRED,
+                       ROUTE_CONFIRMED, SERVICE_STARTED)
+    from cases_postgres import PERSON_DATA_TABLES
+
     s = _сервис()
     uid = люди()
-    case = s.transition(_черновик(s, uid).case_id, NEW, who=BOT, trigger="checkpoint")
-    s.record_outcome(case.case_id, need="other", action="consultation", result="received", who="op")
-    s.create_task(case.case_id, "first_contact", due_at=datetime.now(timezone.utc) + timedelta(hours=4),
-                  who="op")
-    s.delete_person("max", uid, who="op")
-    with psycopg.connect(DSN) as conn:
-        for таблица in PERSON_DATA_TABLES:
+    ключ = f"test-{uuid.uuid4().hex}"
+    запись = s.add_directory_entry(provider_key=ключ, route="М2", provider="КЦСОН", available=True)
+    try:
+        case = s.transition(_черновик(s, uid).case_id, NEW, who=BOT, trigger="checkpoint")
+        s.add_consent(case.case_id, kind=MEDICAL_TRANSFER, version="форма-3", text_hash=None,
+                      given_via="paper", who="op")
+        s.update_intake(case.case_id, who=BOT, answers={"who": "О близком человеке"},
+                        story="мама после инсульта, лежит второй год")
+        s.transition(case.case_id, ASSIGNED, who="op", assigned_to="op")
+        s.transition(case.case_id, CONTACTED, who="op")
+        s.transition(case.case_id, ROUTE_CONFIRMED, who="op", final_route="М2", reason="по разговору")
+        s.transition(case.case_id, REFERRED, who="op", directory_entry_id=запись.directory_entry_id,
+                     referral_channel="call")
+        s.transition(case.case_id, SERVICE_STARTED, who="op")
+        s.transition(case.case_id, CONTROL, who="op")
+        s.record_outcome(case.case_id, need="home_social_service", action="referral",
+                         result="received", who="op", directory_entry_id=запись.directory_entry_id)
+
+        def строк(conn, таблица: str) -> int:
             if таблица == "persons":
-                continue
-            осталось = conn.execute(f"SELECT count(*) FROM {таблица} WHERE case_id = %s",
-                                    (case.case_id,)).fetchone()[0]
-            assert осталось == 0, таблица
-        отметка = conn.execute("SELECT first_seen_at, deleted_at FROM persons WHERE channel_user_id = %s",
-                               (uid,)).fetchone()
-    assert отметка[0] is None and отметка[1] is not None
+                запрос = ("SELECT count(*) FROM persons WHERE channel_user_id = %s "
+                          "AND deleted_at IS NULL")
+                return conn.execute(запрос, (uid,)).fetchone()[0]
+            return conn.execute(f"SELECT count(*) FROM {таблица} WHERE case_id = %s",
+                                (case.case_id,)).fetchone()[0]
+
+        with psycopg.connect(DSN) as conn:
+            до = {т: строк(conn, т) for т in PERSON_DATA_TABLES}
+        assert all(до.values()), f"тест обходит таблицу: {до}"
+
+        assert s.delete_person("max", uid, who="op") is True
+
+        with psycopg.connect(DSN) as conn:
+            после = {т: строк(conn, т) for т in PERSON_DATA_TABLES}
+            отметка = conn.execute("SELECT first_seen_at, deleted_at FROM persons "
+                                   "WHERE channel_user_id = %s", (uid,)).fetchone()
+            справочник = conn.execute("SELECT count(*) FROM route_directory WHERE directory_entry_id = %s",
+                                      (запись.directory_entry_id,)).fetchone()[0]
+        assert после == {т: 0 for т in PERSON_DATA_TABLES}
+        assert отметка[0] is None and отметка[1] is not None        # Ч1
+        assert справочник == 1          # справочник исполнителей — не данные человека
+    finally:
+        _сырой("DELETE FROM cases WHERE person_id IN "
+               "(SELECT person_id FROM persons WHERE channel_user_id = %s)", (uid,))
+        _сырой("DELETE FROM route_directory WHERE provider_key = %s", (ключ,))
 
 
 # --- И15: одна транзакция с событием MAX ---------------------------------------

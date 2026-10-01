@@ -490,6 +490,24 @@ def test_и10_режим_б_экстренное_обращение(среда):
     assert "legal_basis_changed" in _события(среда, case)
 
 
+def test_режим_б_согласие_присоединяется_к_тому_же_обращению(среда):
+    """Т3: P0 до согласия → человек согласился и нажал «Согласен» ещё раз →
+    одно обращение, один снимок согласия, одна анкета."""
+    uid = среда.человек()
+    экстренное = среда.s.open_emergency("max", uid, sign_group="не дышит", questionnaire_version="q-1")
+    for _ in range(2):
+        после = среда.черновик(uid)
+        assert после.case_id == экстренное.case_id
+    assert len(среда.s.cases_of("max", uid)) == 1
+    assert [c.kind for c in среда.s.consents(экстренное.case_id)] == [PROCESSING]
+    assert len(среда.s.intakes(экстренное.case_id)) == 1
+    assert (после.status, после.number, после.urgency) == (NEW, экстренное.number, P0)
+    assert _события(среда, экстренное).count("legal_basis_changed") == 1
+    # Повторный сигнал угрозы — то же обращение, основание не откатывается.
+    снова = среда.s.open_emergency("max", uid, sign_group="не дышит", questionnaire_version="q-1")
+    assert снова.case_id == экстренное.case_id and снова.legal_basis == "consent"
+
+
 # --- И11 --------------------------------------------------------------------
 
 def test_и11_снимок_согласия_на_каждом_обращении(среда):
@@ -541,6 +559,9 @@ def test_и12_версия_справочника_не_меняется(сред
     case = среда.довести(среда.черновик(), ROUTE_CONFIRMED)
     среда.s.transition(case.case_id, REFERRED, who=ОПЕРАТОР,
                        directory_entry_id=первая.directory_entry_id, referral_channel="call")
+    исход = среда.s.record_outcome(case.case_id, need="home_social_service", action="referral",
+                                   result="waiting", who=ОПЕРАТОР,
+                                   directory_entry_id=первая.directory_entry_id)
     среда.часы.сдвинуть(days=90)
     вторая = среда.s.replace_directory_entry(первая.directory_entry_id, phone="8 8482 00-00-02")
     старая = среда.s.directory_entry(первая.directory_entry_id)
@@ -549,6 +570,7 @@ def test_и12_версия_справочника_не_меняется(сред
     assert вторая.hours == "пн–пт 9–17" and вторая.valid_to is None
     направление, = среда.s.referrals(case.case_id)
     assert направление.directory_entry_id == первая.directory_entry_id
+    assert среда.s.outcomes(case.case_id) == [исход]
     with pytest.raises(CaseError):
         среда.s.replace_directory_entry(первая.directory_entry_id, phone="другой")
     with pytest.raises(CaseError):
@@ -633,6 +655,44 @@ def test_повторное_заново_даёт_новую_версию_анк
     with pytest.raises(CaseError):
         среда.s.update_intake(case.case_id, who=BOT, story="я" * 4001)
     assert "intake_version" in _события(среда, case)
+
+
+def test_повторная_эскалация_ничего_не_дублирует(среда):
+    """Т2: эскалация и возврат на разных этапах, в том числе дважды подряд.
+    Номер, предложенный маршрут, направление и задачи контроля не множатся,
+    возврат не меняет ничего, кроме статуса, а в истории — каждая эскалация."""
+    case = среда.s.transition(среда.черновик().case_id, NEW, who=BOT, trigger="checkpoint")
+    case = среда.s.suggest_route(case.case_id, route="М2", reason="две сферы",
+                                 signals=["self_care"], rules_version="routing-1")
+    запись = среда.запись()
+
+    def туда_и_обратно(статус: str) -> Case:
+        до = среда.s.case(case.case_id)
+        эск = среда.s.transition(case.case_id, ESCALATED, who=ОПЕРАТОР, reason=f"разбор: {статус}")
+        assert эск.status_before_escalation == статус
+        назад = среда.s.transition(case.case_id, статус, who=ОПЕРАТОР)
+        assert назад == до, "возврат от старшего изменил что-то, кроме статуса"
+        return назад
+
+    туда_и_обратно(NEW)
+    туда_и_обратно(NEW)
+    среда.s.transition(case.case_id, ASSIGNED, who=ОПЕРАТОР, assigned_to=ОПЕРАТОР)
+    туда_и_обратно(ASSIGNED)
+    среда.s.transition(case.case_id, CONTACTED, who=ОПЕРАТОР)
+    среда.s.transition(case.case_id, ROUTE_CONFIRMED, who=ОПЕРАТОР, final_route="М2")
+    среда.s.transition(case.case_id, REFERRED, who=ОПЕРАТОР,
+                       directory_entry_id=запись.directory_entry_id, referral_channel="call")
+    туда_и_обратно(REFERRED)
+    среда.s.transition(case.case_id, SERVICE_STARTED, who=ОПЕРАТОР)
+    среда.s.transition(case.case_id, CONTROL, who=ОПЕРАТОР)
+    итог = туда_и_обратно(CONTROL)
+
+    assert итог.number == case.number and итог.suggested_route == case.suggested_route
+    assert len(среда.s.referrals(case.case_id)) == 1
+    assert sorted(t.kind for t in среда.s.tasks(case.case_id)) == ["control_d30", "control_d7"]
+    эскалации = [e for e in среда.s.events(case.case_id)
+                 if e.kind == "status_changed" and e.payload["to"] == ESCALATED]
+    assert [e.payload["from"] for e in эскалации] == [NEW, NEW, ASSIGNED, REFERRED, CONTROL]
 
 
 def test_эскалация_возвращает_в_прежний_статус(среда):
