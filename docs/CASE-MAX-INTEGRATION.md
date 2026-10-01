@@ -55,3 +55,20 @@ CASE-репозиторий использует ту же PostgreSQL-транз
 - AI.
 
 Это следующие отдельные этапы, чтобы CASE оставался единственным источником бизнес-истины.
+
+
+## Production completion — CASE-centered CRM and I18
+
+The production PostgreSQL CRM now exposes CASE-domain operations instead of introducing a second lifecycle implementation:
+- assignment/contact;
+- route confirmation with an explicit reason;
+- referral via immutable directory entry;
+- service start;
+- reassignment;
+- closure.
+
+The legacy `operator_cases` storage is retained only for the laptop/pilot compatibility path. Production CASE remains the lifecycle source of truth.
+
+Automatic outbound messages are bound to the exact CASE with `case_id` and `automatic=true`. Closing a CASE cancels its queued automatic messages. The database uses the same per-person advisory lock as the outbox worker, so close-vs-send is serialized; the worker then revalidates the exact CASE immediately before calling MAX. A later CASE therefore cannot revive an automatic message belonging to an earlier closed CASE.
+
+No automatic route confirmation, referral, medical transfer, or AI decision is introduced.
