@@ -175,3 +175,13 @@ def test_ступени_описаны_в_том_же_порядке_что_сч
     assert all(имена)
     assert len(set(имена)) == len(имена)
     assert имена[0] == "Написали боту"
+
+
+def test_воронка_запускается_без_аргументов(tmp_path):
+    """preflight советует `python funnel.py` — команда не должна падать."""
+    import subprocess, sys, pathlib
+    корень = pathlib.Path(__file__).resolve().parent.parent
+    готово = subprocess.run([sys.executable, str(корень / "funnel.py")],
+                            capture_output=True, text=True, cwd=tmp_path,
+                            env={"PATH": "/usr/bin:/bin"})
+    assert готово.returncode == 0, готово.stderr
