@@ -781,6 +781,13 @@ class Survey:
         # не обрабатываются — иначе получится, что мы что-то собираем
         # до того, как человек разрешил.
         if self.stage(user_id) == "consent":
+            # Подпись кнопки целиком — «Согласен, продолжим» — тоже согласие.
+            # Её печатают, копируют или диктуют голосом, и раньше на неё бот
+            # отвечал «пока кнопка не нажата» — то есть отказывал человеку,
+            # который ровно эту кнопку и назвал.
+            if low.replace(",", " ").split() == ["согласен", "продолжим"]:
+                self.understood(user_id)
+                return self.grant_consent(user_id)
             if low in AGREE_WORDS or low in BEGIN_WORDS or low in RESTART_WORDS:
                 self.understood(user_id)
                 return self.grant_consent(user_id)
