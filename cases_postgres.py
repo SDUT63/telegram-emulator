@@ -266,6 +266,9 @@ class PostgresCaseRepository:
                             (at, directory_entry_id))
 
 
+_НЕИЗМЕНЯЕМОЕ = ("И2:", "И3:", "И5:", "И12:", "И11: снимок согласия")
+
+
 @contextmanager
 def _ошибки_базы() -> Iterator[None]:
     """Ошибки базы — в ошибки контракта: вызывающему не нужно знать psycopg."""
@@ -276,10 +279,12 @@ def _ошибки_базы() -> Iterator[None]:
             raise OpenCaseExists("И1: у человека уже есть открытое обращение") from exc
         raise ImmutableRecord(str(exc).splitlines()[0]) from exc
     except psycopg.errors.RaiseException as exc:
-        # Сообщения триггеров 014 начинаются с номера инварианта.
+        # Сообщения триггеров 014 и 015 начинаются с номера инварианта или
+        # пробела. Попытка изменить неизменяемое — ImmutableRecord; прочие
+        # нарушения правил (И11 без снимка, И7, И16, Г5) — CaseError.
         сообщение = str(exc).splitlines()[0]
-        if "без снимка согласия" in сообщение:
-            raise CaseError(сообщение) from exc
-        raise ImmutableRecord(сообщение) from exc
+        if сообщение.startswith(_НЕИЗМЕНЯЕМОЕ):
+            raise ImmutableRecord(сообщение) from exc
+        raise CaseError(сообщение) from exc
     except psycopg.errors.IntegrityError as exc:
         raise CaseError(str(exc).splitlines()[0]) from exc

@@ -6,7 +6,8 @@
 контракта на этом хранилище ловили то же, что и на настоящей базе:
 одно открытое обращение на человека, неизменяемый номер, предложенный
 маршрут, снимок согласия и версия справочника, обращение на согласии
-только со снимком согласия.
+только со снимком согласия; с миграцией 015 — причины закрытия
+редакции 3 и судьба открытых задач (И16).
 
 Транзакция — общий замок и копия данных на входе: исключение внутри
 возвращает всё как было.
@@ -22,9 +23,9 @@ from datetime import datetime
 from typing import Iterator
 
 from cases import (
-    CLOSED, CONSENT_BASIS, PROCESSING, Case, CaseError, CaseEvent, Consent,
-    DirectoryEntry, ImmutableRecord, Intake, OpenCaseExists, Outcome, Person,
-    Referral, Task,
+    CLOSED, CONSENT_BASIS, CONTROL_KINDS, OPEN_TASK_STATUSES, PROCESSING, Case,
+    CaseError, CaseEvent, Consent, DirectoryEntry, ImmutableRecord, Intake,
+    OpenCaseExists, Outcome, Person, Referral, Task,
 )
 
 # Таблицы с данными человека — для проверки И14.
@@ -72,6 +73,17 @@ class MemoryCaseRepository:
         for case in self._t["cases"].values():
             if case.legal_basis == CONSENT_BASIS and case.case_id not in со_снимком:
                 raise CaseError("И11: обращение на основании согласия без снимка согласия")
+        # То же, что отложенные триггеры И16 в 015.
+        for задача in self._t["tasks"].values():
+            if задача.status not in OPEN_TASK_STATUSES:
+                continue
+            case = self._t["cases"][задача.case_id]
+            if case.status == CLOSED:
+                raise CaseError("И16: у закрытого обращения не может быть открытых задач")
+            в_контроле = case.status == "CONTROL" or (
+                case.status == "ESCALATED" and case.status_before_escalation == "CONTROL")
+            if задача.kind in CONTROL_KINDS and not в_контроле:
+                raise CaseError("И16: открытые контрольные задачи есть только у обращения в контроле")
 
     def _в_транзакции(self) -> None:
         if not self._depth:
@@ -88,6 +100,8 @@ class MemoryCaseRepository:
             ((case.status == "ESCALATED") == (case.status_before_escalation is not None),
              "эскалированное помнит, откуда пришло"),
             (case.duplicate_of is None or case.duplicate_of != case.case_id, "дубликат самого себя"),
+            (case.close_reason != "consent_not_given" or case.legal_basis == "vital_interest",
+             "consent_not_given — только при vital_interest (И7)"),
         )
         for верно, что in правила:
             if not верно:
@@ -148,6 +162,8 @@ class MemoryCaseRepository:
     def insert_case(self, case: Case) -> Case:
         self._в_транзакции()
         self._проверить_строку(case)
+        if case.close_reason == "consent_not_given":
+            raise CaseError("И7: consent_not_given — только переходом из CONTACTED")
         if case.status != CLOSED and self.open_case_of(case.person_id) is not None:
             raise OpenCaseExists("И1: у человека уже есть открытое обращение")
         if case.number is not None and any(c.number == case.number for c in self._t["cases"].values()):
@@ -164,6 +180,12 @@ class MemoryCaseRepository:
             raise ImmutableRecord("И2: номер обращения не меняется")
         if было.suggested_route is not None and case.suggested_route != было.suggested_route:
             raise ImmutableRecord("И5: предложенный маршрут записывается один раз")
+        # То же, что триггер cases_r3_close_rules в 015.
+        if было.close_reason is None and case.close_reason is not None:
+            if было.status == "DRAFT" and case.close_reason != "abandoned_draft":
+                raise CaseError("Г5: черновик закрывается только как abandoned_draft")
+            if case.close_reason == "consent_not_given" and было.status != "CONTACTED":
+                raise CaseError("И7: consent_not_given — только из CONTACTED")
         if case.number is not None and any(
                 c.number == case.number and c.case_id != case.case_id for c in self._t["cases"].values()):
             raise ImmutableRecord("И2: номер обращения уже выдан")

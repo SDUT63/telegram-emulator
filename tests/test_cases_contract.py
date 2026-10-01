@@ -1,4 +1,4 @@
-"""Тесты контракта модели обращения (docs/МОДЕЛЬ-ОБРАЩЕНИЯ.md, ред. 2).
+"""Тесты контракта модели обращения (docs/МОДЕЛЬ-ОБРАЩЕНИЯ.md, ред. 3).
 
 Каждый тест идёт на обоих хранилищах: в памяти и в PostgreSQL (если
 задан SDUT_DATABASE_URL). Правило, нарушенное в одном хранилище, —
@@ -21,24 +21,27 @@ from cases import (
     ASSIGNED, BOT, CLOSE_REASONS, CLOSED, CONTACTED, CONTROL, DRAFT, ESCALATED, MEDICAL_TRANSFER,
     NEW, NO_CONTACT, P0, PROCESSING, REFERRED, ROUTE_CONFIRMED, SERVICE_STARTED,
     STATUSES, SYSTEM, VITAL_INTEREST, WAITING_EXTERNAL, Case, CaseError, CaseService,
-    ContractGap, ForbiddenTransition, ImmutableRecord, OpenCaseExists, allowed,
+    ForbiddenTransition, ImmutableRecord, OpenCaseExists, Task, allowed,
 )
 from cases_memory import MemoryCaseRepository
 
 DSN = (os.getenv("SDUT_DATABASE_URL") or "").strip()
 ОПЕРАТОР = "coordinator-1"
 
-# Таблица 5.2, переписанная из контракта руками, — независимая сверка
-# с cases.TRANSITIONS. ПО_РЕШЕНИЮ — причины 5.3 без системных и duplicate (Ч6).
+# Таблица 5.2 редакции 3, переписанная из контракта руками, — независимая
+# сверка с cases.TRANSITIONS. ПО_РЕШЕНИЮ — «любая причина координатора»:
+# причины 5.3 без системных, duplicate и consent_not_given (Ч6).
 ПО_РЕШЕНИЮ = ("help_received", "help_partial", "solved_otherwise", "consultation_enough",
-              "refused", "not_eligible", "unable_to_contact")
-ОТКРЫТЫЕ = [s for s in STATUSES if s != CLOSED]
+              "refused", "not_eligible", "unable_to_contact", "ward_died")
+РАБОЧИЕ = [s for s in STATUSES if s not in (DRAFT, CLOSED)]
 ТАБЛИЦА_5_2 = {
     (DRAFT, NEW, None), (DRAFT, CLOSED, "abandoned_draft"),
     (NEW, ASSIGNED, None),
     (ASSIGNED, CONTACTED, None), (ASSIGNED, NO_CONTACT, None),
     (NO_CONTACT, CONTACTED, None), (NO_CONTACT, CLOSED, "unable_to_contact"),
     (CONTACTED, ROUTE_CONFIRMED, None),
+    *((CONTACTED, CLOSED, r) for r in ("consultation_enough", "refused",
+                                        "solved_otherwise", "not_eligible")),
     (ROUTE_CONFIRMED, REFERRED, None), (ROUTE_CONFIRMED, CLOSED, "consultation_enough"),
     (REFERRED, SERVICE_STARTED, None), (REFERRED, WAITING_EXTERNAL, None),
     (REFERRED, CLOSED, "refused"), (REFERRED, CLOSED, "not_eligible"),
@@ -47,14 +50,16 @@ DSN = (os.getenv("SDUT_DATABASE_URL") or "").strip()
     (SERVICE_STARTED, CONTROL, None),
     *((CONTROL, CLOSED, r) for r in ПО_РЕШЕНИЮ),
     (CONTROL, REFERRED, None), (CONTROL, ROUTE_CONFIRMED, None), (CONTROL, WAITING_EXTERNAL, None),
-    # общие правила
-    *((s, ESCALATED, None) for s in ОТКРЫТЫЕ if s != ESCALATED),
-    *((s, CLOSED, "duplicate") for s in ОТКРЫТЫЕ),
+    # общие правила — только для рабочих обращений (5.0, Г5)
+    *((s, ESCALATED, None) for s in РАБОЧИЕ if s != ESCALATED),
+    *((s, CLOSED, "duplicate") for s in РАБОЧИЕ),
+    *((s, CLOSED, "ward_died") for s in РАБОЧИЕ),
     (ESCALATED, NEW, None),          # эскалированное из NEW возвращается в NEW
 }
-# В таблице контракта есть, но правило не определено — пробелы Г1 и Г5
-# (docs/МОДЕЛЬ-ОБРАЩЕНИЯ-ШАГ-1.md). Модуль отклоняет их с ContractGap.
-ПРОБЕЛЫ = {(CONTROL, CONTROL, None): "Г1", (DRAFT, ESCALATED, None): "Г5"}
+# Есть в таблице 5.2, но с условием на основание обращения, которого
+# статусы не видят: обращения тестовой таблицы — на согласии, и для них
+# этот переход запрещён (проверка — в тестах И7 ниже).
+УСЛОВНЫЕ = {(CONTACTED, CLOSED, "consent_not_given"): VITAL_INTEREST}
 
 # Как довести обращение до статуса — каноническим путём.
 ПУТИ = {
@@ -252,12 +257,12 @@ def test_и4_таблица_модуля_совпадает_с_контракт�
     for frm in STATUSES:
         for to in STATUSES:
             for reason in ([None] if to != CLOSED else [None, *CLOSE_REASONS]):
-                ожидается = (frm, to, reason) in ТАБЛИЦА_5_2 or (frm, to, reason) in ПРОБЕЛЫ
+                ожидается = (frm, to, reason) in ТАБЛИЦА_5_2 or (frm, to, reason) in УСЛОВНЫЕ
                 назад = NEW if frm == ESCALATED else None
                 assert allowed(frm, to, reason, back_to=назад) == ожидается, (frm, to, reason)
 
 
-@pytest.mark.parametrize("frm,to,reason", sorted(ТАБЛИЦА_5_2 - set(ПРОБЕЛЫ), key=str))
+@pytest.mark.parametrize("frm,to,reason", sorted(ТАБЛИЦА_5_2, key=str))
 def test_и4_разрешённые_переходы_выполняются(среда, frm, to, reason):
     case = среда.довести(среда.черновик(), frm)
     после = среда.s.transition(case.case_id, to, **среда.данные(case, to, reason))
@@ -274,7 +279,7 @@ def test_и4_запрещённые_переходы_ничего_не_меня�
     было_событий = len(среда.s.events(case.case_id))
     for to in STATUSES:
         for reason in ([None] if to != CLOSED else [None, *CLOSE_REASONS]):
-            if (frm, to, reason) in ТАБЛИЦА_5_2 or (frm, to, reason) in ПРОБЕЛЫ:
+            if (frm, to, reason) in ТАБЛИЦА_5_2:
                 continue
             данные = среда.данные(case, to, reason)
             with pytest.raises(ForbiddenTransition):
@@ -408,7 +413,7 @@ def test_и8_контрольные_задачи_от_начала_помощи(
     сроки = {t.kind: t.due_at for t in среда.s.tasks(case.case_id)}
     assert сроки == {"control_d7": начало + timedelta(days=7), "control_d30": начало + timedelta(days=30)}
     assert all(t.assigned_to == ОПЕРАТОР for t in среда.s.tasks(case.case_id))   # Ч12
-    for вид in ("control_d7", "control_d30"):
+    for вид in ("control_d7", "control_d30", "control_extra"):
         with pytest.raises(CaseError):
             среда.s.create_task(case.case_id, вид, due_at=среда.часы.now, who=ОПЕРАТОР)
 
@@ -721,15 +726,315 @@ def test_дубликат_закрывается_со_ссылкой(среда)
     assert закрыто.close_reason == "duplicate" and закрыто.duplicate_of == основное.case_id
 
 
-def test_г1_продление_контроля_ждёт_редакции_3(среда):
+# --- Редакция 3 -------------------------------------------------------------
+
+def _просрочить(среда: Среда, задача: Task) -> None:
+    """Отметка «просрочена» — дело шага 6; для теста ставим её в хранилище."""
+    with среда.s.repo.transaction():
+        среда.s.repo.update_task(replace(задача, status="overdue"))
+
+
+def _продлить(среда: Среда, case: Case, дней: int = 7, причина: str = "помощь идёт, позвонить ещё"):
+    return среда.s.extend_control(case.case_id, due_at=среда.часы.now + timedelta(days=дней),
+                                  reason=причина, who=ОПЕРАТОР)
+
+
+# Г1: продление контроля — операция, не переход (5.5, И8)
+
+def test_и8_продление_контроля_создаёт_дополнительную_задачу(среда):
+    case = _в_контроле(среда, начало_дней_назад=10)
+    задачи_до = среда.s.tasks(case.case_id)
+    событий_до = len(среда.s.events(case.case_id))
+    срок = среда.часы.now + timedelta(days=14)
+    продление = среда.s.extend_control(case.case_id, due_at=срок, reason="помощь идёт",
+                                       who=ОПЕРАТОР)
+    assert (продление.kind, продление.status, продление.due_at, продление.assigned_to) == \
+        ("control_extra", "open", срок, ОПЕРАТОР)
+    assert среда.s.tasks(case.case_id) == задачи_до + [продление]     # прежние не тронуты
+    новые = среда.s.events(case.case_id)[событий_до:]
+    assert [e.kind for e in новые] == ["control_extended"]             # ровно одно событие
+    assert новые[0].payload == {"task_id": продление.task_id, "due_at": срок.isoformat(),
+                                "reason": "помощь идёт"}
+    assert среда.s.case(case.case_id) == case      # статус, начало помощи, вехи — как были
+
+
+def test_и8_повторное_продление_не_меняет_прежние_задачи(среда):
     case = _в_контроле(среда)
-    with pytest.raises(ContractGap, match="Г1"):
-        среда.s.transition(case.case_id, CONTROL, who=ОПЕРАТОР, reason="помощь идёт, позвонить ещё")
+    первое = _продлить(среда, case, 7, "первый раз")
+    задачи_до = среда.s.tasks(case.case_id)
+    второе = _продлить(среда, case, 21, "второй раз")
+    assert второе.task_id != первое.task_id and второе.kind == "control_extra"
+    assert среда.s.tasks(case.case_id) == задачи_до + [второе]
+    assert sorted(t.kind for t in среда.s.tasks(case.case_id)) == \
+        ["control_d30", "control_d7", "control_extra", "control_extra"]
+
+
+def test_и8_продление_только_в_контроле_со_сроком_и_причиной(среда):
+    case = _в_контроле(среда)
+    сейчас = среда.часы.now
+    with pytest.raises(CaseError):
+        среда.s.extend_control(case.case_id, due_at=datetime(2026, 11, 1, 9), reason="r", who=ОПЕРАТОР)
+    with pytest.raises(CaseError):
+        среда.s.extend_control(case.case_id, due_at=сейчас - timedelta(minutes=1), reason="r",
+                               who=ОПЕРАТОР)
+    with pytest.raises(CaseError):
+        среда.s.extend_control(case.case_id, due_at=сейчас + timedelta(days=7), reason="  ",
+                               who=ОПЕРАТОР)
+    with pytest.raises(ForbiddenTransition):                    # не переход
+        среда.s.transition(case.case_id, CONTROL, who=ОПЕРАТОР, reason="продлить")
+    среда.s.transition(case.case_id, ESCALATED, who=ОПЕРАТОР, reason="разбор у старшего")
+    with pytest.raises(CaseError):                              # из ESCALATED — сначала возврат
+        _продлить(среда, case)
+    среда.s.transition(case.case_id, CONTROL, who=ОПЕРАТОР)
+    направленное = среда.довести(среда.черновик(), REFERRED)
+    with pytest.raises(CaseError):
+        _продлить(среда, направленное)
+    assert all(t.kind != "control_extra" for t in среда.s.tasks(case.case_id))
+    assert среда.s.tasks(направленное.case_id) == []
+
+
+def test_и8_итог_продления_требует_последствия(среда):
+    case = _в_контроле(среда)
+    продление = _продлить(среда, case)
+    with pytest.raises(CaseError):
+        среда.s.complete_task(продление.task_id, "provider_no_show", who=ОПЕРАТОР)
+    срок = среда.часы.now + timedelta(days=1)
+    среда.s.complete_task(продление.task_id, "provider_no_show", who=ОПЕРАТОР,
+                          follow_up_kind="escalation", follow_up_due_at=срок)
+    assert _задача(среда, case, "escalation").due_at == срок
+    assert среда.s.case(case.case_id).status == CONTROL
+
+
+# Г2: закрытие после разговора; consent_not_given (5.2, 5.3, И7)
+
+def test_и7_закрытие_после_разговора(среда):
+    for причина in ("consultation_enough", "refused", "solved_otherwise", "not_eligible"):
+        case = среда.довести(среда.черновик(), CONTACTED)
+        закрыто = среда.s.transition(case.case_id, CLOSED, who=ОПЕРАТОР, reason=причина)
+        assert закрыто.close_reason == причина
+    case = среда.довести(среда.черновик(), CONTACTED)
+    for причина in ("help_received", "help_partial", "unable_to_contact"):
+        with pytest.raises(ForbiddenTransition):
+            среда.s.transition(case.case_id, CLOSED, who=ОПЕРАТОР, reason=причина)
     assert среда.s.case(case.case_id) == case
 
 
-def test_г5_эскалация_черновика_ждёт_редакции_3(среда):
+def test_и7_отказ_от_согласия_только_в_режиме_б(среда):
+    def экстренное() -> Case:
+        return среда.s.open_emergency("max", среда.человек(), sign_group="не дышит",
+                                      questionnaire_version="q-1")
+
+    def пройти(case: Case, путь: list) -> Case:
+        for to in путь:
+            case = среда.s.transition(case.case_id, to, **среда.данные(case, to))
+        return case
+
+    # Можно: режим Б и после разговора (в том числе переписки в чате).
+    case = пройти(экстренное(), [ASSIGNED, CONTACTED])
+    закрыто = среда.s.transition(case.case_id, CLOSED, who=ОПЕРАТОР, reason="consent_not_given")
+    assert закрыто.close_reason == "consent_not_given" and закрыто.legal_basis == VITAL_INTEREST
+    # Нельзя: не из CONTACTED.
+    for путь in ([], [ASSIGNED], [ASSIGNED, NO_CONTACT]):
+        case = пройти(экстренное(), путь)
+        with pytest.raises(ForbiddenTransition):
+            среда.s.transition(case.case_id, CLOSED, who=ОПЕРАТОР, reason="consent_not_given")
+        assert среда.s.case(case.case_id) == case
+    # Не ответил — как у всех.
+    case = пройти(экстренное(), [ASSIGNED, NO_CONTACT])
+    assert среда.s.transition(case.case_id, CLOSED, who=ОПЕРАТОР,
+                              reason="unable_to_contact").close_reason == "unable_to_contact"
+    # Нельзя: обычное обращение на согласии.
+    обычное = среда.довести(среда.черновик(), CONTACTED)
+    with pytest.raises(ForbiddenTransition):
+        среда.s.transition(обычное.case_id, CLOSED, who=ОПЕРАТОР, reason="consent_not_given")
+    assert среда.s.case(обычное.case_id) == обычное
+
+
+# Г3: ward_died — самостоятельная причина, из любого рабочего статуса (5.3)
+
+@pytest.mark.parametrize("статус", РАБОЧИЕ)
+def test_и7_смерть_закрывает_из_любого_рабочего_статуса(среда, статус):
+    case = среда.довести(среда.черновик(), статус)
+    закрыто = среда.s.transition(case.case_id, CLOSED, who=ОПЕРАТОР, reason="ward_died")
+    assert (закрыто.status, закрыто.close_reason, закрыто.duplicate_of) == (CLOSED, "ward_died", None)
+    assert all(t.status not in ("open", "overdue") for t in среда.s.tasks(case.case_id))   # И16
+
+
+# Г5: черновик не эскалируется и не объединяется (5.0, 5.2)
+
+def test_и4_черновик_не_эскалируется_и_не_объединяется(среда):
+    черновик = среда.черновик()
+    основное = среда.довести(среда.черновик(), NEW)
+    with pytest.raises(ForbiddenTransition):
+        среда.s.transition(черновик.case_id, ESCALATED, who=ОПЕРАТОР, reason="просрочка")
+    with pytest.raises(ForbiddenTransition):
+        среда.s.transition(черновик.case_id, CLOSED, who=ОПЕРАТОР, reason="duplicate",
+                           duplicate_of=основное.case_id)
+    with pytest.raises(ForbiddenTransition):
+        среда.s.transition(черновик.case_id, CLOSED, who=ОПЕРАТОР, reason="ward_died")
+    assert среда.s.case(черновик.case_id) == черновик
+
+
+# И16: судьба открытых задач (5.6)
+
+def test_и16_закрытие_отменяет_открытые_задачи(среда):
+    case = _в_контроле(среда)
+    д7, д30 = _задача(среда, case, "control_d7"), _задача(среда, case, "control_d30")
+    среда.s.complete_task(д7.task_id, "ongoing", who=ОПЕРАТОР)
+    _просрочить(среда, д30)
+    продление = _продлить(среда, case)
+    звонок = среда.s.create_task(case.case_id, "first_contact",
+                                 due_at=среда.часы.now + timedelta(hours=1), who=ОПЕРАТОР)
+    событий_до = len(среда.s.events(case.case_id))
+
+    среда.s.transition(case.case_id, CLOSED, who=ОПЕРАТОР, reason="help_received")
+
+    по_номеру = {t.task_id: t for t in среда.s.tasks(case.case_id)}
+    assert по_номеру[д7.task_id].status == "done"                      # сделанная — как была
+    отменённые = {д30.task_id, продление.task_id, звонок.task_id}
+    assert {i for i, t in по_номеру.items() if t.status == "cancelled"} == отменённые
+    assert not any(t.status in ("open", "overdue") for t in по_номеру.values())
+    отмены = [e for e in среда.s.events(case.case_id)[событий_до:] if e.kind == "task_cancelled"]
+    assert {e.payload["task_id"] for e in отмены} == отменённые
+    assert {e.payload["reason"] for e in отмены} == {"case_closed"}
+    with pytest.raises(CaseError):
+        среда.s.create_task(case.case_id, "first_contact",
+                            due_at=среда.часы.now + timedelta(hours=1), who=ОПЕРАТОР)
+
+
+@pytest.mark.parametrize("куда", [REFERRED, ROUTE_CONFIRMED, WAITING_EXTERNAL])
+def test_и16_новое_направление_отменяет_только_контроль(среда, куда):
+    case = _в_контроле(среда)
+    д7, д30 = _задача(среда, case, "control_d7"), _задача(среда, case, "control_d30")
+    среда.s.complete_task(д7.task_id, "provider_no_show", who=ОПЕРАТОР,
+                          follow_up_kind="referral_followup",
+                          follow_up_due_at=среда.часы.now + timedelta(days=1))
+    последствие = _задача(среда, case, "referral_followup")
+    продление = _продлить(среда, case)
+    событий_до = len(среда.s.events(case.case_id))
+
+    среда.s.transition(case.case_id, куда, **среда.данные(case, куда))
+
+    по_номеру = {t.task_id: t for t in среда.s.tasks(case.case_id)}
+    assert по_номеру[д7.task_id].status == "done"
+    assert по_номеру[д30.task_id].status == "cancelled"
+    assert по_номеру[продление.task_id].status == "cancelled"
+    assert по_номеру[последствие.task_id].status == "open"           # про новое направление
+    отмены = [e for e in среда.s.events(case.case_id)[событий_до:] if e.kind == "task_cancelled"]
+    assert {e.payload["task_id"] for e in отмены} == {д30.task_id, продление.task_id}
+    assert {e.payload["reason"] for e in отмены} == {"control_replaced"}
+    if куда == REFERRED:
+        начало = среда.часы.now + timedelta(days=3)
+        среда.часы.now = начало
+        среда.s.transition(case.case_id, SERVICE_STARTED, who=ОПЕРАТОР)
+        среда.s.transition(case.case_id, CONTROL, who=ОПЕРАТОР)
+        новые = [t for t in среда.s.tasks(case.case_id)
+                 if t.status == "open" and t.kind in ("control_d7", "control_d30")]
+        assert sorted((t.kind, t.due_at) for t in новые) == [
+            ("control_d30", начало + timedelta(days=30)), ("control_d7", начало + timedelta(days=7))]
+
+
+def test_и16_эскалация_задачи_не_трогает(среда):
+    case = _в_контроле(среда)
+    _продлить(среда, case)
+    до = среда.s.tasks(case.case_id)
+    среда.s.transition(case.case_id, ESCALATED, who=ОПЕРАТОР, reason="разбор у старшего")
+    assert среда.s.tasks(case.case_id) == до
+    среда.s.transition(case.case_id, CONTROL, who=ОПЕРАТОР)
+    assert среда.s.tasks(case.case_id) == до
+
+
+def test_и16_хранилище_не_даёт_закрыть_с_открытой_задачей(среда):
+    """Последний рубеж: запись в обход модуля обращений не проходит."""
+    case = _в_контроле(среда)
+    repo = среда.s.repo
+    with pytest.raises(CaseError):
+        with repo.transaction():
+            repo.update_case(replace(case, status=CLOSED, close_reason="help_received",
+                                     closed_at=среда.часы.now))
+    assert среда.s.case(case.case_id).status == CONTROL
+    направленное = среда.довести(среда.черновик(), REFERRED)
+    with pytest.raises(CaseError):
+        with repo.transaction():
+            repo.insert_task(Task(None, направленное.case_id, "control_extra",
+                                  среда.часы.now + timedelta(days=1), "open", среда.часы.now))
+    assert среда.s.tasks(направленное.case_id) == []
+
+
+# И17: возврат от старшего меняет только статус (5.7)
+
+def _снимок(среда: Среда, case_id: int) -> dict:
+    s = среда.s
+    return {"case": s.case(case_id), "referrals": s.referrals(case_id),
+            "outcomes": s.outcomes(case_id), "tasks": s.tasks(case_id),
+            "consents": s.consents(case_id), "intakes": s.intakes(case_id)}
+
+
+def test_и17_возврат_меняет_только_статус(среда):
+    s = среда.s
     case = среда.черновик()
-    with pytest.raises(ContractGap, match="Г5"):
-        среда.s.transition(case.case_id, ESCALATED, who=ОПЕРАТОР, reason="просрочка")
-    assert среда.s.case(case.case_id) == case
+    s.suggest_route(case.case_id, route="М2", reason="две сферы", signals=["self_care"],
+                    rules_version="routing-1")
+    s.transition(case.case_id, NEW, who=BOT, trigger="checkpoint")
+    s.set_priority(case.case_id, "P1", who=ОПЕРАТОР, reason="открытая рана со слов дочери")
+    s.set_urgency_p0(case.case_id, who=BOT, signals=["тяжело дышит"])
+    s.add_consent(case.case_id, kind=MEDICAL_TRANSFER, version="форма-3", text_hash=None,
+                  given_via="paper", who=ОПЕРАТОР)
+    s.new_intake_version(case.case_id, who=BOT, questionnaire_version="q-1", answers={"who": "О себе"})
+    for to in (ASSIGNED, CONTACTED, ROUTE_CONFIRMED, REFERRED):
+        case = s.transition(case.case_id, to, **среда.данные(case, to))
+    s.record_outcome(case.case_id, need="home_social_service", action="referral",
+                     result="waiting", who=ОПЕРАТОР)
+    s.transition(case.case_id, SERVICE_STARTED, who=ОПЕРАТОР)
+    s.transition(case.case_id, CONTROL, who=ОПЕРАТОР)
+    _продлить(среда, s.case(case.case_id))
+    проба = s.transition(среда.черновик().case_id, NEW, who=BOT, trigger="checkpoint")
+
+    до = _снимок(среда, case.case_id)
+    событий_до = len(s.events(case.case_id))
+    s.transition(case.case_id, ESCALATED, who=ОПЕРАТОР, reason="разбор у старшего")
+    при_эскалации = _снимок(среда, case.case_id)
+    s.transition(case.case_id, CONTROL, who=ОПЕРАТОР)
+    после = _снимок(среда, case.case_id)
+
+    # Вход в ESCALATED — только статус и память, откуда пришли.
+    assert при_эскалации == {**до, "case": replace(до["case"], status=ESCALATED,
+                                                    status_before_escalation=CONTROL)}
+    # Возврат — всё как было: номер, вехи, маршрут, ответственный, приоритет,
+    # экстренность, основание, направления, исходы, задачи, согласия, анкеты.
+    assert после == до
+    новые = s.events(case.case_id)[событий_до:]
+    assert [(e.kind, e.payload["from"], e.payload["to"]) for e in новые] == [
+        ("status_changed", CONTROL, ESCALATED), ("status_changed", ESCALATED, CONTROL)]
+    # Счётчик номеров не тронут: следующий номер — сразу за пробным.
+    следующее = s.transition(среда.черновик().case_id, NEW, who=BOT, trigger="checkpoint")
+    assert int(НОМЕР.match(следующее.number).group(2)) == int(НОМЕР.match(проба.number).group(2)) + 1
+
+
+# Ч12: смена ответственного (4.6)
+
+def test_ч12_смена_ответственного_передаёт_только_его_открытые_задачи(среда):
+    case = _в_контроле(среда)                       # ответственный — ОПЕРАТОР
+    д7, д30 = _задача(среда, case, "control_d7"), _задача(среда, case, "control_d30")
+    _просрочить(среда, д30)
+    старшему = среда.s.create_task(case.case_id, "escalation",
+                                   due_at=среда.часы.now + timedelta(hours=2), who=ОПЕРАТОР,
+                                   assigned_to="senior-1")
+    сделанная = среда.s.create_task(case.case_id, "first_contact",
+                                    due_at=среда.часы.now + timedelta(hours=1), who=ОПЕРАТОР)
+    среда.s.complete_task(сделанная.task_id, "дозвонились", who=ОПЕРАТОР)
+    до = {t.task_id: t for t in среда.s.tasks(case.case_id)}
+    событий_до = len(среда.s.events(case.case_id))
+
+    среда.s.reassign(case.case_id, "coordinator-2", who="senior-1")
+
+    после = {t.task_id: t for t in среда.s.tasks(case.case_id)}
+    assert set(после) == set(до)                                       # ничего не пересоздано
+    for task_id in (д7.task_id, д30.task_id):
+        assert после[task_id] == replace(до[task_id], assigned_to="coordinator-2")
+    assert после[д30.task_id].status == "overdue"                     # просроченная — просрочена
+    assert после[старшему.task_id] == до[старшему.task_id]            # чужая — не тронута
+    assert после[сделанная.task_id] == до[сделанная.task_id]          # закрытая — не тронута
+    передачи = [e for e in среда.s.events(case.case_id)[событий_до:] if e.kind == "task_reassigned"]
+    assert sorted((e.payload["task_id"], e.payload["from"], e.payload["to"]) for e in передачи) == \
+        sorted((i, ОПЕРАТОР, "coordinator-2") for i in (д7.task_id, д30.task_id))

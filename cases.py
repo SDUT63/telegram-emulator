@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 """Модуль обращений — единственное место правил модели обращения СДУТ.
 
-Контракт: docs/МОДЕЛЬ-ОБРАЩЕНИЯ.md, редакция 2 (доменный контракт v1).
-Соответствие правил коду и тестам — docs/МОДЕЛЬ-ОБРАЩЕНИЯ-ШАГ-1.md;
-там же прочтения (Ч1–Ч12) и пробелы (Г1–Г5), которые ждут редакции 3.
-Ссылки вида «5.2», «И4», «Ч3», «Г1» в этом файле ведут туда.
+Контракт: docs/МОДЕЛЬ-ОБРАЩЕНИЯ.md, редакция 3 (доменный контракт v1).
+Соответствие правил коду и тестам — docs/МОДЕЛЬ-ОБРАЩЕНИЯ-ШАГ-1.md.
+Ссылки вида «5.2», «И16», «Ч12», «Г1» в этом файле ведут туда: номера
+разделов, инвариантов и прочтений — контракта, пробелы Г1–Г5 — таблицы
+соответствия (их решила редакция 3).
 
 Модуль не знает, где лежат данные: чтение и запись идут через
 CaseRepository. Адаптеры (cases_memory.py, cases_postgres.py) только
@@ -41,26 +42,30 @@ STATUSES = (
     DRAFT, NEW, ASSIGNED, CONTACTED, ROUTE_CONFIRMED, REFERRED,
     SERVICE_STARTED, CONTROL, CLOSED, NO_CONTACT, WAITING_EXTERNAL, ESCALATED,
 )
-# Открытый — любой статус, кроме CLOSED, включая черновик (Ч5, И1).
+# Открытое — любой статус, кроме CLOSED, включая черновик (5.0, И1).
 OPEN_STATUSES = frozenset(STATUSES) - {CLOSED}
+# Рабочее — кроме черновика и закрытого (5.0). Всё, что делает
+# координатор, относится к рабочим: черновик он не видит, номера у него нет.
+WORKING_STATUSES = frozenset(STATUSES) - {DRAFT, CLOSED}
 
 # --- 5.2 Переходы ----------------------------------------------------------
 #
-# Строки таблицы 5.2, кроме трёх общих правил, которые проверяет allowed():
-# любой открытый → ESCALATED; ESCALATED → статус, из которого пришли;
-# любой открытый → CLOSED(duplicate).
+# Строки таблицы 5.2, кроме общих правил, которые проверяет allowed():
+# любое рабочее → ESCALATED; ESCALATED → статус, из которого пришли;
+# любое рабочее → CLOSED(duplicate); любое рабочее → CLOSED(ward_died).
+# Продление контроля — не переход, а операция extend_control() (5.5).
 
 TRANSITIONS: dict[str, frozenset[str]] = {
     DRAFT: frozenset({NEW, CLOSED}),
     NEW: frozenset({ASSIGNED}),
     ASSIGNED: frozenset({CONTACTED, NO_CONTACT}),
     NO_CONTACT: frozenset({CONTACTED, CLOSED}),
-    CONTACTED: frozenset({ROUTE_CONFIRMED}),
+    CONTACTED: frozenset({ROUTE_CONFIRMED, CLOSED}),
     ROUTE_CONFIRMED: frozenset({REFERRED, CLOSED}),
     REFERRED: frozenset({SERVICE_STARTED, WAITING_EXTERNAL, CLOSED}),
     WAITING_EXTERNAL: frozenset({SERVICE_STARTED, CLOSED}),
     SERVICE_STARTED: frozenset({CONTROL}),
-    CONTROL: frozenset({CLOSED, REFERRED, ROUTE_CONFIRMED, WAITING_EXTERNAL, CONTROL}),
+    CONTROL: frozenset({CLOSED, REFERRED, ROUTE_CONFIRMED, WAITING_EXTERNAL}),
 }
 
 # Основания перехода DRAFT → NEW (Ч7).
@@ -71,18 +76,28 @@ NEW_TRIGGERS = ("checkpoint", "p0_alert_with_phone", "callback_request")
 CLOSE_REASONS = (
     "help_received", "help_partial", "solved_otherwise", "consultation_enough",
     "refused", "not_eligible", "unable_to_contact", "duplicate",
-    "abandoned_draft", "migrated",
+    "abandoned_draft", "migrated", "consent_not_given", "ward_died",
 )
 # Закрывает не человек: брошенный черновик — по сроку, перенесённое — перенос.
 SYSTEM_CLOSE_REASONS = frozenset({"abandoned_draft", "migrated"})
-_ПО_РЕШЕНИЮ = frozenset(CLOSE_REASONS) - SYSTEM_CLOSE_REASONS - {"duplicate"}
+# Только у обращения режима Б и только из CONTACTED (5.3, И7).
+CONSENT_NOT_GIVEN = "consent_not_given"
+# Причины, разрешённые из любого рабочего статуса (5.2). Это две
+# самостоятельные причины: ward_died — не разновидность duplicate, общее
+# у них только правило перехода «рабочее → CLOSED(причина)» (5.3).
+WORKING_CLOSE_REASONS = frozenset({"duplicate", "ward_died"})
+# «Любая причина координатора» (5.2, Ч6).
+_ПО_РЕШЕНИЮ = (frozenset(CLOSE_REASONS) - SYSTEM_CLOSE_REASONS
+               - {"duplicate", CONSENT_NOT_GIVEN})
 
 # Из какого статуса какими причинами закрывают. Где таблица 5.2 называет
-# причины — только они; где пишет «CLOSED» без перечня — любая причина
-# координатора (Ч6). duplicate — по общему правилу, из любого открытого.
+# причины — только они; где пишет «любая причина координатора» — _ПО_РЕШЕНИЮ
+# (Ч6). duplicate и ward_died — по общему правилу, из любого рабочего.
 CLOSE_REASONS_FROM: dict[str, frozenset[str]] = {
     DRAFT: frozenset({"abandoned_draft"}),
     NO_CONTACT: frozenset({"unable_to_contact"}),
+    CONTACTED: frozenset({"consultation_enough", "refused", "solved_otherwise",
+                          "not_eligible", CONSENT_NOT_GIVEN}),
     ROUTE_CONFIRMED: frozenset({"consultation_enough"}),
     REFERRED: frozenset({"refused", "not_eligible"}),
     WAITING_EXTERNAL: _ПО_РЕШЕНИЮ,
@@ -110,9 +125,11 @@ P0 = "P0"
 
 TASK_KINDS = (
     "first_contact", "confirm_route", "referral_followup",
-    "control_d7", "control_d30", "escalation",
+    "control_d7", "control_d30", "control_extra", "escalation",
 )
-CONTROL_KINDS = frozenset({"control_d7", "control_d30"})
+# Контрольные задачи: Д+7 и Д+30 создаёт вход в CONTROL, control_extra —
+# операция продления (И8, 5.5). Только их отменяет уход из CONTROL (5.6).
+CONTROL_KINDS = frozenset({"control_d7", "control_d30", "control_extra"})
 FOLLOW_UP_KINDS = frozenset({"referral_followup", "escalation"})
 OPEN_TASK_STATUSES = frozenset({"open", "overdue"})
 
@@ -123,8 +140,12 @@ CONTROL_RESULTS = (
     "received", "partially", "ongoing", "solved_otherwise",
     "waiting_start", "provider_no_show", "refused", "no_contact",
 )
-# Эти итоги на Д+7 не ждут Д+30: задача-последствие создаётся сразу (5.2).
+# Эти итоги на Д+7 и на продлении не ждут следующего звонка:
+# задача-последствие создаётся сразу (4.6).
 FOLLOW_UP_RESULTS = frozenset({"waiting_start", "provider_no_show"})
+FOLLOW_UP_SOURCES = frozenset({"control_d7", "control_extra"})
+# Уход из CONTROL сюда отменяет открытый контроль (5.6, И16).
+CONTROL_REPLACED_BY = frozenset({REFERRED, ROUTE_CONFIRMED, WAITING_EXTERNAL})
 
 REFERRAL_CHANNELS = ("call", "letter", "in_person")
 
@@ -160,7 +181,7 @@ class ForbiddenTransition(CaseError):
 
 
 class ContractGap(CaseError):
-    """Правило не определено редакцией 2 контракта — ждёт редакции 3."""
+    """Правило не определено контрактом — ждёт новой редакции."""
 
 
 class NotFound(CaseError):
@@ -372,13 +393,16 @@ class CaseRepository(Protocol):
 
 
 def allowed(frm: str, to: str, reason: str | None = None, *, back_to: str | None = None) -> bool:
-    """Есть ли переход в таблице 5.2. Данные перехода здесь не проверяются."""
+    """Есть ли переход в таблице 5.2. Данные перехода здесь не проверяются;
+    условие на основание обращения для consent_not_given проверяет
+    transition(): статусов для него недостаточно."""
     if frm == CLOSED:
         return False
-    if to == CLOSED and reason == "duplicate":
-        return True
+    рабочее = frm in WORKING_STATUSES
+    if to == CLOSED and reason in WORKING_CLOSE_REASONS:
+        return рабочее
     if to == ESCALATED:
-        return frm != ESCALATED          # ESCALATED → ESCALATED — не переход (Ч5)
+        return рабочее and frm != ESCALATED   # ESCALATED → ESCALATED — не переход
     if frm == ESCALATED:
         return back_to is not None and to == back_to
     if to not in TRANSITIONS.get(frm, ()):
@@ -460,6 +484,29 @@ class CaseService:
         self._event(case_id, who, "task_created", now, task_id=task.task_id, kind=kind,
                     due_at=due_at.isoformat())
         return task
+
+    def _отменить_задачи(self, case_id: int, who: str, now: datetime, причина: str,
+                         виды: frozenset[str] | None = None) -> None:
+        """Автоматическая отмена открытых задач (5.6, И16): в той же
+        транзакции, что переход, с событием на каждую задачу."""
+        for задача in self.repo.tasks(case_id):
+            if задача.status in OPEN_TASK_STATUSES and (виды is None or задача.kind in виды):
+                self.repo.update_task(replace(задача, status="cancelled"))
+                self._event(case_id, who, "task_cancelled", now, task_id=задача.task_id,
+                            kind=задача.kind, reason=причина)
+
+    def _передать_задачи(self, case_id: int, прежний: str | None, новый: str, who: str,
+                         now: datetime) -> None:
+        """Смена ответственного (Ч12): открытые задачи прежнего переходят к
+        новому. Задача не пересоздаётся, срок не пересчитывается, чужие
+        задачи не трогаются. Нет прежнего — передавать нечего."""
+        if not прежний or прежний == новый:
+            return
+        for задача in self.repo.tasks(case_id):
+            if задача.status in OPEN_TASK_STATUSES and задача.assigned_to == прежний:
+                self.repo.update_task(replace(задача, assigned_to=новый))
+                self._event(case_id, who, "task_reassigned", now, task_id=задача.task_id,
+                            **{"from": прежний, "to": новый})
 
     # --- 7. Создание обращения ----------------------------------------------
 
@@ -746,34 +793,42 @@ class CaseService:
                    referral_channel: str | None = None,
                    service_started_at: datetime | None = None,
                    duplicate_of: int | None = None) -> Case:
-        """Переход по таблице 5.2 со всеми его последствиями — или ничего (И4)."""
+        """Переход по таблице 5.2 со всеми его последствиями — или ничего (И4).
+
+        Строка обращения блокируется на всю транзакцию: переход и
+        автоматическая отмена задач видны другим только вместе (И16).
+        """
         _текст(who, "кто выполняет переход")
         _нужно(to in STATUSES, f"статус: {to!r}")
         with self.repo.transaction():
             now = self._now()
             case = self._case(case_id, lock=True)
             frm = case.status
-            if frm == CONTROL and to == CONTROL:
-                raise ContractGap(
-                    "продление контроля: вид и срок новой контрольной задачи не определены "
-                    "редакцией 2 — пробел Г1, ждёт редакции 3")
-            if frm == DRAFT and to == ESCALATED:
-                raise ContractGap(
-                    "эскалация черновика: 5.2 разрешает её из любого открытого статуса, "
-                    "а И2 и 4.9 требуют номер у каждого рабочего обращения, которого у "
-                    "черновика нет — пробел Г5, ждёт редакции 3")
             if not allowed(frm, to, reason, back_to=case.status_before_escalation):
                 raise ForbiddenTransition(
                     f"{case.number or case_id}: перехода {frm} → {to}"
                     + (f" ({reason})" if reason else "") + " нет в таблице 5.2")
+            if reason == CONSENT_NOT_GIVEN and case.legal_basis != VITAL_INTEREST:
+                raise ForbiddenTransition(
+                    f"{case.number or case_id}: {CONSENT_NOT_GIVEN} — только у обращения "
+                    "режима Б, legal_basis = vital_interest (5.2, И7)")
 
             изменения: dict[str, Any] = {"status": to}
             после: list[Callable[[], None]] = []
 
+            # И16: автоматические отмены — в этой же транзакции. Эскалация и
+            # возврат задачи не трогают (5.7).
+            if to == CLOSED:
+                после.append(lambda: self._отменить_задачи(case_id, who, now, "case_closed"))
+            elif frm == CONTROL and to in CONTROL_REPLACED_BY:
+                после.append(lambda: self._отменить_задачи(
+                    case_id, who, now, "control_replaced", CONTROL_KINDS))
+
             if frm == ESCALATED:
                 изменения["status_before_escalation"] = None
-            # Возврат от старшего — только статус: номер, направление, задачи
-            # контроля уже были созданы, когда обращение впервые туда пришло.
+            # Возврат от старшего — только статус (5.7, И17): номер,
+            # направление, задачи контроля уже были созданы, когда обращение
+            # впервые туда пришло, и повторно не создаются.
             возврат = frm == ESCALATED and to != CLOSED
 
             if возврат:
@@ -799,6 +854,8 @@ class CaseService:
                 изменения["opened_at"] = now
             elif to == ASSIGNED:
                 изменения["assigned_to"] = _текст(assigned_to, "ответственный")
+                прежний = case.assigned_to
+                после.append(lambda: self._передать_задачи(case_id, прежний, assigned_to, who, now))
             elif to == CONTACTED:
                 изменения["contacted_at"] = now
             elif to == ROUTE_CONFIRMED:
@@ -856,21 +913,68 @@ class CaseService:
             return обновлённое
 
     def reassign(self, case_id: int, assigned_to: str, *, who: str) -> Case:
-        """Сменить ответственного, не меняя статус."""
+        """Сменить ответственного, не меняя статус; его открытые задачи
+        переходят к новому (Ч12)."""
+        _текст(assigned_to, "ответственный")
         with self.repo.transaction():
             now = self._now()
-            case = replace(self._open(case_id), assigned_to=_текст(assigned_to, "ответственный"))
+            было = self._open(case_id)
+            case = replace(было, assigned_to=assigned_to)
             self.repo.update_case(case)
             self._event(case_id, who, "assigned", now, assigned_to=assigned_to)
+            self._передать_задачи(case_id, было.assigned_to, assigned_to, who, now)
             return case
+
+    def extend_control(self, case_id: int, *, due_at: datetime, reason: str, who: str) -> Task:
+        """Продлить контроль (5.5): операция, а не переход статуса.
+
+        Ровно одна новая задача control_extra и ровно одно событие
+        control_extended. Статус, начало помощи, вехи и прежние задачи не
+        меняются; повторное продление — ещё одна самостоятельная задача.
+        Число продлений не ограничено, пока служба не решит иначе (Р11).
+        """
+        _текст(who, "кто продлевает контроль")
+        _текст(reason, "причина продления (5.5)")
+        _нужно(isinstance(due_at, datetime) and due_at.tzinfo is not None,
+               "срок продления — дата с часовым поясом (5.5)")
+        with self.repo.transaction():
+            now = self._now()
+            case = self._case(case_id, lock=True)
+            _нужно(case.status == CONTROL,
+                   "продлить контроль можно только в статусе CONTROL; из ESCALATED — "
+                   "сначала возврат от старшего (5.5)")
+            _нужно(due_at >= now, "срок продления не может быть в прошлом (5.5)")
+            задача = self.repo.insert_task(
+                Task(None, case_id, "control_extra", due_at, "open", now, case.assigned_to))
+            self._event(case_id, who, "control_extended", now, task_id=задача.task_id,
+                        due_at=due_at.isoformat(), reason=reason)
+            return задача
 
     # --- 4.6 Задачи ---------------------------------------------------------
 
+    def _задача_под_блокировкой(self, task_id: int) -> Task:
+        """Задача — после блокировки её обращения (сериализация, 5.6).
+
+        Сначала обращение, потом задача: тот же порядок, что у перехода,
+        поэтому операции над задачами не обгоняют закрытие обращения и не
+        взаимоблокируются с ним.
+        """
+        черновая = self.repo.get_task(task_id)
+        if черновая is None:
+            raise NotFound(f"задачи {task_id} нет")
+        self._case(черновая.case_id, lock=True)
+        задача = self.repo.get_task(task_id, lock=True)
+        if задача is None:
+            raise NotFound(f"задачи {task_id} нет")
+        return задача
+
     def create_task(self, case_id: int, kind: str, *, due_at: datetime, who: str,
                     assigned_to: str | None = None) -> Task:
-        """Задача со сроком (И9). Контрольные создаёт только вход в CONTROL (И8)."""
+        """Задача со сроком (И9). Контрольные создают только вход в CONTROL
+        и операция продления (И8, 5.5)."""
         _нужно(kind not in CONTROL_KINDS,
-               "задачи Д+7 и Д+30 создаются только при входе в CONTROL (И8)")
+               "Д+7 и Д+30 создаёт только вход в CONTROL, control_extra — только "
+               "продление контроля (И8, 5.5)")
         with self.repo.transaction():
             now = self._now()
             case = self._open(case_id)
@@ -882,29 +986,27 @@ class CaseService:
                       follow_up_due_at: datetime | None = None) -> Task:
         """Итог задачи. Статус обращения не меняется (И8, 5.2).
 
-        Итог Д+7 «ждём начала» или «исполнитель не пришёл» не ждёт Д+30:
-        задача-последствие создаётся здесь же; её вид и срок до Р1/Р2
-        называет координатор (Ч4).
+        Итог «ждём начала» или «исполнитель не пришёл» на Д+7 и на
+        продлении не ждёт следующего звонка: задача-последствие создаётся
+        здесь же; её вид и срок до Р1/Р2 называет координатор (4.6, Ч4).
         """
         _текст(who, "кто выполнил задачу")
         with self.repo.transaction():
             now = self._now()
-            task = self.repo.get_task(task_id, lock=True)
-            if task is None:
-                raise NotFound(f"задачи {task_id} нет")
+            task = self._задача_под_блокировкой(task_id)
             _нужно(task.status in OPEN_TASK_STATUSES, "задача уже закрыта")
             if task.kind in CONTROL_KINDS:
                 _нужно(result in CONTROL_RESULTS, f"итог контрольного звонка: {result!r}")
             else:
                 _текст(result, "итог задачи")
-            нужно_последствие = task.kind == "control_d7" and result in FOLLOW_UP_RESULTS
+            нужно_последствие = task.kind in FOLLOW_UP_SOURCES and result in FOLLOW_UP_RESULTS
             if нужно_последствие:
                 _нужно(follow_up_kind in FOLLOW_UP_KINDS,
-                       "итог Д+7 требует задачи-последствия: referral_followup или escalation")
+                       "этот итог требует задачи-последствия: referral_followup или escalation")
                 _нужно(follow_up_due_at is not None, "срок задачи-последствия (Ч4)")
             else:
                 _нужно(follow_up_kind is None and follow_up_due_at is None,
-                       "задача-последствие создаётся только по итогу Д+7 (5.2)")
+                       "задача-последствие создаётся только по итогу Д+7 или продления (4.6)")
             сделано = replace(task, status="done", done_at=now, done_by=who, result=result)
             self.repo.update_task(сделано)
             self._event(task.case_id, who, "task_done", now, task_id=task_id, kind=task.kind,
@@ -915,13 +1017,12 @@ class CaseService:
             return сделано
 
     def cancel_task(self, task_id: int, *, who: str, reason: str) -> Task:
-        """Отменить задачу вручную (до решения Г4 — единственный способ)."""
+        """Отменить задачу вручную, с причиной координатора (4.6).
+        Автоматические отмены — при переходах (5.6)."""
         _текст(reason, "причина отмены")
         with self.repo.transaction():
             now = self._now()
-            task = self.repo.get_task(task_id, lock=True)
-            if task is None:
-                raise NotFound(f"задачи {task_id} нет")
+            task = self._задача_под_блокировкой(task_id)
             _нужно(task.status in OPEN_TASK_STATUSES, "задача уже закрыта")
             отменена = replace(task, status="cancelled")
             self.repo.update_task(отменена)

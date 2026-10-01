@@ -9,7 +9,7 @@ import os
 import re
 import threading
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 import pytest
 
@@ -289,3 +289,177 @@ def test_и15_откат_события_откатывает_обращение(
     with psycopg.connect(DSN) as conn:
         assert conn.execute("SELECT count(*) FROM persons WHERE channel_user_id = %s",
                             (uid,)).fetchone()[0] == 0
+
+
+# --- Редакция 3: ограничения миграции 015 и гонки И16 ---------------------------
+
+def _к_разговору(s: CaseService, uid: str):
+    case = s.transition(_черновик(s, uid).case_id, NEW, who=BOT, trigger="checkpoint")
+    s.transition(case.case_id, "ASSIGNED", who="op", assigned_to="op")
+    return s.transition(case.case_id, "CONTACTED", who="op")
+
+
+_НОВАЯ_ЗАДАЧА = ("INSERT INTO tasks(case_id, kind, due_at, status, created_at) "
+                 "VALUES (%s, 'first_contact', now() + interval '1 hour', 'open', now())")
+
+
+def test_и16_база_не_даёт_закрыть_с_открытой_задачей(люди):
+    s = _сервис()
+    case = _к_разговору(s, люди())
+    s.create_task(case.case_id, "first_contact",
+                  due_at=datetime.now(timezone.utc) + timedelta(hours=1), who="op")
+    with pytest.raises(psycopg.errors.RaiseException, match="И16"):
+        _сырой("UPDATE cases SET status = 'CLOSED', close_reason = 'refused', closed_at = now() "
+               "WHERE case_id = %s", (case.case_id,))
+    with pytest.raises(psycopg.errors.RaiseException, match="И16"):
+        _сырой("INSERT INTO tasks(case_id, kind, due_at, status, created_at) VALUES "
+               "(%s, 'control_extra', now() + interval '1 day', 'open', now())", (case.case_id,))
+    assert s.case(case.case_id).status == "CONTACTED"
+    assert [t.kind for t in s.tasks(case.case_id)] == ["first_contact"]
+
+
+def test_и7_база_держит_правила_закрытия_редакции_3(люди):
+    s = _сервис()
+    обычное = _к_разговору(s, люди())
+    закрыть = ("UPDATE cases SET status = 'CLOSED', close_reason = %s, closed_at = now() "
+               "WHERE case_id = %s")
+    with pytest.raises(psycopg.errors.CheckViolation, match="cases_consent_not_given_ck"):
+        _сырой(закрыть, ("consent_not_given", обычное.case_id))
+    экстренное = s.open_emergency("max", люди(), sign_group="не дышит", questionnaire_version="q-1")
+    with pytest.raises(psycopg.errors.RaiseException, match="И7"):      # из NEW, не из CONTACTED
+        _сырой(закрыть, ("consent_not_given", экстренное.case_id))
+    черновик = _черновик(s, люди())
+    with pytest.raises(psycopg.errors.RaiseException, match="Г5"):
+        _сырой("UPDATE cases SET status = 'CLOSED', close_reason = 'duplicate', duplicate_of = %s, "
+               "closed_at = now() WHERE case_id = %s", (обычное.case_id, черновик.case_id))
+    with pytest.raises(psycopg.errors.RaiseException, match="Г5"):
+        _сырой(закрыть, ("ward_died", черновик.case_id))
+    with pytest.raises(psycopg.errors.CheckViolation, match="tasks_kind_ck"):
+        _сырой("INSERT INTO tasks(case_id, kind, due_at, status, created_at) VALUES "
+               "(%s, 'control_xx', now(), 'open', now())", (обычное.case_id,))
+    assert {s.case(c.case_id).status for c in (обычное, экстренное, черновик)} == \
+        {"CONTACTED", "NEW", "DRAFT"}
+
+
+def test_и16_задача_до_закрытия_отменяется_закрытием(люди):
+    """Гонка 1: задачу вставили в обход модуля и ещё не зафиксировали.
+    Закрытие ждёт блокировку строки обращения, а потом отменяет и её."""
+    s = _сервис()
+    case = _к_разговору(s, люди())
+    вставлена, можно = threading.Event(), threading.Event()
+    ошибки: list = []
+
+    def вставить() -> None:
+        try:
+            with psycopg.connect(DSN) as conn:
+                conn.execute(_НОВАЯ_ЗАДАЧА, (case.case_id,))
+                вставлена.set()
+                можно.wait(10)
+        except BaseException as exc:              # pragma: no cover — видно в ошибке ниже
+            ошибки.append(exc)
+            вставлена.set()
+
+    def закрыть() -> None:
+        try:
+            _сервис().transition(case.case_id, "CLOSED", who="op", reason="refused")
+        except BaseException as exc:              # pragma: no cover
+            ошибки.append(exc)
+
+    первый = threading.Thread(target=вставить)
+    первый.start()
+    assert вставлена.wait(10)
+    второй = threading.Thread(target=закрыть)
+    второй.start()
+    второй.join(0.5)
+    assert второй.is_alive(), "закрытие должно ждать блокировку строки обращения"
+    можно.set()
+    первый.join(10)
+    второй.join(10)
+    assert not ошибки, ошибки
+    assert s.case(case.case_id).status == "CLOSED"
+    assert [(t.kind, t.status) for t in s.tasks(case.case_id)] == [("first_contact", "cancelled")]
+
+
+def test_и16_задача_после_закрытия_не_проходит(люди):
+    """Гонка 2: обращение закрыто в ещё не зафиксированной транзакции.
+    Задача в обход модуля ждёт блокировку строки обращения, а после
+    фиксации закрытия её отвергает проверка И16."""
+    s = _сервис()
+    case = _к_разговору(s, люди())
+    закрыто, можно = threading.Event(), threading.Event()
+    итог: dict = {}
+
+    def закрыть() -> None:
+        with psycopg.connect(DSN) as conn:
+            conn.execute("SELECT 1 FROM cases WHERE case_id = %s FOR UPDATE", (case.case_id,))
+            conn.execute("UPDATE cases SET status = 'CLOSED', close_reason = 'refused', "
+                         "closed_at = now() WHERE case_id = %s", (case.case_id,))
+            закрыто.set()
+            можно.wait(10)
+
+    def вставить() -> None:
+        try:
+            with psycopg.connect(DSN) as conn:
+                conn.execute(_НОВАЯ_ЗАДАЧА, (case.case_id,))
+            итог["прошла"] = True
+        except psycopg.Error as exc:
+            итог["ошибка"] = exc
+
+    первый = threading.Thread(target=закрыть)
+    первый.start()
+    assert закрыто.wait(10)
+    второй = threading.Thread(target=вставить)
+    второй.start()
+    второй.join(0.5)
+    assert второй.is_alive(), "задача должна ждать блокировку строки обращения"
+    можно.set()
+    первый.join(10)
+    второй.join(10)
+    assert isinstance(итог.get("ошибка"), psycopg.errors.RaiseException), итог
+    assert "И16" in str(итог["ошибка"])
+    assert s.case(case.case_id).status == "CLOSED"
+    assert s.tasks(case.case_id) == []
+
+
+def test_и16_правка_задачи_и_закрытие_не_расходятся(люди):
+    """Гонка 3: правка существующей задачи. Внешний ключ здесь строку
+    обращения не блокирует (ссылка не меняется), и сериализацию даёт
+    только триггер tasks_lock_case: закрытие ждёт, пока правка
+    зафиксируется, и отменяет переоткрытую задачу."""
+    s = _сервис()
+    case = _к_разговору(s, люди())
+    задача = s.create_task(case.case_id, "first_contact",
+                           due_at=datetime.now(timezone.utc) + timedelta(hours=1), who="op")
+    s.complete_task(задача.task_id, "дозвонились", who="op")
+    правка, можно = threading.Event(), threading.Event()
+    ошибки: list = []
+
+    def переоткрыть() -> None:
+        try:
+            with psycopg.connect(DSN) as conn:
+                conn.execute("UPDATE tasks SET status = 'open', done_at = NULL, done_by = NULL, "
+                             "result = NULL WHERE task_id = %s", (задача.task_id,))
+                правка.set()
+                можно.wait(10)
+        except BaseException as exc:              # pragma: no cover — видно в ошибке ниже
+            ошибки.append(exc)
+            правка.set()
+
+    def закрыть() -> None:
+        try:
+            _сервис().transition(case.case_id, "CLOSED", who="op", reason="refused")
+        except BaseException as exc:              # pragma: no cover
+            ошибки.append(exc)
+
+    первый = threading.Thread(target=переоткрыть)
+    первый.start()
+    assert правка.wait(10)
+    второй = threading.Thread(target=закрыть)
+    второй.start()
+    второй.join(0.5)
+    assert второй.is_alive(), "закрытие должно ждать, пока правка задачи зафиксируется"
+    можно.set()
+    первый.join(10)
+    второй.join(10)
+    assert not ошибки, ошибки
+    assert [(t.task_id, t.status) for t in s.tasks(case.case_id)] == [(задача.task_id, "cancelled")]
