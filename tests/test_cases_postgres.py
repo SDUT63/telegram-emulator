@@ -1,0 +1,252 @@
+"""Модель обращения на настоящем PostgreSQL: то, что в памяти не проверить.
+
+Гонки одновременных транзакций, ограничения и триггеры миграции 014 в
+обход модуля обращений, общая транзакция с событием MAX (И15).
+"""
+from __future__ import annotations
+
+import os
+import re
+import threading
+import uuid
+from datetime import datetime, timedelta, timezone
+
+import pytest
+
+psycopg = pytest.importorskip("psycopg")
+
+from cases import BOT, CaseService, NEW, SAMARA  # noqa: E402
+
+DSN = (os.getenv("SDUT_DATABASE_URL") or "").strip()
+pytestmark = pytest.mark.skipif(not DSN, reason="SDUT_DATABASE_URL is not configured")
+
+
+@pytest.fixture
+def люди():
+    созданные: list[str] = []
+
+    def новый() -> str:
+        uid = str(900000000000 + uuid.uuid4().int % 99999999999)
+        созданные.append(uid)
+        return uid
+
+    yield новый
+    with psycopg.connect(DSN) as conn:
+        conn.execute("DELETE FROM cases WHERE person_id IN "
+                     "(SELECT person_id FROM persons WHERE channel_user_id = ANY(%s))", (созданные,))
+        conn.execute("DELETE FROM persons WHERE channel_user_id = ANY(%s)", (созданные,))
+        for uid in созданные:
+            for таблица in ("outbox_messages", "audit_events", "processed_events", "survey_state"):
+                conn.execute(f"DELETE FROM {таблица} WHERE user_id = %s", (uid,))
+
+
+def _сервис() -> CaseService:
+    from cases_postgres import PostgresCaseRepository
+    return CaseService(PostgresCaseRepository(DSN))
+
+
+def _черновик(s: CaseService, uid: str):
+    return s.open_draft("max", uid, consent_version="1.0", consent_text_hash="h",
+                        questionnaire_version="q-1")
+
+
+def _одновременно(сколько: int, работа) -> list:
+    """Запустить работу в потоках так, чтобы они стартовали в один момент."""
+    барьер = threading.Barrier(сколько)
+    итоги: list = [None] * сколько
+    ошибки: list = []
+
+    def поток(i: int) -> None:
+        try:
+            барьер.wait()
+            итоги[i] = работа(i)
+        except BaseException as exc:      # pragma: no cover — видно в ошибке ниже
+            ошибки.append(exc)
+
+    потоки = [threading.Thread(target=поток, args=(i,)) for i in range(сколько)]
+    for п in потоки:
+        п.start()
+    for п in потоки:
+        п.join()
+    assert not ошибки, ошибки
+    return итоги
+
+
+# --- И1, И2: гонки ------------------------------------------------------------
+
+def test_и1_гонка_двух_согласий_даёт_одно_обращение(люди):
+    uid = люди()
+    итоги = _одновременно(4, lambda _: _черновик(_сервис(), uid).case_id)
+    assert len(set(итоги)) == 1
+    assert len(_сервис().cases_of("max", uid)) == 1
+
+
+def test_и2_одновременные_переходы_без_повторов_и_пропусков(люди):
+    s = _сервис()
+    черновики = [_черновик(s, люди()) for _ in range(12)]
+    год = datetime.now(timezone.utc).astimezone(SAMARA).year
+    with psycopg.connect(DSN) as conn:
+        row = conn.execute("SELECT last_value FROM case_number_counters WHERE year = %s", (год,)).fetchone()
+    до = row[0] if row else 0
+    итоги = _одновременно(len(черновики), lambda i: _сервис().transition(
+        черновики[i].case_id, NEW, who=BOT, trigger="checkpoint").number)
+    номера = sorted(int(re.match(rf"^SDUT-{год}-(\d{{5,}})$", n).group(1)) for n in итоги)
+    assert номера == list(range(до + 1, до + 1 + len(черновики)))
+
+
+# --- Ограничения и триггеры 014 в обход модуля --------------------------------
+
+def _сырой(запрос: str, параметры: tuple = ()) -> None:
+    with psycopg.connect(DSN) as conn:
+        conn.execute(запрос, параметры)
+
+
+def test_и3_база_не_даёт_изменить_событие(люди):
+    case = _черновик(_сервис(), люди())
+    with pytest.raises(psycopg.errors.RaiseException, match="И3"):
+        _сырой("UPDATE case_events SET kind = 'подмена' WHERE case_id = %s", (case.case_id,))
+    with pytest.raises(psycopg.errors.RaiseException, match="И3"):
+        _сырой("DELETE FROM case_events WHERE case_id = %s", (case.case_id,))
+    # Вместе с обращением — можно: так работает удаление по просьбе.
+    _сырой("DELETE FROM cases WHERE case_id = %s", (case.case_id,))
+    with psycopg.connect(DSN) as conn:
+        assert conn.execute("SELECT count(*) FROM case_events WHERE case_id = %s",
+                            (case.case_id,)).fetchone()[0] == 0
+
+
+def test_и5_база_не_даёт_переписать_предложенный_маршрут(люди):
+    s = _сервис()
+    case = s.suggest_route(_черновик(s, люди()).case_id, route="М2", reason="две сферы",
+                           signals=["self_care"], rules_version="routing-1")
+    with pytest.raises(psycopg.errors.RaiseException, match="И5"):
+        _сырой("UPDATE cases SET suggested_route = '{\"route\": \"М1\"}' WHERE case_id = %s",
+               (case.case_id,))
+    case = s.transition(case.case_id, NEW, who=BOT, trigger="checkpoint")
+    with pytest.raises(psycopg.errors.RaiseException, match="И2"):
+        _сырой("UPDATE cases SET number = 'SDUT-2026-99999' WHERE case_id = %s", (case.case_id,))
+
+
+def test_и7_база_не_даёт_закрыть_без_причины(люди):
+    case = _черновик(_сервис(), люди())
+    with pytest.raises(psycopg.errors.CheckViolation, match="cases_closed_has_reason_ck"):
+        _сырой("UPDATE cases SET status = 'CLOSED' WHERE case_id = %s", (case.case_id,))
+    with pytest.raises(psycopg.errors.CheckViolation, match="cases_working_has_number_ck"):
+        _сырой("UPDATE cases SET status = 'ASSIGNED' WHERE case_id = %s", (case.case_id,))
+
+
+def test_и11_база_не_даёт_обращение_без_согласия(люди):
+    uid = люди()
+    with pytest.raises(psycopg.errors.RaiseException, match="И11"):
+        with psycopg.connect(DSN) as conn:
+            person_id = conn.execute(
+                "INSERT INTO persons(channel, channel_user_id, first_seen_at) "
+                "VALUES ('max', %s, now()) RETURNING person_id", (uid,)).fetchone()[0]
+            conn.execute("INSERT INTO cases(person_id, source, legal_basis, status, created_at) "
+                         "VALUES (%s, 'bot', 'consent', 'DRAFT', now())", (person_id,))
+    case = _черновик(_сервис(), uid)
+    with pytest.raises(psycopg.errors.RaiseException, match="И11"):
+        _сырой("UPDATE case_consents SET version = '9.9' WHERE case_id = %s", (case.case_id,))
+    with pytest.raises(psycopg.errors.RaiseException, match="И11"):
+        _сырой("DELETE FROM case_consents WHERE case_id = %s", (case.case_id,))
+
+
+def test_и12_база_не_даёт_изменить_версию_справочника():
+    s = _сервис()
+    ключ = f"test-{uuid.uuid4().hex}"
+    запись = s.add_directory_entry(provider_key=ключ, route="М2", provider="КЦСОН", available=True,
+                                   phone="8 8482 00-00-01")
+    try:
+        with pytest.raises(psycopg.errors.RaiseException, match="И12"):
+            _сырой("UPDATE route_directory SET phone = 'другой' WHERE directory_entry_id = %s",
+                   (запись.directory_entry_id,))
+        _сырой("UPDATE route_directory SET valid_to = now() WHERE directory_entry_id = %s",
+               (запись.directory_entry_id,))
+        with pytest.raises(psycopg.errors.RaiseException, match="И12"):
+            _сырой("UPDATE route_directory SET valid_to = now() + interval '1 day' "
+                   "WHERE directory_entry_id = %s", (запись.directory_entry_id,))
+    finally:
+        _сырой("DELETE FROM route_directory WHERE provider_key = %s", (ключ,))
+
+
+# --- И14 ------------------------------------------------------------------------
+
+def test_и14_все_таблицы_с_данными_человека_учтены(люди):
+    from cases_memory import PERSON_DATA_TABLES as В_ПАМЯТИ
+    from cases_postgres import PERSON_DATA_TABLES
+
+    with psycopg.connect(DSN) as conn:
+        в_базе = {r[0] for r in conn.execute(
+            "SELECT DISTINCT table_name FROM information_schema.columns "
+            "WHERE table_schema = current_schema() AND column_name IN ('case_id', 'person_id')")}
+    assert в_базе == set(PERSON_DATA_TABLES), (
+        "новая таблица с данными человека не внесена в PERSON_DATA_TABLES — "
+        "удаление по просьбе её не проверяет")
+    assert set(В_ПАМЯТИ) == set(PERSON_DATA_TABLES)
+
+    s = _сервис()
+    uid = люди()
+    case = s.transition(_черновик(s, uid).case_id, NEW, who=BOT, trigger="checkpoint")
+    s.record_outcome(case.case_id, need="other", action="consultation", result="received", who="op")
+    s.create_task(case.case_id, "first_contact", due_at=datetime.now(timezone.utc) + timedelta(hours=4),
+                  who="op")
+    s.delete_person("max", uid, who="op")
+    with psycopg.connect(DSN) as conn:
+        for таблица in PERSON_DATA_TABLES:
+            if таблица == "persons":
+                continue
+            осталось = conn.execute(f"SELECT count(*) FROM {таблица} WHERE case_id = %s",
+                                    (case.case_id,)).fetchone()[0]
+            assert осталось == 0, таблица
+        отметка = conn.execute("SELECT first_seen_at, deleted_at FROM persons WHERE channel_user_id = %s",
+                               (uid,)).fetchone()
+    assert отметка[0] is None and отметка[1] is not None
+
+
+# --- И15: одна транзакция с событием MAX ---------------------------------------
+
+def _событие(survey, uid: str, event_id: str, работа):
+    from storage_postgres import _TX_EVENT
+    token = _TX_EVENT.set(event_id)
+    try:
+        with survey._atomic(uid, "callback", {"action": "grant_consent"}) as принято:
+            if принято:
+                работа()
+            return принято
+    finally:
+        _TX_EVENT.reset(token)
+
+
+def test_и15_повтор_события_ничего_не_меняет(люди):
+    from storage_postgres import TransactionalPostgresSurvey
+    survey = TransactionalPostgresSurvey(DSN)
+    s = _сервис()
+    uid = люди()
+    event_id = f"cases-{uuid.uuid4().hex}"
+    assert _событие(survey, uid, event_id, lambda: _черновик(s, uid)) is True
+    было = s.cases_of("max", uid)
+    assert len(было) == 1
+    события = s.events(было[0].case_id)
+    # Повторная доставка того же события: работа не должна выполниться —
+    # иначе черновик стал бы NEW и получил номер.
+    assert _событие(survey, uid, event_id, lambda: s.transition(
+        было[0].case_id, NEW, who=BOT, trigger="checkpoint")) is False
+    assert s.cases_of("max", uid) == было
+    assert s.events(было[0].case_id) == события
+
+
+def test_и15_откат_события_откатывает_обращение(люди):
+    from storage_postgres import TransactionalPostgresSurvey
+    survey = TransactionalPostgresSurvey(DSN)
+    s = _сервис()
+    uid = люди()
+
+    def сломаться() -> None:
+        _черновик(s, uid)
+        raise RuntimeError("ошибка после создания обращения")
+
+    with pytest.raises(RuntimeError):
+        _событие(survey, uid, f"cases-{uuid.uuid4().hex}", сломаться)
+    assert s.cases_of("max", uid) == []
+    with psycopg.connect(DSN) as conn:
+        assert conn.execute("SELECT count(*) FROM persons WHERE channel_user_id = %s",
+                            (uid,)).fetchone()[0] == 0
