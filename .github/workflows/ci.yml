@@ -3,7 +3,7 @@ name: CI
 on:
   workflow_dispatch:
   push:
-    branches: [ master, main, develop, max-bot-complete-2026 ]
+    branches: [ master, main, develop, max-bot-complete-2026, claude/max-bot-complete-analysis-gcgbtm ]
   pull_request:
     branches: [ master, main, develop, max-bot-complete-2026, claude/chat-bot-survey-publik-nq2w1s ]
 
