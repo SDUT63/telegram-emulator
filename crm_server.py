@@ -121,6 +121,14 @@ def _principal():
     return OperatorPrincipal(operator_id=str(login), role=str(session.get("operator_role") or "operator"))
 
 
+def _case_crm():
+    """CASE is the production source of truth; legacy operator_cases remains only for pilot compatibility."""
+    if not (os.getenv("SDUT_DATABASE_URL") or "").strip():
+        return None
+    from case_operator_crm import CaseOperatorCRM
+    return CaseOperatorCRM()
+
+
 # Какая роль нужна для каждого действия. Один список на оба режима: правило
 # не должно зависеть от того, стоит ли за CRM PostgreSQL или файлы на ноутбуке.
 ТРЕБУЕМАЯ_РОЛЬ = {
@@ -486,6 +494,121 @@ def api_export():
         f'attachment; filename="sdut-{day}.xlsx"; filename*=UTF-8\'\'{name}'
     )
     return response
+
+
+@app.get("/api/case/<user_id>/domain")
+@login_required
+def api_domain_case(user_id: str):
+    crm = _case_crm()
+    if crm is None:
+        return jsonify({"error": "CASE CRM доступен только в PostgreSQL production"}), 503
+    case = crm.get_case(user_id)
+    return jsonify({"case": case})
+
+
+@app.post("/api/case/<user_id>/domain/assign")
+@login_required
+def api_domain_assign(user_id: str):
+    crm = _case_crm()
+    if crm is None:
+        return jsonify({"error": "CASE CRM доступен только в PostgreSQL production"}), 503
+    case = crm.assign(user_id, str(session.get("operator_login") or session.get("operator")))
+    return jsonify({"case_id": case.case_id, "status": case.status, "assigned_to": case.assigned_to})
+
+
+@app.post("/api/case/<user_id>/domain/contacted")
+@login_required
+def api_domain_contacted(user_id: str):
+    crm = _case_crm()
+    if crm is None:
+        return jsonify({"error": "CASE CRM доступен только в PostgreSQL production"}), 503
+    case = crm.contacted(user_id, str(session.get("operator_login") or session.get("operator")))
+    return jsonify({"case_id": case.case_id, "status": case.status})
+
+
+@app.post("/api/case/<user_id>/domain/route")
+@login_required
+def api_domain_route(user_id: str):
+    data = request.get_json(silent=True) or {}
+    route = str(data.get("route") or "")
+    reason = str(data.get("reason") or "").strip()
+    if not route or not reason:
+        return jsonify({"error": "Нужны route и reason"}), 400
+    crm = _case_crm()
+    if crm is None:
+        return jsonify({"error": "CASE CRM доступен только в PostgreSQL production"}), 503
+    case = crm.confirm_route(
+        user_id, route, reason, str(session.get("operator_login") or session.get("operator"))
+    )
+    return jsonify({"case_id": case.case_id, "status": case.status, "final_route": case.final_route})
+
+
+@app.post("/api/case/<user_id>/domain/referral")
+@login_required
+def api_domain_referral(user_id: str):
+    data = request.get_json(silent=True) or {}
+    try:
+        directory_entry_id = int(data.get("directory_entry_id"))
+    except (TypeError, ValueError):
+        return jsonify({"error": "directory_entry_id обязателен"}), 400
+    channel = str(data.get("channel") or "")
+    if not channel:
+        return jsonify({"error": "channel обязателен"}), 400
+    crm = _case_crm()
+    if crm is None:
+        return jsonify({"error": "CASE CRM доступен только в PostgreSQL production"}), 503
+    case = crm.refer(
+        user_id, directory_entry_id, channel,
+        str(session.get("operator_login") or session.get("operator"))
+    )
+    return jsonify({"case_id": case.case_id, "status": case.status, "referred_at": case.referred_at})
+
+
+@app.post("/api/case/<user_id>/domain/service-start")
+@login_required
+def api_domain_service_start(user_id: str):
+    data = request.get_json(silent=True) or {}
+    started_at = data.get("started_at")
+    value = datetime.fromisoformat(started_at) if started_at else None
+    crm = _case_crm()
+    if crm is None:
+        return jsonify({"error": "CASE CRM доступен только в PostgreSQL production"}), 503
+    case = crm.start_service(
+        user_id, str(session.get("operator_login") or session.get("operator")), value
+    )
+    return jsonify({"case_id": case.case_id, "status": case.status, "service_started_at": case.service_started_at})
+
+
+@app.post("/api/case/<user_id>/domain/close")
+@login_required
+def api_domain_close(user_id: str):
+    data = request.get_json(silent=True) or {}
+    reason = str(data.get("reason") or "").strip()
+    if not reason:
+        return jsonify({"error": "reason обязателен"}), 400
+    crm = _case_crm()
+    if crm is None:
+        return jsonify({"error": "CASE CRM доступен только в PostgreSQL production"}), 503
+    case = crm.close(
+        user_id, reason, str(session.get("operator_login") or session.get("operator"))
+    )
+    return jsonify({"case_id": case.case_id, "status": case.status, "close_reason": case.close_reason})
+
+
+@app.post("/api/case/<user_id>/domain/reassign")
+@login_required
+def api_domain_reassign(user_id: str):
+    data = request.get_json(silent=True) or {}
+    assigned_to = str(data.get("assigned_to") or "").strip()
+    if not assigned_to:
+        return jsonify({"error": "assigned_to обязателен"}), 400
+    crm = _case_crm()
+    if crm is None:
+        return jsonify({"error": "CASE CRM доступен только в PostgreSQL production"}), 503
+    case = crm.reassign(
+        user_id, assigned_to, str(session.get("operator_login") or session.get("operator"))
+    )
+    return jsonify({"case_id": case.case_id, "status": case.status, "assigned_to": case.assigned_to})
 
 
 @app.post("/api/case/<user_id>/assign")
