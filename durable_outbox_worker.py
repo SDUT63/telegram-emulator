@@ -53,10 +53,20 @@ def _claim_still_deliverable(queue: PostgresOutbox, message_id: int, user_id: st
     with psycopg.connect(queue.db_url, row_factory=dict_row) as conn:
         row = conn.execute(
             """
-            SELECT 1 FROM outbox_messages o
-            LEFT JOIN deleted_users d ON d.user_id=o.user_id
-            WHERE o.id=%s AND o.status='sending' AND o.locked_by=%s
-              AND o.user_id=%s AND (d.user_id IS NULL OR o.farewell)
+            SELECT 1
+              FROM outbox_messages o
+              LEFT JOIN deleted_users d ON d.user_id=o.user_id
+              LEFT JOIN cases c ON c.case_id=o.case_id
+             WHERE o.id=%s
+               AND o.status='sending'
+               AND o.locked_by=%s
+               AND o.user_id=%s
+               AND (d.user_id IS NULL OR o.farewell)
+               AND (
+                   NOT o.automatic
+                   OR o.case_id IS NULL
+                   OR c.status <> 'CLOSED'
+               )
             """,
             (message_id, queue.worker_id, str(user_id)),
         ).fetchone()
