@@ -62,22 +62,26 @@ class MaxCaseBridge:
         answers = dict(state.get("answers") or {})
         alerts = list(state.get("alerts") or [])
         finished = state.get("finished")
-        checkpoint_at = None
-        completed_at = None
+        checkpoint_at = self._parse_time(state.get("checkpoint_at"))
+        completed_at = self._parse_time(finished)
+        if CHECKPOINT_ID in answers and checkpoint_at is None:
+            checkpoint_at = datetime.now(timezone.utc)
 
-        if CHECKPOINT_ID in answers:
-            checkpoint_at = self._parse_time(state.get("checkpoint_at"))
-        if finished:
-            completed_at = self._parse_time(finished)
-
-        self.service.update_intake(
-            case.case_id,
-            who=BOT,
-            answers=answers,
-            alerts=alerts,
-            checkpoint_at=checkpoint_at,
-            completed_at=completed_at,
-        )
+        current = max(self.service.intakes(case.case_id), key=lambda intake: intake.version)
+        if (
+            current.answers != answers
+            or current.alerts != alerts
+            or (checkpoint_at is not None and current.checkpoint_at != checkpoint_at)
+            or (completed_at is not None and current.completed_at != completed_at)
+        ):
+            self.service.update_intake(
+                case.case_id,
+                who=BOT,
+                answers=answers,
+                alerts=alerts,
+                checkpoint_at=checkpoint_at,
+                completed_at=completed_at,
+            )
 
         # Ч7: checkpoint is one of the explicit grounds for DRAFT -> NEW.
         if case.status == DRAFT and CHECKPOINT_ID in answers:
