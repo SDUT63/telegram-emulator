@@ -86,7 +86,7 @@ class ProductionPostgresSurvey(TransactionalPostgresSurvey):
                 step for step in (person.get("history") or []) if step < checkpoint + 1
             ]
             person["pending"] = None
-            person["alerts"] = []
+            person["alerts"] = self._тревоги_первого_блока(person.get("alerts"))
             person["finished"] = None
             person["total_seen"] = 0
             person["reading"] = False

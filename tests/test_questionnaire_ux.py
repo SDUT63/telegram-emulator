@@ -65,7 +65,7 @@ def test_restart_preserves_primary_intake_and_resets_detailed_assessment() -> No
                 "mobility": "Не встаёт",
                 "turning": "Нужна помощь",
             },
-            "alerts": ["старое предупреждение"],
+            "alerts": ["Острое состояние: Боль", "Кожа: Есть открытые раны"],
             "history": list(range(14)),
             "pending": {"step": 14, "picked": [1]},
             "reading": True,
@@ -88,7 +88,9 @@ def test_restart_preserves_primary_intake_and_resets_detailed_assessment() -> No
     assert "mobility" not in person["answers"]
     assert "turning" not in person["answers"]
     assert person["finished"] is None
-    assert person["alerts"] == []
+    # Тревога первого блока остаётся: по ней CRM поднимает обращение
+    # наверх. Тревога подробной части снимается — вопрос зададут заново.
+    assert person["alerts"] == ["Острое состояние: Боль"]
     assert person["pending"] is None
     assert person["reading"] is False
     assert person["messages"] == [{"text": "не терять переписку"}]
