@@ -124,5 +124,9 @@ class MaxCaseBridge:
         except ValueError:
             return None
         if parsed.tzinfo is None:
-            parsed = parsed.replace(tzinfo=timezone.utc)
+            # The questionnaire stamps times with the bot process clock and
+            # no zone (datetime.now()); the same process reads them here, so
+            # its local zone is the right one. Treating them as UTC shifted
+            # every completed_at by the server's UTC offset.
+            parsed = parsed.astimezone()
         return parsed
