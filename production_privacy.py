@@ -5,9 +5,14 @@ from typing import Any, Callable, TypeVar
 from privacy_deletion import UserDeletionMixin
 from production_outbox import DurableProductionPostgresSurvey
 from storage_postgres import _TX_CONNECTION, _TX_USER
-from chatbot_survey import Survey
+from chatbot_survey import ERASE_WORDS, Survey
 from max_case_bridge import MaxCaseBridge
 T=TypeVar("T")
+
+ЧЕРНОВИК_ЗАКРЫТ = (
+    "Прошлая анкета долго оставалась незаконченной, и мы её закрыли. "
+    "Чтобы координатор увидел ваше обращение, начнём заново — это несколько минут."
+)
 
 class ProductionPrivacySurvey(UserDeletionMixin, DurableProductionPostgresSurvey):
     def __init__(self, *args, **kwargs):
@@ -26,6 +31,34 @@ class ProductionPrivacySurvey(UserDeletionMixin, DurableProductionPostgresSurvey
         conn.execute("DELETE FROM persons WHERE channel='max' AND channel_user_id=%s",(uid,))
 
     def erase(self,user_id:str)->str:return self.delete_user(user_id)
+
+    def _разобрать(self, user_id: str, text: str) -> str:
+        """Человек вернулся к анкете, черновик которой уже закрыт (7.7).
+
+        Брошенный черновик закрывается системой; закрытое обращение не
+        возобновляется, новое — только с новым согласием (7.6). Если
+        продолжить анкету как ни в чём не бывало, ответы не попадут ни в
+        одно обращение и до координатора не дойдут. Поэтому — честно
+        сказать и начать заново, с согласия. Тревога и удаление данных
+        по-прежнему первыми: человек, у которого кто-то не дышит, не
+        должен получить текст согласия.
+        """
+        uid = str(user_id)
+        if (text or "").strip().lower() not in ERASE_WORDS and self._черновик_закрыт(uid):
+            тревога = self._тревога(uid, text)
+            if тревога:
+                return тревога
+            return ЧЕРНОВИК_ЗАКРЫТ + "\n\n" + Survey.start(self, uid)
+        return super()._разобрать(uid, text)
+
+    def _черновик_закрыт(self, uid: str) -> bool:
+        человек = self.state.get(uid) or {}
+        if not (человек.get("consent") or {}).get("at") or человек.get("finished"):
+            return False
+        if self.case_bridge.open_case(uid) is not None:
+            return False
+        обращения = self.case_bridge.service.cases_of("max", uid)
+        return bool(обращения) and обращения[-1].close_reason == "abandoned_draft"
     def export_csv(self,*args,**kwargs):return None
 
     def _mutate(self,user_id:str,event_type:str,payload:dict[str,Any],fn:Callable[[],T],duplicate:T)->T:

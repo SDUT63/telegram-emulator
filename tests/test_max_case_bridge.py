@@ -179,3 +179,68 @@ def test_заново_после_закрытия_требует_нового_с
     assert новое is not None and новое.case_id != старое.case_id
     assert _service().case(старое.case_id).status == CLOSED
     assert len(_service().consents(новое.case_id)) == 1   # свой снимок согласия
+
+
+def _последний_ответ(uid: str) -> str:
+    with psycopg.connect(DSN) as conn:
+        строка = conn.execute("SELECT payload FROM outbox_messages WHERE user_id = %s "
+                              "ORDER BY id DESC LIMIT 1", (uid,)).fetchone()
+    return str((строка[0] or {}).get("text") or "")
+
+
+def _состарить_черновик(case_id: int) -> None:
+    with psycopg.connect(DSN) as conn:
+        conn.execute("UPDATE cases SET created_at = created_at - interval '31 days' "
+                     "WHERE case_id = %s", (case_id,))
+
+
+def test_ежечасное_обслуживание_закрывает_брошенные_черновики(бот):
+    """7.7: черновик старше 30 дней закрывает система — это делает цикл
+    отправителя очереди раз в час; свежий черновик не трогается."""
+    from durable_outbox_worker import close_abandoned_drafts
+    старый, свежий = _человек(бот), _человек(бот)
+    for uid in (старый, свежий):
+        _событие(бот, lambda uid=uid: бот.handle(uid, "здравствуйте"))
+        _событие(бот, lambda uid=uid: бот.grant_consent(uid))
+    _состарить_черновик(_service().open_case("max", старый).case_id)
+
+    закрытые = close_abandoned_drafts(DSN)
+
+    закрытое = _service().cases_of("max", старый)[-1]
+    assert закрытое.case_id in закрытые
+    assert закрытое.close_reason == "abandoned_draft"
+    assert _service().open_case("max", свежий).status == DRAFT
+
+
+def test_вернувшийся_к_закрытому_черновику_начинает_с_согласия(бот):
+    """Без этого ответы после закрытия черновика не попали бы ни в одно
+    обращение и до координатора не дошли бы."""
+    from durable_outbox_worker import close_abandoned_drafts
+    from production_privacy import ЧЕРНОВИК_ЗАКРЫТ
+    uid = _человек(бот)
+    _событие(бот, lambda: бот.handle(uid, "здравствуйте"))
+    _событие(бот, lambda: бот.grant_consent(uid))
+    старое = _service().open_case("max", uid)
+    _состарить_черновик(старое.case_id)
+    close_abandoned_drafts(DSN)
+
+    _событие(бот, lambda: бот.handle(uid, "мама"))
+    assert ЧЕРНОВИК_ЗАКРЫТ in _последний_ответ(uid)
+    assert бот.stage(uid) == "consent"
+
+    _событие(бот, lambda: бот.grant_consent(uid))
+    новое = _service().open_case("max", uid)
+    assert новое is not None and новое.case_id != старое.case_id
+
+
+def test_тревога_важнее_перезапуска_закрытого_черновика(бот):
+    from durable_outbox_worker import close_abandoned_drafts
+    uid = _человек(бот)
+    _событие(бот, lambda: бот.handle(uid, "здравствуйте"))
+    _событие(бот, lambda: бот.grant_consent(uid))
+    _состарить_черновик(_service().open_case("max", uid).case_id)
+    close_abandoned_drafts(DSN)
+
+    _событие(бот, lambda: бот.handle(uid, "мама не дышит"))
+    assert "112" in _последний_ответ(uid)     # экстренный ответ, а не текст согласия
+    assert бот.stage(uid) != "consent"

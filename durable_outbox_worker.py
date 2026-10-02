@@ -72,6 +72,27 @@ def _claim_still_deliverable(queue: PostgresOutbox, message_id: int, user_id: st
     return row is not None
 
 
+def close_abandoned_drafts(db_url: str) -> list[int]:
+    """Брошенные черновики закрываются системой (7.7 контракта).
+
+    Живёт здесь, потому что этот цикл и так раз в час обслуживает базу
+    в обеих боевых точках входа. Сбой не останавливает доставку: следующая
+    попытка — через час.
+    """
+    from cases import CaseService
+    from cases_postgres import PostgresCaseRepository
+
+    try:
+        closed = CaseService(PostgresCaseRepository(db_url)).close_abandoned_drafts()
+    except Exception as error:  # noqa: BLE001
+        METRICS.inc("sdut_case_maintenance_failures_total", {"error_class": type(error).__name__})
+        log.warning("CASE: закрытие брошенных черновиков не удалось: %s", type(error).__name__)
+        return []
+    if closed:
+        log.info("CASE: закрыто брошенных черновиков: %s", len(closed))
+    return closed
+
+
 async def deliver_once(bot, *, queue: PostgresOutbox | None = None) -> int:
     queue = queue or PostgresOutbox()
     transport = MaxOutboundTransport(bot, attachments_for=queue.attachments_for)
@@ -135,6 +156,7 @@ async def run(
                     removed = queue.prune_sent(retention_seconds=retention_seconds)
                     if removed:
                         log.info("MAX durable outbox: очищено sent-записей: %s", removed)
+                    close_abandoned_drafts(queue.db_url)
                 finally:
                     next_prune = time.monotonic() + prune_interval_seconds
             claimed = await deliver_once(bot, queue=queue)
