@@ -9,8 +9,8 @@ import psycopg
 from psycopg.rows import dict_row
 
 from cases import (
-    ASSIGNED, BOT, CLOSED, CONTACTED, NEW, REFERRED, ROUTE_CONFIRMED,
-    SERVICE_STARTED, CaseService,
+    ASSIGNED, CLOSED, CONTACTED, CONTROL, NO_CONTACT, REFERRED, ROUTE_CONFIRMED,
+    SERVICE_STARTED, SYSTEM, WAITING_EXTERNAL, CaseService, NotFound,
 )
 from cases_postgres import PostgresCaseRepository
 from storage_postgres import database_url
@@ -64,7 +64,27 @@ class CaseOperatorCRM:
                 """,
                 (uid,),
             ).fetchone()
-        return dict(row) if row else None
+        if row is None:
+            return None
+        карточка = dict(row)
+        карточка["allowed"] = self._разрешено(карточка)
+        return карточка
+
+    @staticmethod
+    def _разрешено(case: dict[str, Any]) -> dict[str, Any]:
+        """Что координатор может сделать сейчас — по таблице 5.2 из модуля
+        обращений, чтобы интерфейс не держал своей копии правил."""
+        from cases import (CLOSE_REASONS, CONSENT_NOT_GIVEN, ESCALATED, STATUSES,
+                           SYSTEM_CLOSE_REASONS, allowed)
+
+        frm = case["status"]
+        переходы = [to for to in STATUSES
+                    if to not in (CLOSED, ESCALATED, CONTROL) and allowed(frm, to)]
+        причины = [r for r in CLOSE_REASONS
+                   if r not in SYSTEM_CLOSE_REASONS and allowed(frm, CLOSED, r)
+                   and (r != CONSENT_NOT_GIVEN or case.get("legal_basis") == "vital_interest")]
+        return {"transitions": переходы, "close_reasons": причины,
+                "extend_control": frm == CONTROL}
 
     def list_open_cases(self) -> list[dict[str, Any]]:
         with psycopg.connect(self.db_url, row_factory=dict_row) as conn:
@@ -103,15 +123,72 @@ class CaseOperatorCRM:
             directory_entry_id=int(directory_entry_id), referral_channel=channel,
         )
 
-    def start_service(self, user_id: str, operator_id: str, started_at: datetime | None = None):
-        return self._service().transition(
-            self._case_id(user_id), SERVICE_STARTED, who=operator_id,
-            service_started_at=started_at,
-        )
+    def no_contact(self, user_id: str, operator_id: str):
+        return self._service().transition(self._case_id(user_id), NO_CONTACT, who=operator_id)
 
-    def close(self, user_id: str, reason: str, operator_id: str):
+    def waiting_external(self, user_id: str, operator_id: str):
+        return self._service().transition(self._case_id(user_id), WAITING_EXTERNAL, who=operator_id)
+
+    def start_service(self, user_id: str, operator_id: str, started_at: datetime | None = None):
+        """Помощь началась — и контроль начинается сразу, в той же транзакции.
+
+        В CONTROL переводит система (5.1), Д+7 и Д+30 считаются от начала
+        помощи (5.4). Ждать с переходом нечего, а обращение, застрявшее
+        в SERVICE_STARTED, осталось бы без контрольных звонков.
+        """
+        service = self._service()
+        case_id = self._case_id(user_id)
+        with service.repo.transaction():
+            service.transition(case_id, SERVICE_STARTED, who=operator_id,
+                               service_started_at=started_at)
+            return service.transition(case_id, CONTROL, who=SYSTEM)
+
+    def complete_task(self, user_id: str, task_id: int, result: str, operator_id: str,
+                      follow_up_kind: str | None = None,
+                      follow_up_due_at: datetime | None = None):
+        service = self._service()
+        case_id = self._case_id(user_id)
+        with service.repo.transaction():
+            задача = service.repo.get_task(int(task_id))
+        if задача is None or задача.case_id != case_id:
+            # Номер задачи приходит из запроса: чужую по нему не закрыть.
+            raise NotFound(f"у этого обращения нет задачи {task_id}")
+        service.complete_task(int(task_id), result, who=operator_id,
+                              follow_up_kind=follow_up_kind,
+                              follow_up_due_at=follow_up_due_at)
+        return service.case(case_id)
+
+    def extend_control(self, user_id: str, due_at: datetime, reason: str, operator_id: str):
+        service = self._service()
+        case_id = self._case_id(user_id)
+        service.extend_control(case_id, due_at=due_at, reason=reason, who=operator_id)
+        return service.case(case_id)
+
+    def directory(self, route: str | None = None) -> list[dict[str, Any]]:
+        """Действующие записи справочника — для направления (И12)."""
+        with psycopg.connect(self.db_url, row_factory=dict_row) as conn:
+            rows = conn.execute(
+                "SELECT directory_entry_id, provider_key, route, provider, available, "
+                "fallback, phone, hours, address FROM route_directory "
+                "WHERE valid_to IS NULL AND (%s::text IS NULL OR route = %s) "
+                "ORDER BY route, provider",
+                (route, route),
+            ).fetchall()
+        return [dict(row) for row in rows]
+
+    def close(self, user_id: str, reason: str, operator_id: str,
+              duplicate_of_number: str | None = None):
+        duplicate_of = None
+        if duplicate_of_number:
+            with psycopg.connect(self.db_url) as conn:
+                row = conn.execute("SELECT case_id FROM cases WHERE number = %s",
+                                   (duplicate_of_number.strip(),)).fetchone()
+            if row is None:
+                raise NotFound(f"обращения {duplicate_of_number} нет")
+            duplicate_of = int(row[0])
         return self._service().transition(
             self._case_id(user_id), CLOSED, who=operator_id, reason=reason,
+            duplicate_of=duplicate_of,
         )
 
     def reassign(self, user_id: str, assigned_to: str, operator_id: str):

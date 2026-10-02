@@ -178,6 +178,10 @@ def _case_crm():
     "case_start_service": "operator",
     "case_close": "operator",
     "case_reassign": "operator",
+    "case_no_contact": "operator",
+    "case_waiting_external": "operator",
+    "case_complete_task": "operator",
+    "case_extend_control": "operator",
 }
 
 
@@ -620,9 +624,8 @@ def api_domain_referral(user_id: str):
 @app.post("/api/case/<user_id>/domain/service-start")
 @login_required
 def api_domain_service_start(user_id: str):
-    started_at = _поле("started_at")
     try:
-        value = datetime.fromisoformat(started_at) if started_at else None
+        value = _время("started_at")
     except ValueError:
         return jsonify({"error": "Дата начала помощи — в формате ISO 8601"}), 400
     return изменить_обращение("start_service", user_id, started_at=value)
@@ -634,7 +637,69 @@ def api_domain_close(user_id: str):
     reason = _поле("reason")
     if not reason:
         return jsonify({"error": "Нужна причина закрытия"}), 400
-    return изменить_обращение("close", user_id, reason=reason)
+    return изменить_обращение("close", user_id, reason=reason,
+                              duplicate_of_number=_поле("duplicate_of") or None)
+
+
+@app.post("/api/case/<user_id>/domain/no-contact")
+@login_required
+def api_domain_no_contact(user_id: str):
+    return изменить_обращение("no_contact", user_id)
+
+
+@app.post("/api/case/<user_id>/domain/waiting-external")
+@login_required
+def api_domain_waiting_external(user_id: str):
+    return изменить_обращение("waiting_external", user_id)
+
+
+def _время(name: str) -> datetime | None:
+    значение = _поле(name)
+    if not значение:
+        return None
+    время = datetime.fromisoformat(значение)
+    if время.tzinfo is None:
+        # Координатор вводит время службы — Самара (UTC+4), как номера (4.9).
+        from cases import SAMARA
+        время = время.replace(tzinfo=SAMARA)
+    return время
+
+
+@app.post("/api/case/<user_id>/domain/task/<int:task_id>/done")
+@login_required
+def api_domain_task_done(user_id: str, task_id: int):
+    result = _поле("result")
+    if not result:
+        return jsonify({"error": "Нужен итог задачи"}), 400
+    try:
+        срок = _время("follow_up_due_at")
+    except ValueError:
+        return jsonify({"error": "Срок — дата в формате ISO 8601"}), 400
+    return изменить_обращение("complete_task", user_id, task_id=task_id, result=result,
+                              follow_up_kind=_поле("follow_up_kind") or None,
+                              follow_up_due_at=срок)
+
+
+@app.post("/api/case/<user_id>/domain/control/extend")
+@login_required
+def api_domain_extend_control(user_id: str):
+    reason = _поле("reason")
+    try:
+        срок = _время("due_at")
+    except ValueError:
+        return jsonify({"error": "Срок — дата в формате ISO 8601"}), 400
+    if not reason or срок is None:
+        return jsonify({"error": "Нужны срок и причина продления"}), 400
+    return изменить_обращение("extend_control", user_id, due_at=срок, reason=reason)
+
+
+@app.get("/api/directory")
+@login_required
+def api_directory():
+    crm = _case_crm()
+    if crm is None:
+        return jsonify({"error": "Обращения (CASE) доступны только с PostgreSQL"}), 503
+    return jsonify({"entries": crm.directory(request.args.get("route") or None)})
 
 
 @app.post("/api/case/<user_id>/domain/reassign")

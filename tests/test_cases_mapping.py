@@ -28,7 +28,8 @@ from pathlib import Path
 КОРЕНЬ = Path(__file__).resolve().parents[1]
 КОНТРАКТ = КОРЕНЬ / "docs" / "МОДЕЛЬ-ОБРАЩЕНИЯ.md"
 СООТВЕТСТВИЕ = КОРЕНЬ / "docs" / "МОДЕЛЬ-ОБРАЩЕНИЯ-ШАГ-1.md"
-ТЕСТЫ = ("test_cases_contract.py", "test_cases_postgres.py")
+ТЕСТЫ = ("test_cases_contract.py", "test_cases_postgres.py",
+         "test_max_case_bridge.py", "test_case_operator_crm.py")   # шаг 2
 
 _ИМЯ_ТЕСТА = re.compile(r"`(test_\w+)`")
 
