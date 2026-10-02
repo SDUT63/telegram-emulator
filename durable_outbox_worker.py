@@ -48,7 +48,10 @@ def _claim_still_deliverable(queue: PostgresOutbox, message_id: int, user_id: st
 
     A deletion committed between claim and send invalidates the claim — except
     for the farewell row, which is the deletion confirmation itself and is the
-    one message a purged user is still owed.
+    one message a purged user is still owed. An automatic message is
+    deliverable only while its CASE is open (contract 9.1): closing the CASE
+    under the same user lock cancels it, so it is either sent before the
+    closure commits or not at all.
     """
     with psycopg.connect(queue.db_url, row_factory=dict_row) as conn:
         row = conn.execute(
@@ -62,11 +65,7 @@ def _claim_still_deliverable(queue: PostgresOutbox, message_id: int, user_id: st
                AND o.locked_by=%s
                AND o.user_id=%s
                AND (d.user_id IS NULL OR o.farewell)
-               AND (
-                   NOT o.automatic
-                   OR o.case_id IS NULL
-                   OR c.status <> 'CLOSED'
-               )
+               AND (NOT o.automatic OR c.status <> 'CLOSED')
             """,
             (message_id, queue.worker_id, str(user_id)),
         ).fetchone()

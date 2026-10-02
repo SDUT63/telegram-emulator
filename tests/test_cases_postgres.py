@@ -172,13 +172,13 @@ def test_и12_база_не_даёт_изменить_версию_справо�
 
 def test_и14_все_таблицы_с_данными_человека_учтены(люди):
     from cases_memory import PERSON_DATA_TABLES as В_ПАМЯТИ
-    from cases_postgres import PERSON_DATA_TABLES
+    from cases_postgres import LINKED_TABLES, PERSON_DATA_TABLES
 
     with psycopg.connect(DSN) as conn:
         в_базе = {r[0] for r in conn.execute(
             "SELECT DISTINCT table_name FROM information_schema.columns "
             "WHERE table_schema = current_schema() AND column_name IN ('case_id', 'person_id')")}
-    assert в_базе == set(PERSON_DATA_TABLES), (
+    assert в_базе == set(PERSON_DATA_TABLES) | set(LINKED_TABLES), (
         "новая таблица с данными человека не внесена в PERSON_DATA_TABLES — "
         "удаление по просьбе её не проверяет")
     assert set(В_ПАМЯТИ) == set(PERSON_DATA_TABLES)
@@ -506,3 +506,180 @@ def test_и7_база_не_даёт_сменить_причину_закрыти
     _сырой("UPDATE cases SET status = 'CLOSED', close_reason = 'consent_not_given', "
            "closed_at = now() WHERE case_id = %s", (второе.case_id,))
     assert s.case(второе.case_id).close_reason == "consent_not_given"
+
+
+# --- И18: автоматические сообщения (9.1) ---------------------------------------
+
+def _рабочее(s: CaseService, uid: str):
+    return s.transition(_черновик(s, uid).case_id, NEW, who=BOT, trigger="checkpoint")
+
+
+def _в_очередь(uid: str, *, case_id: int | None = None, automatic: bool = False,
+               текст: str = "напоминание") -> int:
+    from outbox_postgres import PostgresOutbox, delivery_key
+    return PostgresOutbox().enqueue(
+        delivery_key=delivery_key(f"и18-{uuid.uuid4().hex}"), user_id=uid,
+        payload={"kind": "max_text", "text": текст}, case_id=case_id, automatic=automatic)
+
+
+def _строка_очереди(message_id: int) -> dict:
+    from psycopg.rows import dict_row
+    with psycopg.connect(DSN, row_factory=dict_row) as conn:
+        return conn.execute("SELECT * FROM outbox_messages WHERE id = %s", (message_id,)).fetchone()
+
+
+def _берётся_ли(message_id: int) -> bool:
+    """Возьмёт ли очередь это сообщение на отправку. Чужие строки, взятые
+    заодно, возвращаются как были — тест не должен менять очередь других."""
+    from outbox_postgres import PostgresOutbox
+    очередь = PostgresOutbox()
+    взятые = [m.id for m in очередь.claim(limit=1000)]
+    with psycopg.connect(DSN) as conn:
+        conn.execute("UPDATE outbox_messages SET status = 'pending', locked_at = NULL, "
+                     "locked_by = NULL, attempts = attempts - 1 "
+                     "WHERE locked_by = %s AND status = 'sending'", (очередь.worker_id,))
+    return message_id in взятые
+
+
+def test_и18_закрытие_ward_died_отменяет_автоматические_но_не_ответы_бота(люди):
+    from cases import CLOSED
+    s, uid = _сервис(), люди()
+    case = _рабочее(s, uid)
+    автоматическое = _в_очередь(uid, case_id=case.case_id, automatic=True)
+    ответ_бота = _в_очередь(uid, текст="ответ на сообщение человека")
+
+    s.transition(case.case_id, CLOSED, who="coordinator", reason="ward_died")
+
+    отменённое = _строка_очереди(автоматическое)
+    assert отменённое["status"] == "cancelled"                 # (а) в транзакции закрытия
+    assert отменённое["payload"] == {"kind": "redacted"}      # текст не хранится
+    assert _строка_очереди(ответ_бота)["status"] == "pending"  # (г) бот не молчит
+    assert not _берётся_ли(автоматическое)                     # (б)
+    assert _берётся_ли(ответ_бота)
+
+
+def test_и18_взятое_до_закрытия_не_уходит_после_него(люди):
+    """(в), 9.2: сообщение взято на отправку, отправитель ещё не дошёл до
+    перепроверки под замком человека — закрытие отменяет и его."""
+    from cases import CLOSED
+    from durable_outbox_worker import _claim_still_deliverable
+    from outbox_postgres import PostgresOutbox
+    s, uid = _сервис(), люди()
+    case = _рабочее(s, uid)
+    сообщение = _в_очередь(uid, case_id=case.case_id, automatic=True)
+    очередь = PostgresOutbox()
+    взятые = [m.id for m in очередь.claim(limit=1000)]
+    try:
+        assert сообщение in взятые
+        assert _claim_still_deliverable(очередь, сообщение, uid)
+        s.transition(case.case_id, CLOSED, who="coordinator", reason="ward_died")
+        assert not _claim_still_deliverable(очередь, сообщение, uid)
+        assert _строка_очереди(сообщение)["status"] == "cancelled"
+    finally:
+        with psycopg.connect(DSN) as conn:
+            conn.execute("UPDATE outbox_messages SET status = 'pending', locked_at = NULL, "
+                         "locked_by = NULL, attempts = attempts - 1 "
+                         "WHERE locked_by = %s AND status = 'sending'", (очередь.worker_id,))
+
+
+def test_и18_новое_обращение_не_размораживает_старую_очередь(люди):
+    """(д): отменённое не восстанавливается и не отправляется; автоматические
+    разрешены только в контексте нового обращения."""
+    from cases import CLOSED
+    from outbox_postgres import PostgresOutbox, delivery_key
+    s, uid = _сервис(), люди()
+    старое = _рабочее(s, uid)
+    ключ = delivery_key(f"и18-{uuid.uuid4().hex}")
+    payload = {"kind": "max_text", "text": "напоминание"}
+    отменённое = PostgresOutbox().enqueue(delivery_key=ключ, user_id=uid, payload=payload,
+                                          case_id=старое.case_id, automatic=True)
+    s.transition(старое.case_id, CLOSED, who="coordinator", reason="ward_died")
+
+    новое = _рабочее(s, uid)
+    assert новое.case_id != старое.case_id
+    # Тот же ключ доставки в контексте нового обращения — не то же сообщение.
+    with pytest.raises(ValueError, match="delivery_key collision"):
+        PostgresOutbox().enqueue(delivery_key=ключ, user_id=uid, payload=payload,
+                                 case_id=новое.case_id, automatic=True)
+    assert _строка_очереди(отменённое)["status"] == "cancelled"
+    assert not _берётся_ли(отменённое)
+    assert _берётся_ли(_в_очередь(uid, case_id=новое.case_id, automatic=True))
+
+
+def test_и18_автоматическое_без_обращения_не_ставится(люди):
+    uid = люди()
+    with pytest.raises(ValueError, match="bound to a CASE"):
+        _в_очередь(uid, automatic=True)
+    with pytest.raises(psycopg.errors.CheckViolation):
+        _сырой("INSERT INTO outbox_messages(delivery_key, user_id, payload, payload_sha256, automatic) "
+               "VALUES (%s, %s, '{}'::jsonb, 'x', TRUE)", (f"и18-{uuid.uuid4().hex}", uid))
+
+
+def test_и18_закрытие_из_crm_сначала_ждёт_замок_человека(люди):
+    """Порядок замков один: человек, потом строка обращения. Пока замок
+    человека занят (событие MAX или отправитель очереди), закрытие из CRM
+    ждёт, не держа строку обращения, — иначе событие MAX, ждущее эту
+    строку под замком человека, сцепилось бы с ним намертво."""
+    from cases import CLOSED
+    s, uid = _сервис(), люди()
+    case = _рабочее(s, uid)
+    with psycopg.connect(DSN, autocommit=True) as замок:
+        замок.execute("SELECT pg_advisory_lock(hashtextextended(%s, 0))", (uid,))
+        ошибки: list = []
+
+        def закрыть() -> None:
+            try:
+                _сервис().transition(case.case_id, CLOSED, who="coordinator", reason="ward_died")
+            except BaseException as exc:      # pragma: no cover — видно в ошибке ниже
+                ошибки.append(exc)
+
+        поток = threading.Thread(target=закрыть)
+        поток.start()
+        try:
+            for _ in range(200):
+                ждёт = замок.execute(
+                    "SELECT 1 FROM pg_locks WHERE locktype = 'advisory' AND NOT granted").fetchone()
+                if ждёт:
+                    break
+                threading.Event().wait(0.01)
+            assert ждёт, "закрытие не дошло до замка человека"
+            with psycopg.connect(DSN) as проверка:
+                проверка.execute("SELECT 1 FROM cases WHERE case_id = %s FOR UPDATE NOWAIT",
+                                 (case.case_id,))
+        finally:
+            замок.execute("SELECT pg_advisory_unlock(hashtextextended(%s, 0))", (uid,))
+            поток.join(10)
+    assert not ошибки, ошибки
+    assert s.case(case.case_id).status == CLOSED
+
+
+def test_и14_автоматические_сообщения_уходят_вместе_с_обращением(люди):
+    """Очередь исходящих вне модели, но автоматическое сообщение ссылается
+    на обращение (LINKED_TABLES): удаление человека уносит и его."""
+    s, uid = _сервис(), люди()
+    case = _рабочее(s, uid)
+    сообщение = _в_очередь(uid, case_id=case.case_id, automatic=True)
+    assert s.delete_person("max", uid, who="coordinator")
+    assert _строка_очереди(сообщение) is None
+
+
+def test_п92_удаление_данных_после_взятия_отзывает_отправку(люди):
+    """Правило очереди 9.2 для удаления данных: сообщение взято на отправку,
+    человек удалил данные — перепроверка перед вызовом MAX его не пускает."""
+    from durable_outbox_worker import _claim_still_deliverable
+    from outbox_postgres import PostgresOutbox
+    uid = люди()
+    сообщение = _в_очередь(uid, текст="ответ бота")
+    очередь = PostgresOutbox()
+    взятые = [m.id for m in очередь.claim(limit=1000)]
+    try:
+        assert сообщение in взятые
+        assert _claim_still_deliverable(очередь, сообщение, uid)
+        _сырой("INSERT INTO deleted_users(user_id) VALUES (%s)", (uid,))
+        assert not _claim_still_deliverable(очередь, сообщение, uid)
+    finally:
+        with psycopg.connect(DSN) as conn:
+            conn.execute("DELETE FROM deleted_users WHERE user_id = %s", (uid,))
+            conn.execute("UPDATE outbox_messages SET status = 'pending', locked_at = NULL, "
+                         "locked_by = NULL, attempts = attempts - 1 "
+                         "WHERE locked_by = %s AND status = 'sending'", (очередь.worker_id,))

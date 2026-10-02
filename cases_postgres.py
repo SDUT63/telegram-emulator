@@ -38,6 +38,12 @@ PERSON_DATA_TABLES = (
     "tasks", "referrals", "outcomes",
 )
 
+# Таблицы вне модели, строки которых ссылаются на обращение. Удаляются
+# вместе с ним: автоматические сообщения очереди исходящих (018,
+# ON DELETE CASCADE); прочие строки очереди удаляет удаление данных
+# человека по его идентификатору в MAX (production_privacy).
+LINKED_TABLES = ("outbox_messages",)
+
 _JSON = {
     "cases": {"suggested_route"},
     "intakes": {"answers", "alerts", "story_hints"},
@@ -144,6 +150,17 @@ class PostgresCaseRepository:
     # --- cases --------------------------------------------------------------
 
     def get_case(self, case_id: int, *, lock: bool = False) -> Case | None:
+        if lock:
+            # Сначала замок человека, потом строка обращения — в том же
+            # порядке, что событие MAX (замок человека → анкета → обращение)
+            # и отправитель очереди. Иначе закрытие из CRM держало бы строку
+            # и ждало замок в триггере отмены автоматических сообщений (018),
+            # а событие MAX держало бы замок и ждало строку: взаимная
+            # блокировка.
+            self._cur().execute(
+                "SELECT pg_advisory_xact_lock(hashtextextended(p.channel_user_id, 0)) "
+                "FROM cases c JOIN persons p ON p.person_id = c.person_id "
+                "WHERE c.case_id = %s AND p.channel = 'max'", (case_id,))
         return self._one(Case, "SELECT * FROM cases WHERE case_id = %s" + (" FOR UPDATE" if lock else ""),
                          (case_id,))
 

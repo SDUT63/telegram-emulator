@@ -51,8 +51,16 @@ class PostgresOutbox:
   are written in the same transaction as the intent, so a file is queued
   exactly when its message is, and they cascade away with the row: delivered,
   dead, or purged with the user.
+
+  automatic=True marks a message the system starts on its own, without an
+  incoming message from the person: a reminder, a survey, a broadcast
+  (contract 9.1). It must name the CASE it belongs to: closing that CASE
+  cancels it, and it is never sent outside an open CASE. Bot replies to the
+  person and coordinator messages are not automatic (9.1 g).
   """
   key=str(delivery_key).strip(); uid=str(user_id).strip()
+  if automatic and case_id is None: raise ValueError("automatic message must be bound to a CASE (contract 9.1)")
+  if automatic and farewell: raise ValueError("farewell message is never automatic")
   if not key: raise ValueError("delivery_key must not be empty")
   if not uid: raise ValueError("user_id must not be empty")
   if not isinstance(payload,dict): raise TypeError("payload must be a dict")
