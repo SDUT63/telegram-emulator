@@ -18,13 +18,16 @@ import csv
 import json
 import os
 import re
+import threading
 from datetime import datetime
 from typing import Any
 
 import consent_forms
 import fallback
+import файловый_замок
 import survey_questions
-from survey_questions import CHECKPOINT_ID, QUESTIONS, STOP_OPTION
+from survey_questions import (APP_OPTION, CHECKPOINT_ID, QUESTIONS,
+                              STOP_OPTION)
 
 МЕСЯЦЫ = ("января", "февраля", "марта", "апреля", "мая", "июня", "июля",
           "августа", "сентября", "октября", "ноября", "декабря")
@@ -65,6 +68,22 @@ HELP = (
     "отмена — прервать\n\n"
     "Анкета сохраняется. Можно закрыть и вернуться позже — "
     "продолжим с того же места."
+)
+
+В_ПРИЛОЖЕНИЕ = (
+    "Открывайте — ваши ответы уже внутри, заново их вводить не нужно.\n\n"
+    "Там короткий опросник об устройстве дня, и по нему сразу сложится "
+    "план ухода: распорядок, что делать по часам, какое оборудование "
+    "нужно и сколько это будет стоить. Координатор всё равно свяжется "
+    "с вами — приложение не вместо него, а чтобы разговор был короче.\n\n"
+    "Ссылка личная: в ней то, что вы рассказали. Пересылать её другим "
+    "не стоит."
+)
+
+ПОПРОБУЙТЕ_ПРИЛОЖЕНИЕ = (
+    "Пока ждёте звонка, можно посмотреть приложение: там план ухода "
+    "по короткому опроснику, расчёт часов, стоимость и аренда "
+    "оборудования. Ваши ответы уже внутри ссылки."
 )
 
 DONE_FULL = (
@@ -275,6 +294,12 @@ RESTART_WORDS = {"заново", "начать заново", "/restart", "сн�
 BEGIN_WORDS = {"/start", "start", "старт", "начать", "начнём", "начнем"}
 CANCEL_WORDS = {"отмена", "стоп", "cancel", "/cancel", "/stop"}
 SUMMARY_WORDS = {"ответы", "результаты", "мои ответы", "/answers"}
+# Мини-приложение: справочник с поиском, расчёт часов и стоимости.
+# Человек чаще спрашивает «сколько это стоит», чем знает слово
+# «приложение», поэтому по цене сюда же.
+APP_WORDS = {"приложение", "мини-приложение", "калькулятор", "/app",
+             "сколько стоит", "стоимость", "цена", "цены", "прайс",
+             "сколько это стоит", "сколько стоит уход"}
 HELP_WORDS = {"помощь", "help", "/help", "?"}
 SKIP_WORDS = {"далее", "пропустить", "skip", "-"}
 BACK_WORDS = {"назад", "back"}
@@ -315,7 +340,36 @@ class Survey:
         self.storage_path = storage_path
         self.list_options = list_options
         self.state: dict[str, dict[str, Any]] = {}
+        # Запись и разбор сообщения защищены замками. Под нагрузкой без
+        # них терялись сообщения: две нити писали в один и тот же
+        # временный файл, первая переименовывала его, вторая падала
+        # с «нет такого файла» — и ответ человека пропадал вместе
+        # с исключением. Из двухсот одновременных обращений доходило
+        # одно.
+        self._замок_записи = threading.Lock()
+        self._замки_людей: dict[str, threading.RLock] = {}
+        self._замок_замков = threading.Lock()
         self.load()
+
+    def _замок_человека(self, user_id: str) -> threading.RLock:
+        """Свой замок на каждого человека.
+
+        Общий замок на всех сделал бы бот однопоточным: пока разбирается
+        одно сообщение, ждут все остальные. Разные люди друг другу
+        не мешают, а два сообщения одного человека — мешают: мессенджер
+        повторяет доставку, человек дважды нажимает кнопку, и оба
+        сообщения отвечают на один и тот же вопрос.
+
+        Замок возвратный: внутри разбора бот иногда вызывает сам себя —
+        ответ номером кнопки разбирается тем же путём, что и ответ
+        текстом. С обычным замком это встало бы намертво, и вставало:
+        прогон проверок перестал заканчиваться вовсе.
+        """
+        with self._замок_замков:
+            замок = self._замки_людей.get(user_id)
+            if замок is None:
+                замок = self._замки_людей[user_id] = threading.RLock()
+            return замок
 
     # ------------------------------------------------------------ хранение
 
@@ -335,10 +389,50 @@ class Survey:
             self.state = {}
 
     def save(self) -> None:
-        tmp = self.storage_path + ".tmp"
-        with open(tmp, "w", encoding="utf-8") as fh:
-            json.dump(self.state, fh, ensure_ascii=False, indent=2)
-        os.replace(tmp, self.storage_path)
+        """Записать состояние целиком, не потеряв его при этом.
+
+        Временный файл у каждой записи свой. Пока имя было общим
+        (`.json.tmp`), две одновременные записи дрались за него:
+        первая переименовывала, вторая падала. Замок нужен и сам
+        по себе — сериализовать словарь, который в этот момент
+        меняет другая нить, нельзя.
+        """
+        снимок = self._снимок()
+        with self._замок_записи:
+            файловый_замок.записать_надёжно(
+                self.storage_path,
+                json.dumps(снимок, ensure_ascii=False, indent=2))
+
+    def _снимок(self) -> dict[str, dict[str, Any]]:
+        """Копия состояния, которую можно спокойно сериализовать.
+
+        Записывать напрямую из `self.state` нельзя: пока идёт запись,
+        другая нить заводит нового человека или добавляет ответ, и
+        сериализация падает с «dictionary changed size during iteration».
+        Под нагрузкой это выглядело так: из двухсот пятидесяти
+        одновременных обращений одно-два теряли сообщение.
+
+        Копируем через `.copy()`, а не обходом в цикле: в CPython это
+        одна операция на стороне интерфейса, и порвать её нельзя. Обход
+        же — обычный цикл, и рвётся именно он.
+
+        Двух уровней достаточно: глубже лежат записи сообщений и
+        отметки тревог, а они добавляются целиком и после добавления
+        не меняются.
+        """
+        снимок: dict[str, dict[str, Any]] = {}
+        for кто, запись in self.state.copy().items():
+            if not isinstance(запись, dict):
+                снимок[кто] = запись
+                continue
+            копия = запись.copy()
+            for поле, значение in копия.copy().items():
+                if isinstance(значение, dict):
+                    копия[поле] = значение.copy()
+                elif isinstance(значение, list):
+                    копия[поле] = значение.copy()
+            снимок[кто] = копия
+        return снимок
 
     def _person(self, user_id: str) -> dict[str, Any]:
         person = self.state.get(user_id)
@@ -437,6 +531,10 @@ class Survey:
         return mark if mark.get("at") else None
 
     def grant_consent(self, user_id: str) -> str:
+        with self._замок_человека(user_id):
+            return self._grant_consent(user_id)
+
+    def _grant_consent(self, user_id: str) -> str:
         """Человек согласился. Записываем факт, время и версию текста.
 
         Запись делается один раз. Повторное нажатие не меняет дату:
@@ -455,6 +553,10 @@ class Survey:
         return CONSENT_YES + "\n\n" + self._ask(user_id, self._next(0, person["answers"]))
 
     def refuse_consent(self, user_id: str) -> str:
+        with self._замок_человека(user_id):
+            return self._refuse_consent(user_id)
+
+    def _refuse_consent(self, user_id: str) -> str:
         """Отказ. Ничего, кроме самого отказа, не храним."""
         person = self._person(user_id)
         person["consent"] = {
@@ -625,7 +727,16 @@ class Survey:
             return None
 
         person = self.state.get(user_id)
-        if person is not None:
+        if self.stage(user_id) == "consent":
+            # Р10, режим А (раздел 7 контракта): до согласия признак живёт
+            # только во время обработки сообщения. Человек получает
+            # 103/112, в метрики — счётчик по группе признака, без
+            # идентификатора и без текста; в анкету и в CRM — ничего.
+            # Раньше пометка «Угроза жизни» писалась в карточку и до
+            # согласия (Д9) — это сведения о здоровье без основания.
+            from metrics import METRICS
+            METRICS.inc("sdut_alerts_before_consent_total", {"group": сигнал.вид})
+        elif person is not None:
             пометки = person.setdefault("alerts", [])
             if сигнал.пометка not in пометки:
                 пометки.append(сигнал.пометка)
@@ -641,6 +752,18 @@ class Survey:
         return ответ
 
     def handle(self, user_id: str, text: str) -> str:
+        """Разобрать сообщение человека и ответить.
+
+        Разбор идёт под замком этого человека: два его сообщения
+        не должны отвечать на один и тот же вопрос. Такое случается
+        не от злого умысла — мессенджер повторяет доставку, когда не
+        дождался ответа, а человек нажимает кнопку дважды, когда
+        кажется, что не сработало.
+        """
+        with self._замок_человека(user_id):
+            return self._разобрать(user_id, text)
+
+    def _разобрать(self, user_id: str, text: str) -> str:
         text = (text or "").strip()
         low = text.lower()
 
@@ -649,7 +772,11 @@ class Survey:
         # полагаться только на него, человек пишет «здравствуйте» и получает
         # придирку к формату ответа вместо приветствия.
         if user_id not in self.state:
-            return self.start(user_id)
+            приветствие = self.start(user_id)
+            # Первое же сообщение может быть «мама не дышит». Раньше на него
+            # уходило приветствие без 103/112: незнакомого человека бот
+            # начинал знакомить, не посмотрев, что он написал.
+            return self._тревога(user_id, text) or приветствие
 
         # Удаление работает в любой момент и не требует подтверждений:
         # человек имеет на это право, а лишний экран — препятствие.
@@ -667,6 +794,13 @@ class Survey:
         # не обрабатываются — иначе получится, что мы что-то собираем
         # до того, как человек разрешил.
         if self.stage(user_id) == "consent":
+            # Подпись кнопки целиком — «Согласен, продолжим» — тоже согласие.
+            # Её печатают, копируют или диктуют голосом, и раньше на неё бот
+            # отвечал «пока кнопка не нажата» — то есть отказывал человеку,
+            # который ровно эту кнопку и назвал.
+            if low.replace(",", " ").split() == ["согласен", "продолжим"]:
+                self.understood(user_id)
+                return self.grant_consent(user_id)
             if low in AGREE_WORDS or low in BEGIN_WORDS or low in RESTART_WORDS:
                 self.understood(user_id)
                 return self.grant_consent(user_id)
@@ -691,7 +825,8 @@ class Survey:
         # непонимания начинается заново. Иначе она доедет до последней
         # ступени на ровном месте.
         if low in (RESTART_WORDS | HELP_WORDS | SUMMARY_WORDS | CANCEL_WORDS
-                   | BEGIN_WORDS | CONTINUE_WORDS | BACK_WORDS | SKIP_WORDS):
+                   | BEGIN_WORDS | CONTINUE_WORDS | BACK_WORDS | SKIP_WORDS
+                   | APP_WORDS):
             self.understood(user_id)
 
         if low in RESTART_WORDS:
@@ -739,14 +874,29 @@ class Survey:
         if low in BEGIN_WORDS:
             return RESUMED + "\n\n" + self._ask(user_id, step)
 
-        # «продолжить» после предупреждения просто повторяет вопрос
-        if low in CONTINUE_WORDS:
-            return self._ask(user_id, step)
-
         if low in BACK_WORDS:
             return self._go_back(user_id)
 
         question = QUESTIONS[step]
+
+        # «продолжить» после предупреждения просто повторяет вопрос —
+        # но не тогда, когда это и есть ответ. На рубеже анкеты
+        # «Продолжить» стоит первым вариантом, и написавший его словом
+        # вместо номера получал тот же вопрос заново. И так до конца:
+        # выйти из этого круга словами было нельзя.
+        # «Продолжить» и «приложение» — это и служебные слова, и
+        # варианты ответа на рубеже анкеты. Пока они перехватывались
+        # раньше вопроса, написавший их словом получал не то: «продолжить»
+        # возвращало тот же вопрос по кругу, «приложение» — общую ссылку
+        # вместо ответа. Сначала пробуем как ответ, и только потом как
+        # команду.
+        служебное = low in CONTINUE_WORDS or low in APP_WORDS
+        if служебное:
+            ответ_ли = bool(question.get("options")) and self._check(question, text)[0]
+            if not ответ_ли:
+                if low in APP_WORDS:
+                    return self.приглашение_в_приложение(user_id)
+                return self._ask(user_id, step)
 
         if low in SKIP_WORDS:
             if question.get("required", True):
@@ -829,7 +979,7 @@ class Survey:
         человек["step"] = self._next(рубеж + 1, ответы)
         человек["history"] = [ш for ш in (человек.get("history") or []) if ш < рубеж + 1]
         человек["pending"] = None
-        человек["alerts"] = []
+        человек["alerts"] = self._тревоги_первого_блока(человек.get("alerts"))
         человек["finished"] = None
         человек["reading"] = False
         self.save()
@@ -837,6 +987,24 @@ class Survey:
             "Основные данные уже сохранены — имя, телефон и адрес "
             "повторно вводить не нужно.\n\n" + self.question_text(uid)
         )
+
+    @staticmethod
+    def _тревоги_первого_блока(тревоги: list | None) -> list:
+        """Тревоги без тех, что подняли вопросы подробной части.
+
+        Нужна там, где подробную часть задают заново, а первый блок
+        остаётся: «продолжить подробную анкету» и боевое «начать заново».
+        Обнулять тревоги целиком нельзя: отметка «Острое состояние: тяжело
+        дышит» исчезала из карточки, а именно по тревогам CRM поднимает
+        обращение наверх. Убираем только то, что подняли вопросы подробной
+        части: их сейчас зададут заново.
+        """
+        рубеж = next(i for i, q in enumerate(QUESTIONS) if q["id"] == CHECKPOINT_ID)
+        подробные = set()
+        for q in QUESTIONS[рубеж + 1:]:
+            правила = q.get("alerts") or ([q["alert"]] if q.get("alert") else [])
+            подробные |= {r.get("label", q["text"]) + ":" for r in правила}
+        return [t for t in (тревоги or []) if not any(t.startswith(м) for м in подробные)]
 
     def есть_что_продолжить(self, user_id: str) -> bool:
         """Остались ли неотвеченные вопросы у завершённой анкеты.
@@ -870,6 +1038,41 @@ class Survey:
             self.understood(user_id)
             return текст + "\n\n" + СПРАВКА_ПОДПИСЬ
         return fallback.фраза(self.miss(user_id), fallback.ВОПРОС)
+
+    def ссылка_в_приложение(self, user_id: str) -> str:
+        """Адрес мини-приложения с уже перенесёнными ответами.
+
+        Без этого человек, прошедший анкету в чате, открывает
+        приложение и видит пустую форму — те же тридцать четыре
+        вопроса второй раз.
+        """
+        import перенос
+
+        человек = self.state.get(user_id) or {}
+        return перенос.ссылка(человек.get("answers") or {})
+
+    def приглашение_в_приложение(self, user_id: str) -> str:
+        """Ответ на просьбу открыть приложение или узнать цену."""
+        адрес = self.ссылка_в_приложение(user_id)
+        человек = self.state.get(user_id) or {}
+        есть_ответы = bool(человек.get("answers"))
+
+        строки = [
+            "Мини-приложение службы:",
+            адрес,
+            "",
+            "В нём: справочник с поиском, расчёт часов помощи "
+            "по оценочной шкале и калькулятор стоимости платного ухода "
+            "с надбавками и скидками.",
+        ]
+        if есть_ответы and "#" in адрес:
+            строки += [
+                "",
+                "Ваши ответы уже внутри ссылки — заново заполнять "
+                "не нужно. Ссылка личная: в ней то, что вы рассказали, "
+                "поэтому пересылать её другим не стоит.",
+            ]
+        return "\n".join(строки)
 
     @staticmethod
     def _свои_слова(question: dict[str, Any], text: str) -> bool:
@@ -975,12 +1178,20 @@ class Survey:
                 person["alerts"].append(note)
 
         # Человек решил не проходить подробную часть
-        if question["id"] == CHECKPOINT_ID and value == STOP_OPTION:
+        if question["id"] == CHECKPOINT_ID and value in (STOP_OPTION, APP_OPTION):
             person["step"] = len(QUESTIONS)
             person["finished"] = datetime.now().isoformat(timespec="seconds")
             self.save()
             self.export_csv()
-            return prefix + DONE_SHORT
+            if value == APP_OPTION:
+                # Те же вопросы, но в приложении, где к ним прилагаются
+                # план ухода, стоимость и оборудование. Ответы уезжают
+                # вместе со ссылкой: отвечать дважды человек не станет
+                # и правильно сделает.
+                return prefix + В_ПРИЛОЖЕНИЕ + "\n\n" + \
+                    self.ссылка_в_приложение(user_id)
+            return prefix + DONE_SHORT + "\n\n" + ПОПРОБУЙТЕ_ПРИЛОЖЕНИЕ + \
+                "\n" + self.ссылка_в_приложение(user_id)
 
         # Что сказать сразу после этого ответа — например, какое согласие
         # понадобится. Идёт после предупреждений: сначала здоровье,
@@ -1000,7 +1211,9 @@ class Survey:
             person["finished"] = datetime.now().isoformat(timespec="seconds")
             self.save()
             self.export_csv()
-            return prefix + DONE_FULL + "\n\n" + self.summary(user_id)
+            return (prefix + DONE_FULL + "\n\n" + self.summary(user_id) +
+                    "\n\n" + ПОПРОБУЙТЕ_ПРИЛОЖЕНИЕ + "\n" +
+                    self.ссылка_в_приложение(user_id))
 
         self.save()
         return prefix + self._ask(user_id, person["step"])
@@ -1401,13 +1614,18 @@ class Survey:
         header = ["Кто ответил", "Начато", "Завершено", "Требует внимания"] + [
             q["text"].splitlines()[0] for q in QUESTIONS
         ]
-        # utf-8-sig — чтобы Excel открыл кириллицу без «кракозябр»
+        # utf-8-sig — чтобы Excel открыл кириллицу без «кракозябр».
+        # Каждое значение проходит через таблицы.для_csv: человек может
+        # написать в ответе формулу, и она выполнится у координатора
+        # при открытии файла.
+        import таблицы
+
         with open(path, "w", encoding="utf-8-sig", newline="") as fh:
             writer = csv.writer(fh, delimiter=";")
             writer.writerow(header)
-            for user_id, person in self.state.items():
+            for user_id, person in self._снимок().items():
                 answers = person.get("answers", {})
-                writer.writerow(
+                строка = (
                     [
                         user_id,
                         person.get("started", ""),
@@ -1416,6 +1634,7 @@ class Survey:
                     ]
                     + [answers.get(q["id"], "") for q in QUESTIONS]
                 )
+                writer.writerow([таблицы.для_csv(з) for з in строка])
         return path
 
     def stats(self) -> tuple[int, int]:

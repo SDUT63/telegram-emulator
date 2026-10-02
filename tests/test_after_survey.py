@@ -173,3 +173,37 @@ def test_ни_один_транспорт_не_отправляет_пустот
         if not ищет:
             забыли.append(имя)
     assert забыли == [], f"эти транспорты промолчат на вопрос: {забыли}"
+
+
+def test_тревога_не_пропадает_при_продолжении_подробной_части(tmp_path):
+    """«Острое состояние» из первого блока должно остаться в карточке,
+    когда человек после «Достаточно, свяжитесь» продолжает анкету."""
+    import survey_questions as sq
+    from chatbot_survey import Survey
+    s = Survey(storage_path=str(tmp_path / "x.json"), list_options=False)
+    s.handle("u", "здравствуйте")
+    s.handle("u", "согласен")
+
+    def ответ(qid, значение):
+        шаг, q = s.current("u")
+        assert q["id"] == qid, (q["id"], qid)
+        if q.get("multi"):
+            for v in значение:
+                s.toggle("u", шаг, q["options"].index(v))
+            return s.answer_by_numbers("u", [i + 1 for i in s.picked("u", шаг)])
+        if q.get("options"):
+            return s.answer_by_numbers("u", [q["options"].index(значение) + 1])
+        return s.handle("u", значение)
+
+    ответ("who", "О близком человеке"); ответ("relation", "Дочь или сын")
+    ответ("aware", "Да, знает"); ответ("name", "Мария")
+    ответ("patient_name", "Анна Петровна"); ответ("phone", "8 900 000-00-00")
+    ответ("when_call", "Вечером")
+    ответ("address", "Автозаводский, Ворошилова 19, кв 5, 5 этаж, лифта нет")
+    ответ("age", "85 и старше"); ответ("flags", ["Тяжело дышит"])
+    ответ("need", "Помощь на дому"); ответ("continue", "Достаточно, свяжитесь")
+    до = list(s.state["u"]["alerts"])
+    assert any(t.startswith("Острое состояние") for t in до)
+    s.continue_detailed("u")
+    assert s.state["u"]["alerts"] == до
+    assert sq.CHECKPOINT_ID in s.state["u"]["answers"]

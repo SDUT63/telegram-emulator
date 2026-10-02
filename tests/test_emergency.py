@@ -303,3 +303,19 @@ def test_список_без_прошедшего_времени_не_перес
         + emergency.ОТРАВЛЕНИЕ + emergency.СУДОРОГИ + emergency.ДАВЛЕНИЕ
     )
     assert хронические & emergency.НЕ_БЫВАЕТ_В_ПРОШЛОМ == set()
+
+
+def test_режим_а_до_согласия_пометка_не_пишется(tmp_path):
+    """Р10, режим А: до согласия признак не сохраняется нигде, а человек
+    сразу получает 103/112 — даже если это его первое сообщение."""
+    from chatbot_survey import CONSENT_SHORT, Survey
+
+    s = Survey(str(tmp_path / "s.json"))
+    первый = s.handle("u", "мама не дышит")
+    assert "103" in первый and CONSENT_SHORT in первый
+    assert s.handle("u", "мама не дышит").count("103") == 1
+    assert not s.state["u"].get("alerts") and not s.state["u"].get("acked")
+
+    s.grant_consent("u")
+    s.handle("u", "мама не дышит")
+    assert s.state["u"]["alerts"]          # после согласия — как прежде

@@ -231,6 +231,29 @@ textarea {
   opacity:0; pointer-events:none; transition:opacity .2s;
 }
 .toast.show { opacity:1; }
+
+[hidden] { display:none !important; }
+
+/* ---------- обращение (CASE) ---------- */
+.dcase__head { display:flex; gap:10px; align-items:baseline; flex-wrap:wrap; margin-bottom:6px; }
+.dcase__num { font-size:16px; font-weight:700; font-variant-numeric:tabular-nums; }
+.dcase__st { font-size:12px; font-weight:600; padding:3px 10px; border-radius:100px;
+  background:var(--accent-soft); color:var(--accent); }
+.dcase__st--CLOSED { background:var(--sunk); color:var(--muted); }
+.dcase__st--ESCALATED, .dcase__st--NO_CONTACT { background:var(--warn-soft); color:var(--warn); }
+.dcase__meta { font-size:13px; color:var(--muted); }
+.dcase__route { margin:10px 0; font-size:14px; }
+.dcase__route b { font-weight:600; }
+.dcase__tasks { margin:10px 0; display:grid; gap:8px; }
+.dtask { border:1px solid var(--line); border-radius:9px; padding:8px 10px; display:grid; gap:6px; }
+.dtask--late { border-color:var(--danger); }
+.dtask__meta { font-size:12.5px; color:var(--muted); }
+.dform { display:grid; gap:8px; margin-top:10px; padding:10px; border-radius:9px; background:var(--sunk); }
+.dform label { display:grid; gap:4px; font-size:13px; color:var(--ink-soft); }
+.dform select, .dform input { padding:7px 9px; border:1px solid var(--line); border-radius:8px;
+  background:var(--surface); color:var(--ink); font-size:14px; max-width:100%; }
+.dcase__events { margin-top:10px; font-size:12.5px; color:var(--muted); }
+.dcase__events summary { cursor:pointer; }
 </style>
 </head>
 <body>
@@ -590,6 +613,7 @@ textarea {
         '<label class="notify"><input type="checkbox" id="notify" checked>' +
         "Сообщать человеку в чат о смене статуса</label>" +
       "</div>" +
+      '<div class="card" id="dcase" hidden></div>' +
       alerts +
       callsHtml(c) +
       '<div class="card"><h2>Ответы анкеты</h2><div class="ans">' + answersHtml(c) + "</div></div>" +
@@ -613,6 +637,8 @@ textarea {
         '<div class="actions"><button class="btn btn--ghost" id="addnote" type="button">Добавить заметку</button></div>' +
         '<div class="notes" style="margin-top:14px">' + notes + "</div>" +
       "</div>";
+
+    renderCase(c.user_id);
 
     // возвращаем недописанное
     $("#reply").value = getDraft("reply");
@@ -727,6 +753,192 @@ textarea {
         })
         .then(function () { toast("Заметка добавлена"); })
         .catch(function (e) { toast(e.message); });
+    });
+  }
+
+  /* ---------- обращение (CASE) ----------
+     Карточка и действия идут через модуль обращений: что можно сделать
+     сейчас, сервер присылает сам (allowed) — своей копии таблицы
+     переходов здесь нет. В ноутбучном режиме без PostgreSQL сервер
+     отвечает 503, и блок просто не показывается. */
+  var СТАТУС = { DRAFT: "Черновик", NEW: "Новое", ASSIGNED: "Назначено", NO_CONTACT: "Нет связи",
+    CONTACTED: "Был разговор", ROUTE_CONFIRMED: "Маршрут выбран", REFERRED: "Передано исполнителю",
+    WAITING_EXTERNAL: "Ждём исполнителя", SERVICE_STARTED: "Помощь началась", CONTROL: "Контроль",
+    CLOSED: "Закрыто", ESCALATED: "У старшего" };
+  var ДЕЙСТВИЕ = { ASSIGNED: "Взять обращение", CONTACTED: "Был разговор", NO_CONTACT: "Не дозвонились",
+    ROUTE_CONFIRMED: "Подтвердить маршрут", REFERRED: "Направить исполнителю",
+    WAITING_EXTERNAL: "Ждём исполнителя", SERVICE_STARTED: "Помощь началась" };
+  var ПРИЧИНА = { help_received: "Помощь получена", help_partial: "Получена частично",
+    solved_otherwise: "Решилось иначе", consultation_enough: "Хватило консультации", refused: "Отказ",
+    not_eligible: "Не наш случай", unable_to_contact: "Не удалось связаться", duplicate: "Дубликат",
+    consent_not_given: "Согласия нет", ward_died: "Человек умер" };
+  var ЗАДАЧА = { first_contact: "Первый звонок", confirm_route: "Подтвердить маршрут",
+    referral_followup: "Проверить направление", control_d7: "Контроль Д+7", control_d30: "Контроль Д+30",
+    control_extra: "Дополнительный контроль", escalation: "Эскалация" };
+  var ИТОГ = [["received", "Помощь получена"], ["partially", "Получена частично"], ["ongoing", "Помощь идёт"],
+    ["solved_otherwise", "Решилось иначе"], ["waiting_start", "Ждём начала"],
+    ["provider_no_show", "Исполнитель не пришёл"], ["refused", "Отказ"], ["no_contact", "Нет связи"]];
+  var ПОСЛЕДСТВИЕ = { waiting_start: 1, provider_no_show: 1 };
+  var МАРШРУТЫ = ["М1", "М2", "М3", "М4", "М5", "СМП"];
+  var КАНАЛ = [["call", "Звонок"], ["letter", "Письмо"], ["in_person", "Лично"]];
+
+  function options(pairs, selected) {
+    return pairs.map(function (p) {
+      return '<option value="' + escape(p[0]) + '"' + (p[0] === selected ? " selected" : "") + ">" +
+        escape(p[1]) + "</option>";
+    }).join("");
+  }
+  function localNow() {
+    var d = new Date(); d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
+    return d.toISOString().slice(0, 16);
+  }
+  function dcaseDo(path, body, done) {
+    var c = current();
+    return api("/api/case/" + c.user_id + "/domain/" + path, body || {})
+      .then(function () { toast(done); return renderCase(c.user_id); })
+      .catch(function (e) { toast(e.message); });
+  }
+
+  function renderCase(userId) {
+    return api("/api/case/" + userId + "/domain").then(function (d) {
+      var box = $("#dcase");
+      if (!box || state.selected !== userId) return;
+      var k = d.case;
+      if (!k || k.status === "DRAFT") { box.hidden = true; return; }
+      box.hidden = false;
+      var a = k.allowed || { transitions: [], close_reasons: [] };
+      var предложено = k.suggested_route || null;
+      var задачи = (k.tasks || []).filter(function (t) { return t.status === "open" || t.status === "overdue"; });
+      var сейчас = new Date();
+
+      var html = '<div class="dcase__head"><span class="dcase__num">' + escape(k.number || "без номера") +
+        '</span><span class="dcase__st dcase__st--' + escape(k.status) + '">' +
+        escape(СТАТУС[k.status] || k.status) + "</span></div>" +
+        '<div class="dcase__meta">' + (k.assigned_to ? "ведёт " + escape(k.assigned_to) : "ответственного нет") +
+        (k.close_reason ? " · причина: " + escape(ПРИЧИНА[k.close_reason] || k.close_reason) : "") + "</div>" +
+        '<div class="dcase__route">' +
+          (предложено ? "Бот предлагает <b>" + escape(предложено.route) + "</b> — " + escape(предложено.reason) : "Маршрут бот ещё не предложил") +
+          (k.final_route ? "<br>Итоговый маршрут: <b>" + escape(k.final_route) + "</b>" : "") +
+        "</div>";
+
+      if (задачи.length) {
+        html += '<div class="dcase__tasks">' + задачи.map(function (t) {
+          var поздно = t.due_at && new Date(t.due_at) < сейчас;
+          var контроль = /^control_/.test(t.kind);
+          return '<div class="dtask' + (поздно ? " dtask--late" : "") + '">' +
+            "<div><b>" + escape(ЗАДАЧА[t.kind] || t.kind) + "</b></div>" +
+            '<div class="dtask__meta">срок ' + escape(when(t.due_at)) +
+              (t.assigned_to ? " · " + escape(t.assigned_to) : "") + (поздно ? " · просрочена" : "") + "</div>" +
+            '<div class="actions">' +
+              '<select data-result="' + t.task_id + '">' +
+                (контроль ? options(ИТОГ) : options([["Сделано", "Сделано"]])) + "</select>" +
+              '<input type="datetime-local" data-follow="' + t.task_id + '" hidden title="Когда перезвонить">' +
+              '<button class="btn btn--ghost" type="button" data-task="' + t.task_id + '">Записать итог</button>' +
+            "</div></div>";
+        }).join("") + "</div>";
+      }
+
+      html += '<div class="actions" id="dacts"></div><div id="dform"></div>';
+      if ((k.events || []).length) {
+        html += '<details class="dcase__events"><summary>История обращения</summary>' +
+          k.events.slice(0, 20).map(function (e) {
+            return "<div>" + escape(when(e.at)) + " · " + escape(e.who) + " · " + escape(e.kind) + "</div>";
+          }).join("") + "</details>";
+      }
+      box.innerHTML = '<h2>Обращение</h2>' + html;
+
+      var acts = $("#dacts");
+      function кнопка(text, fn) {
+        var b = document.createElement("button");
+        b.className = "btn btn--ghost"; b.type = "button"; b.textContent = text;
+        b.addEventListener("click", fn); acts.appendChild(b);
+      }
+      a.transitions.forEach(function (to) {
+        кнопка(ДЕЙСТВИЕ[to] || СТАТУС[to] || to, function () { caseForm(to, k); });
+      });
+      if (a.extend_control) кнопка("Продлить контроль", function () { caseForm("extend", k); });
+      if (k.status !== "CLOSED") кнопка("Передать другому", function () { caseForm("reassign", k); });
+      if (a.close_reasons.length) кнопка("Закрыть обращение", function () { caseForm("close", k); });
+
+      Array.prototype.forEach.call(box.querySelectorAll("[data-result]"), function (sel) {
+        sel.addEventListener("change", function () {
+          var f = box.querySelector('[data-follow="' + sel.getAttribute("data-result") + '"]');
+          f.hidden = !ПОСЛЕДСТВИЕ[sel.value];
+          if (!f.hidden && !f.value) f.value = localNow();
+        });
+      });
+      Array.prototype.forEach.call(box.querySelectorAll("[data-task]"), function (b) {
+        b.addEventListener("click", function () {
+          var id = b.getAttribute("data-task");
+          var итог = box.querySelector('[data-result="' + id + '"]').value;
+          var follow = box.querySelector('[data-follow="' + id + '"]');
+          var body = { result: итог };
+          if (ПОСЛЕДСТВИЕ[итог]) { body.follow_up_kind = "referral_followup"; body.follow_up_due_at = follow.value; }
+          dcaseDo("task/" + id + "/done", body, "Итог записан");
+        });
+      });
+    }).catch(function () { var box = $("#dcase"); if (box) box.hidden = true; });
+  }
+
+  function caseForm(what, k) {
+    var box = $("#dform");
+    var простые = { ASSIGNED: ["assign", "Записали за вами"], CONTACTED: ["contacted", "Отмечен разговор"],
+      NO_CONTACT: ["no-contact", "Отмечено: нет связи"], WAITING_EXTERNAL: ["waiting-external", "Ждём исполнителя"] };
+    if (простые[what]) { box.innerHTML = ""; return dcaseDo(простые[what][0], {}, простые[what][1]); }
+    var поля = "", отправить;
+    if (what === "ROUTE_CONFIRMED") {
+      var предложено = (k.suggested_route || {}).route;
+      поля = '<label>Маршрут<select id="df-route">' +
+        options(МАРШРУТЫ.map(function (m) { return [m, m]; }), k.final_route || предложено) + "</select></label>" +
+        '<label>Основание<input id="df-reason" maxlength="500" placeholder="Почему этот маршрут"></label>';
+      отправить = function () {
+        dcaseDo("route", { route: $("#df-route").value, reason: $("#df-reason").value }, "Маршрут подтверждён");
+      };
+    } else if (what === "REFERRED") {
+      поля = '<label>Исполнитель<select id="df-entry"><option value="">загружаем…</option></select></label>' +
+        '<label>Как передали<select id="df-channel">' + options(КАНАЛ) + "</select></label>";
+      api("/api/directory?route=" + encodeURIComponent(k.final_route || "")).then(function (d) {
+        var sel = $("#df-entry");
+        if (!sel) return;
+        sel.innerHTML = d.entries.length ? d.entries.map(function (e) {
+          return '<option value="' + e.directory_entry_id + '">' + escape(e.provider) +
+            (e.phone ? " · " + escape(e.phone) : "") + (e.available ? "" : " · сейчас не принимает") + "</option>";
+        }).join("") : '<option value="">в справочнике нет исполнителей по маршруту ' + escape(k.final_route || "") + "</option>";
+      });
+      отправить = function () {
+        dcaseDo("referral", { directory_entry_id: $("#df-entry").value, channel: $("#df-channel").value },
+                "Передано исполнителю");
+      };
+    } else if (what === "SERVICE_STARTED") {
+      поля = '<label>Когда помощь началась<input type="datetime-local" id="df-when" value="' + localNow() + '"></label>';
+      отправить = function () {
+        dcaseDo("service-start", { started_at: $("#df-when").value }, "Помощь началась, контроль назначен");
+      };
+    } else if (what === "extend") {
+      поля = '<label>Следующий контрольный звонок<input type="datetime-local" id="df-when"></label>' +
+        '<label>Почему продлеваем<input id="df-reason" maxlength="500"></label>';
+      отправить = function () {
+        dcaseDo("control/extend", { due_at: $("#df-when").value, reason: $("#df-reason").value }, "Контроль продлён");
+      };
+    } else if (what === "reassign") {
+      поля = '<label>Логин нового ответственного<input id="df-who" maxlength="128"></label>';
+      отправить = function () { dcaseDo("reassign", { assigned_to: $("#df-who").value }, "Передано"); };
+    } else if (what === "close") {
+      поля = '<label>Причина<select id="df-close">' +
+        options(k.allowed.close_reasons.map(function (r) { return [r, ПРИЧИНА[r] || r]; })) + "</select></label>" +
+        '<label id="df-dup-l" hidden>Номер основного обращения<input id="df-dup" placeholder="SDUT-2026-00001"></label>';
+      отправить = function () {
+        dcaseDo("close", { reason: $("#df-close").value, duplicate_of: $("#df-dup").value }, "Обращение закрыто");
+      };
+    } else { return; }
+    box.innerHTML = '<div class="dform">' + поля +
+      '<div class="actions"><button class="btn" type="button" id="df-ok">Сохранить</button>' +
+      '<button class="btn btn--ghost" type="button" id="df-no">Отмена</button></div></div>';
+    $("#df-ok").addEventListener("click", отправить);
+    $("#df-no").addEventListener("click", function () { box.innerHTML = ""; });
+    var закрытие = $("#df-close");
+    if (закрытие) закрытие.addEventListener("change", function () {
+      $("#df-dup-l").hidden = this.value !== "duplicate";
     });
   }
 

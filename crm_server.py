@@ -80,6 +80,37 @@ app.config.update(
 )
 
 
+@app.after_request
+def защитные_заголовки(ответ):
+    """Заголовки, которые дёшевы и нужны, даже когда CRM стоит локально.
+
+    nosniff — чтобы вложение, названное картинкой, не исполнилось как
+    скрипт. DENY — чтобы страницу нельзя было открыть в чужом фрейме
+    и заставить оператора нажать не то, что он видит. Политика
+    содержимого запрещает подгружать что-либо со стороны: в CRM лежат
+    имена, телефоны и сведения о здоровье, и утечь они могут одним
+    запросом к чужому адресу.
+
+    unsafe-inline для стилей и скриптов пока нужен: разметка CRM
+    написана со встроенными обработчиками. Убирать его надо вместе
+    с ними, а не вместо.
+    """
+    ответ.headers.setdefault("X-Content-Type-Options", "nosniff")
+    ответ.headers.setdefault("X-Frame-Options", "DENY")
+    ответ.headers.setdefault("Referrer-Policy", "same-origin")
+    ответ.headers.setdefault(
+        "Content-Security-Policy",
+        "default-src 'self'; img-src 'self' data: blob:; "
+        "style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; "
+        "connect-src 'self'; form-action 'self'; frame-ancestors 'none'; "
+        "base-uri 'none'; object-src 'none'",
+    )
+    # Карточки не должны оседать в кэше браузера на общем компьютере.
+    if ответ.mimetype == "application/json" or ответ.direct_passthrough:
+        ответ.headers.setdefault("Cache-Control", "no-store")
+    return ответ
+
+
 def login_required(view):
     @functools.wraps(view)
     def wrapper(*args, **kwargs):
@@ -121,6 +152,14 @@ def _principal():
     return OperatorPrincipal(operator_id=str(login), role=str(session.get("operator_role") or "operator"))
 
 
+def _case_crm():
+    """CASE is the production source of truth; legacy operator_cases remains only for pilot compatibility."""
+    if not (os.getenv("SDUT_DATABASE_URL") or "").strip():
+        return None
+    from case_operator_crm import CaseOperatorCRM
+    return CaseOperatorCRM()
+
+
 # Какая роль нужна для каждого действия. Один список на оба режима: правило
 # не должно зависеть от того, стоит ли за CRM PostgreSQL или файлы на ноутбуке.
 ТРЕБУЕМАЯ_РОЛЬ = {
@@ -130,6 +169,19 @@ def _principal():
     "mark_call": "operator",
     "undo_call": "supervisor",   # отмена контрольного звонка стирает след работы
     "queue_message": "operator",
+    # Действия над обращением (CASE). Правила переходов держит модуль
+    # обращений; здесь — только кто вправе их вызывать.
+    "case_assign": "operator",
+    "case_contacted": "operator",
+    "case_confirm_route": "operator",
+    "case_refer": "operator",
+    "case_start_service": "operator",
+    "case_close": "operator",
+    "case_reassign": "operator",
+    "case_no_contact": "operator",
+    "case_waiting_external": "operator",
+    "case_complete_task": "operator",
+    "case_extend_control": "operator",
 }
 
 
@@ -486,6 +538,177 @@ def api_export():
         f'attachment; filename="sdut-{day}.xlsx"; filename*=UTF-8\'\'{name}'
     )
     return response
+
+
+@app.get("/api/case/<user_id>/domain")
+@login_required
+def api_domain_case(user_id: str):
+    crm = _case_crm()
+    if crm is None:
+        return jsonify({"error": "Обращения (CASE) доступны только с PostgreSQL"}), 503
+    return jsonify({"case": crm.get_case(user_id)})
+
+
+def изменить_обращение(действие: str, user_id: str, **параметры):
+    """Действие координатора над обращением (CASE).
+
+    Те же права и тот же журнал, что у изменить(): действие без проверки
+    роли — ровно та дыра, которую там закрыли. Отказ модели обращения
+    (переход не по таблице 5.2, нет основания, нет открытого обращения)
+    возвращается оператору с причиной, а не пятисотой ошибкой.
+    """
+    from cases import CaseError
+
+    crm = _case_crm()
+    if crm is None:
+        return jsonify({"error": "Обращения (CASE) доступны только с PostgreSQL"}), 503
+    принципал = _principal()
+    принципал.require(ТРЕБУЕМАЯ_РОЛЬ[f"case_{действие}"])
+    access_log.записать(
+        кто=session.get("operator_login", "?"),
+        роль=session.get("operator_role", "?"),
+        действие=f"case_{действие}",
+        обращение=str(user_id),
+    )
+    try:
+        case = getattr(crm, действие)(user_id, operator_id=принципал.operator_id, **параметры)
+    except (CaseError, ValueError) as exc:
+        return jsonify({"error": str(exc)}), 409
+    return jsonify({
+        "case_id": case.case_id, "number": case.number, "status": case.status,
+        "assigned_to": case.assigned_to, "final_route": case.final_route,
+        "referred_at": case.referred_at, "service_started_at": case.service_started_at,
+        "close_reason": case.close_reason,
+    })
+
+
+def _поле(name: str) -> str:
+    return str((request.get_json(silent=True) or {}).get(name) or "").strip()
+
+
+@app.post("/api/case/<user_id>/domain/assign")
+@login_required
+def api_domain_assign(user_id: str):
+    return изменить_обращение("assign", user_id)
+
+
+@app.post("/api/case/<user_id>/domain/contacted")
+@login_required
+def api_domain_contacted(user_id: str):
+    return изменить_обращение("contacted", user_id)
+
+
+@app.post("/api/case/<user_id>/domain/route")
+@login_required
+def api_domain_route(user_id: str):
+    route, reason = _поле("route"), _поле("reason")
+    if not route or not reason:
+        return jsonify({"error": "Нужны маршрут и основание"}), 400
+    return изменить_обращение("confirm_route", user_id, final_route=route, reason=reason)
+
+
+@app.post("/api/case/<user_id>/domain/referral")
+@login_required
+def api_domain_referral(user_id: str):
+    try:
+        directory_entry_id = int((request.get_json(silent=True) or {}).get("directory_entry_id"))
+    except (TypeError, ValueError):
+        return jsonify({"error": "Нужна запись справочника (directory_entry_id)"}), 400
+    channel = _поле("channel")
+    if not channel:
+        return jsonify({"error": "Нужен канал передачи"}), 400
+    return изменить_обращение("refer", user_id, directory_entry_id=directory_entry_id,
+                              channel=channel)
+
+
+@app.post("/api/case/<user_id>/domain/service-start")
+@login_required
+def api_domain_service_start(user_id: str):
+    try:
+        value = _время("started_at")
+    except ValueError:
+        return jsonify({"error": "Дата начала помощи — в формате ISO 8601"}), 400
+    return изменить_обращение("start_service", user_id, started_at=value)
+
+
+@app.post("/api/case/<user_id>/domain/close")
+@login_required
+def api_domain_close(user_id: str):
+    reason = _поле("reason")
+    if not reason:
+        return jsonify({"error": "Нужна причина закрытия"}), 400
+    return изменить_обращение("close", user_id, reason=reason,
+                              duplicate_of_number=_поле("duplicate_of") or None)
+
+
+@app.post("/api/case/<user_id>/domain/no-contact")
+@login_required
+def api_domain_no_contact(user_id: str):
+    return изменить_обращение("no_contact", user_id)
+
+
+@app.post("/api/case/<user_id>/domain/waiting-external")
+@login_required
+def api_domain_waiting_external(user_id: str):
+    return изменить_обращение("waiting_external", user_id)
+
+
+def _время(name: str) -> datetime | None:
+    значение = _поле(name)
+    if not значение:
+        return None
+    время = datetime.fromisoformat(значение)
+    if время.tzinfo is None:
+        # Координатор вводит время службы — Самара (UTC+4), как номера (4.9).
+        from cases import SAMARA
+        время = время.replace(tzinfo=SAMARA)
+    return время
+
+
+@app.post("/api/case/<user_id>/domain/task/<int:task_id>/done")
+@login_required
+def api_domain_task_done(user_id: str, task_id: int):
+    result = _поле("result")
+    if not result:
+        return jsonify({"error": "Нужен итог задачи"}), 400
+    try:
+        срок = _время("follow_up_due_at")
+    except ValueError:
+        return jsonify({"error": "Срок — дата в формате ISO 8601"}), 400
+    return изменить_обращение("complete_task", user_id, task_id=task_id, result=result,
+                              follow_up_kind=_поле("follow_up_kind") or None,
+                              follow_up_due_at=срок)
+
+
+@app.post("/api/case/<user_id>/domain/control/extend")
+@login_required
+def api_domain_extend_control(user_id: str):
+    reason = _поле("reason")
+    try:
+        срок = _время("due_at")
+    except ValueError:
+        return jsonify({"error": "Срок — дата в формате ISO 8601"}), 400
+    if not reason or срок is None:
+        return jsonify({"error": "Нужны срок и причина продления"}), 400
+    return изменить_обращение("extend_control", user_id, due_at=срок, reason=reason)
+
+
+@app.get("/api/directory")
+@login_required
+def api_directory():
+    crm = _case_crm()
+    if crm is None:
+        return jsonify({"error": "Обращения (CASE) доступны только с PostgreSQL"}), 503
+    return jsonify({"entries": crm.directory(request.args.get("route") or None)})
+
+
+@app.post("/api/case/<user_id>/domain/reassign")
+@login_required
+def api_domain_reassign(user_id: str):
+    assigned_to = _поле("assigned_to")
+    if not assigned_to:
+        return jsonify({"error": "Нужен новый ответственный"}), 400
+    return изменить_обращение("reassign", user_id, assigned_to=assigned_to)
 
 
 @app.post("/api/case/<user_id>/assign")

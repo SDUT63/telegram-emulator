@@ -9,10 +9,19 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Literata:opsz,wght@7..72,600;7..72,700&family=Golos+Text:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
 <style>
+/* Атрибут hidden должен скрывать всегда. Без этого правила класс
+   с display (.from-form, .many) перебивал его, и метка «из анкеты»
+   стояла на всех двадцати одной позиции шкалы — даже у того, кто
+   ничего не вставлял. Выглядело как «мы уже решили за вас». */
+[hidden]{display:none!important}
+
 :root{
-  --ground:#F2F5F3; --surface:#FFFFFF; --surface-2:#E9EFEC;
+  /* Страница на белом — как паблик службы. Карточки держатся
+     на рамке, а не на заливке: заливка на белом читается как
+     баннер, а нам нужен документ. */
+  --ground:#FFFFFF; --surface:#FFFFFF; --surface-2:#F2F5F3;
   --ink:#14201E; --ink-soft:#4B5A56; --ink-faint:#748480;
-  --line:#D9E2DE; --line-strong:#B9C7C2;
+  --line:#E4EAE7; --line-strong:#CBD6D2;
   --accent:#1B5A55; --accent-soft:#D6E6E3;
   --ok:#2C6647; --ok-bg:#DCEBE2;
   --warn:#83600F; --warn-bg:#F2E8CE;
@@ -22,15 +31,42 @@
   --mono:"IBM Plex Mono",Consolas,monospace;
   color-scheme: light dark;
 }
-@media (prefers-color-scheme:dark){:root{
-  --ground:#101614; --surface:#171F1D; --surface-2:#1E2826;
+/* Не только цвета страницы, но и то, что рисует сам браузер:
+   поля ввода, полосы прокрутки, встроенные кнопки. Без этого
+   выбранная светлая тема на тёмном телефоне давала белую
+   страницу с чёрными полями ввода. */
+:root[data-theme="light"]{ color-scheme: light; }
+:root[data-theme="dark"]{ color-scheme: dark; }
+/* Тёмные цвета описаны дважды нарочно.
+
+   Первый блок — для тех, кто ничего не выбирал: тема идёт от
+   телефона. Условие :root:not([data-theme="light"]) нужно, чтобы
+   явно выбранная светлая тема побеждала тёмный телефон.
+
+   Второй — для тех, кто выбрал тёмную сам, независимо от телефона.
+
+   Без этого переключателя телефон в ночном режиме запирал
+   приложение в тёмной теме навсегда. */
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --ground:#0E1412; --surface:#161E1C; --surface-2:#1D2725;
+    --ink:#E5EBE8; --ink-soft:#A8B7B2; --ink-faint:#7E8E89;
+    --line:#293430; --line-strong:#3A4844;
+    --accent:#63B4AB; --accent-soft:#1D302E;
+    --ok:#6DBB8E; --ok-bg:#1A2B22;
+    --warn:#D2A648; --warn-bg:#2C2617;
+    --stop:#DE7A6D; --stop-bg:#2E1C19;
+  }
+}
+:root[data-theme="dark"]{
+  --ground:#0E1412; --surface:#161E1C; --surface-2:#1D2725;
   --ink:#E5EBE8; --ink-soft:#A8B7B2; --ink-faint:#7E8E89;
   --line:#293430; --line-strong:#3A4844;
   --accent:#63B4AB; --accent-soft:#1D302E;
   --ok:#6DBB8E; --ok-bg:#1A2B22;
   --warn:#D2A648; --warn-bg:#2C2617;
   --stop:#DE7A6D; --stop-bg:#2E1C19;
-}}
+}
 *{box-sizing:border-box}
 html,body{margin:0;padding:0}
 body{background:var(--ground);color:var(--ink);font-family:var(--sans);
@@ -39,22 +75,37 @@ body{background:var(--ground);color:var(--ink);font-family:var(--sans);
 .wrap{max-width:40rem;margin:0 auto;padding-inline:20px;padding-block:0 5rem}
 
 /* ---------- экстренное ---------- */
-.emergency{background:var(--stop-bg);border-radius:8px;padding:1rem 1.1rem;
-  margin-block:1.4rem;border-left:4px solid var(--stop)}
+.emergency{background:var(--stop-bg);border-radius:8px;padding:.7rem .9rem;
+  margin-block:1.1rem;border-left:3px solid var(--stop);font-size:.95rem}
 .emergency b{color:var(--stop)}
 .emergency a{color:var(--stop);font-weight:600}
 
 /* ---------- шапка ---------- */
 header{padding-block:2rem 1.2rem}
 .eyebrow{font-family:var(--mono);font-size:.72rem;letter-spacing:.14em;
-  text-transform:uppercase;color:var(--accent);margin:0 0 .7rem}
+  text-transform:uppercase;color:var(--accent);margin:0 0 .7rem;
+  display:flex;align-items:center;gap:.6rem;flex-wrap:wrap}
+.theme{margin-left:auto;display:flex;gap:.5rem}
+.theme button{font-family:var(--mono);font-size:.62rem;letter-spacing:.06em;
+  text-transform:uppercase;padding:0;border:0;background:none;
+  color:var(--ink-faint);cursor:pointer;line-height:1;
+  border-bottom:1px solid transparent}
+.theme button[aria-pressed="true"]{color:var(--accent);
+  border-bottom-color:var(--accent)}
 h1{font-family:var(--serif);font-weight:700;font-size:clamp(1.8rem,6.5vw,2.5rem);
   line-height:1.12;margin:0 0 .7rem;text-wrap:balance}
 .lede{color:var(--ink-soft);margin:0;font-size:1.03rem}
 
 /* ---------- вкладки ---------- */
+/* Вкладок шесть, в ширину телефона они не помещаются. Полоска
+   уезжает вправо, и без подсказки человек не догадывается, что
+   там что-то есть: тень у правого края — и есть подсказка. */
+.tabs-wrap{position:relative;margin-block:1.4rem 1.8rem}
+.tabs-wrap::after{content:"";position:absolute;right:0;top:0;bottom:2px;
+  width:2.2rem;pointer-events:none;
+  background:linear-gradient(to right,transparent,var(--ground))}
 .tabs{display:flex;gap:.4rem;overflow-x:auto;scrollbar-width:none;
-  margin-block:1.6rem 1.8rem;padding-bottom:2px}
+  padding-bottom:2px}
 .tabs::-webkit-scrollbar{display:none}
 .tab{flex:0 0 auto;font-family:var(--sans);font-size:.92rem;font-weight:500;
   padding:.5rem .9rem;border-radius:999px;border:1px solid var(--line-strong);
@@ -63,17 +114,17 @@ h1{font-family:var(--serif);font-weight:700;font-size:clamp(1.8rem,6.5vw,2.5rem)
 
 h2{font-family:var(--serif);font-weight:600;font-size:1.4rem;line-height:1.25;
   margin:0 0 .5rem;text-wrap:balance}
-h3{font-size:1rem;font-weight:600;margin:1.8rem 0 .5rem}
-.sub{color:var(--ink-soft);margin:0 0 1.5rem}
+h3{font-size:1rem;font-weight:600;margin:2rem 0 .6rem}
+.sub{color:var(--ink-soft);margin:0 0 1.6rem;font-size:.98rem}
 p{margin:0 0 1rem}
 
 /* ---------- калькулятор ---------- */
 .group{margin-bottom:1.6rem}
 .group h3{font-family:var(--mono);font-size:.74rem;letter-spacing:.1em;
   text-transform:uppercase;color:var(--accent);margin:0 0 .7rem;font-weight:500}
-.q{background:var(--surface);border:1px solid var(--line);border-radius:8px;
-  padding:.85rem .95rem;margin-bottom:.6rem}
-.q .t{display:block;margin-bottom:.6rem;font-size:.97rem}
+.q{border-bottom:1px solid var(--line);padding:.7rem 0}
+.q:last-child{border-bottom:0}
+.q .t{display:block;margin-bottom:.5rem;font-size:.95rem}
 .opts{display:grid;grid-template-columns:repeat(3,1fr);gap:.35rem}
 .opts button{font-family:var(--sans);font-size:.85rem;padding:.5rem .2rem;
   border-radius:6px;border:1px solid var(--line-strong);background:transparent;
@@ -116,8 +167,20 @@ p{margin:0 0 1rem}
   white-space:pre-wrap;line-height:1.55}
 .hit .src{display:block;margin-top:.7rem;padding-top:.6rem;
   border-top:1px solid var(--line);font-size:.8rem;color:var(--ink-faint)}
+/* Картинки службы — половина ценности материалов: алгоритм смены
+   белья глазами понятнее, чем текстом. Грузятся по мере надобности:
+   в статьях их два десятка, и тянуть все разом незачем. */
+.hit figure{margin:.8rem 0 0}
+.hit figure img{display:block;width:100%;height:auto;border-radius:6px;
+  background:var(--surface-2)}
+.hit figure figcaption{color:var(--ink-faint);font-size:.83rem;
+  margin-top:.4rem;line-height:1.4}
 .sect{font-family:var(--mono);font-size:.72rem;letter-spacing:.1em;
   text-transform:uppercase;color:var(--accent);margin:1.4rem 0 .6rem;font-weight:500}
+/* Счётчик в подписи раздела — плашкой и с отступом. Без этого правила
+   число прилипало к слову: «так же ответит бот в чате3». */
+.sect .cnt{display:inline-block;margin-left:.5rem;letter-spacing:0;
+  background:var(--accent-soft);border-radius:999px;padding:.08rem .45rem}
 .empty{color:var(--ink-soft);padding:1rem 0}
 
 /* ---------- анкета ---------- */
@@ -142,6 +205,315 @@ p{margin:0 0 1rem}
 .dump{width:100%;min-height:9rem;font-family:var(--mono);font-size:.82rem;
   padding:.7rem;border-radius:8px;border:1px solid var(--line-strong);
   background:var(--surface-2);color:var(--ink);margin-top:.8rem;line-height:1.5}
+
+/* ---------- калькулятор стоимости ---------- */
+.kinds{display:flex;flex-wrap:wrap;gap:.4rem;margin-bottom:.9rem}
+.kinds button{font-family:var(--sans);font-size:.88rem;padding:.45rem .8rem;
+  border-radius:999px;border:1px solid var(--line-strong);background:transparent;
+  color:var(--ink-soft);cursor:pointer}
+.kinds button[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);
+  color:#fff;font-weight:500}
+.pick{display:block;width:100%;text-align:left;font-family:var(--sans);
+  background:var(--surface);border:1px solid var(--line);border-radius:8px;
+  padding:.8rem .9rem;margin-bottom:.5rem;cursor:pointer;color:inherit}
+.pick[aria-pressed="true"]{border-color:var(--accent);border-left:3px solid var(--accent);
+  background:var(--accent-soft)}
+.pick .top{display:flex;justify-content:space-between;align-items:baseline;gap:.7rem}
+.pick .name{font-weight:600;font-size:.97rem;line-height:1.3}
+.pick .rub{font-family:var(--mono);font-size:.95rem;font-weight:500;
+  font-variant-numeric:tabular-nums;color:var(--accent);white-space:nowrap;flex:0 0 auto}
+.pick .hour{font-family:var(--mono);font-size:.78rem;color:var(--ink-faint);
+  display:block;margin-top:.15rem;text-align:right}
+.pick .what{display:block;color:var(--ink-soft);font-size:.87rem;margin-top:.4rem;
+  line-height:1.45}
+.step{display:flex;align-items:center;gap:.7rem}
+.step button{width:44px;height:44px;border-radius:8px;border:1px solid var(--line-strong);
+  background:var(--surface);color:var(--ink);font-size:1.3rem;cursor:pointer;line-height:1}
+.step .n{font-family:var(--mono);font-size:1.2rem;font-weight:500;min-width:2.2rem;
+  text-align:center;font-variant-numeric:tabular-nums}
+.step .unit{color:var(--ink-soft);font-size:.93rem}
+.adds{list-style:none;margin:0;padding:0}
+.adds li{display:flex;gap:.7rem;align-items:flex-start;padding:.65rem 0;
+  border-bottom:1px solid var(--line)}
+.adds input{width:22px;height:22px;margin:.15rem 0 0;accent-color:var(--accent);flex:0 0 auto}
+.adds .txt{font-size:.95rem;flex:1 1 auto}
+.adds .pct{font-family:var(--mono);font-size:.82rem;font-weight:500;flex:0 0 auto;
+  padding:.1rem .35rem;border-radius:4px;background:var(--warn-bg);color:var(--warn)}
+.adds .pct.down{background:var(--ok-bg);color:var(--ok)}
+.adds .why{display:block;color:var(--ink-faint);font-size:.85rem;margin-top:.15rem;
+  line-height:1.45}
+.adds li.off{opacity:.55}
+.lines{background:var(--surface);border:1px solid var(--line);border-radius:8px;
+  padding:.5rem .95rem}
+.lines .r{display:flex;justify-content:space-between;gap:.8rem;padding:.45rem 0;
+  font-size:.92rem;border-bottom:1px solid var(--line)}
+.lines .r:last-child{border-bottom:0}
+.lines .r.sum{font-weight:600;font-size:1rem;padding-top:.7rem}
+.lines .r span:last-child{font-family:var(--mono);font-variant-numeric:tabular-nums;
+  white-space:nowrap;flex:0 0 auto}
+.lines .r.skip{color:var(--ink-faint);font-size:.85rem}
+.cmp{margin-bottom:1rem}
+.cmp .row{margin-bottom:.9rem}
+.cmp .hd{display:flex;justify-content:space-between;align-items:baseline;gap:.7rem;
+  font-size:.93rem}
+.cmp .hd b{font-weight:600}
+.cmp .hd .rub{font-family:var(--mono);font-variant-numeric:tabular-nums;
+  color:var(--accent);white-space:nowrap;flex:0 0 auto}
+.cmp .track{height:10px;border-radius:5px;background:var(--surface-2);margin:.35rem 0;
+  overflow:hidden}
+.cmp .track i{display:block;height:100%;background:var(--accent);width:0;
+  transition:width .35s ease}
+.cmp .who{color:var(--ink-faint);font-size:.85rem;line-height:1.45}
+.grp{background:var(--surface);border:1px solid var(--line);border-radius:8px;
+  margin-bottom:.5rem;overflow:hidden}
+.grp > summary{padding:.75rem .95rem;cursor:pointer;list-style:none;font-weight:600;
+  font-size:.95rem}
+.grp > summary::-webkit-details-marker{display:none}
+.grp > summary::after{content:"▾";float:right;color:var(--ink-faint);font-weight:400}
+.grp[open] > summary::after{content:"▴"}
+.grp .cnt{font-family:var(--mono);font-size:.8rem;color:var(--ink-faint);
+  font-weight:400;margin-left:.4rem}
+.grp .inner{padding:0 .95rem .6rem}
+.plain li{border-bottom:1px solid var(--line);padding:.6rem 0;font-size:.93rem;
+  color:var(--ink-soft)}
+.plain{list-style:none;margin:0;padding:0}
+
+.split{background:var(--surface);border:1px solid var(--line);border-radius:8px;
+  padding:.5rem .95rem;margin-bottom:.9rem}
+.split .r{display:flex;justify-content:space-between;gap:.8rem;padding:.45rem 0;
+  font-size:.92rem;border-bottom:1px solid var(--line);align-items:baseline}
+.split .r:last-child{border-bottom:0}
+.split .r span:last-child{font-family:var(--mono);font-variant-numeric:tabular-nums;
+  white-space:nowrap;flex:0 0 auto;color:var(--ink-soft)}
+.split .r.sum{font-weight:600;padding-top:.65rem}
+.split .r.sum span:last-child{color:var(--accent)}
+.split .bar{display:flex;height:8px;border-radius:4px;overflow:hidden;margin:.5rem 0 .2rem}
+.split .bar i{display:block;height:100%}
+.cover{background:var(--ok-bg);border-radius:8px;padding:.85rem .95rem;
+  margin-bottom:.9rem;
+  /* Итог приклеен к верху экрана и накрывал бы этот блок при переходе
+     к нему по ссылке. Отступ прокрутки оставляет место под него. */
+  scroll-margin-top:9rem}
+#p-cost h3{scroll-margin-top:9rem}
+.cover b{color:var(--ok);display:block;margin-bottom:.3rem}
+.cover .two{display:flex;height:12px;border-radius:6px;overflow:hidden;
+  margin:.55rem 0 .4rem}
+.cover .two i{display:block;height:100%}
+.cover .two .mine{background:var(--accent)}
+.cover .two .theirs{background:var(--ok)}
+.cover .legend{display:flex;justify-content:space-between;gap:.8rem;
+  font-size:.86rem;color:var(--ink-soft);flex-wrap:wrap}
+.cover .legend b{display:inline;font-weight:600;color:inherit}
+.cover .legend .k{display:inline-block;width:9px;height:9px;border-radius:2px;
+  margin-right:.3rem;vertical-align:.02em}
+.cover .legend .k.mine{background:var(--accent)}
+.cover .legend .k.theirs{background:var(--ok)}
+.prog{background:var(--surface);border:1px solid var(--line);border-radius:8px;
+  margin-bottom:.5rem;overflow:hidden}
+.prog > summary{padding:.75rem .95rem;cursor:pointer;list-style:none;
+  font-weight:600;font-size:.95rem;line-height:1.35}
+.prog > summary::-webkit-details-marker{display:none}
+.prog > summary::after{content:"▾";float:right;color:var(--ink-faint);font-weight:400}
+.prog[open] > summary::after{content:"▴"}
+.prog .who{display:block;font-family:var(--mono);font-size:.66rem;
+  letter-spacing:.08em;text-transform:uppercase;color:var(--ok);
+  font-weight:500;margin-bottom:.25rem}
+.prog .inner{padding:0 .95rem .9rem;font-size:.92rem;color:var(--ink-soft)}
+.prog .inner p{margin:0 0 .55rem}
+.prog .inner .law{display:block;padding-top:.55rem;border-top:1px solid var(--line);
+  font-size:.82rem;color:var(--ink-faint)}
+.scale{background:var(--surface);border:1px solid var(--line);border-radius:9px;
+  padding:.9rem 1rem;margin-bottom:.9rem}
+.scale .row{margin-bottom:.75rem}
+.scale .row:last-child{margin-bottom:0}
+.scale .hd{display:flex;justify-content:space-between;gap:.7rem;
+  align-items:baseline;font-size:.92rem}
+.scale .hd b{font-weight:600}
+.scale .hd .rub{font-family:var(--mono);font-variant-numeric:tabular-nums;
+  white-space:nowrap;flex:0 0 auto;color:var(--ink-soft)}
+.scale .track{height:9px;border-radius:5px;background:var(--surface-2);
+  margin:.3rem 0;overflow:hidden}
+.scale .track i{display:block;height:100%;background:var(--line-strong)}
+.scale .row.mine .hd b, .scale .row.mine .hd .rub{color:var(--accent)}
+.scale .row.mine .track i{background:var(--accent)}
+.scale .why{color:var(--ink-faint);font-size:.83rem;line-height:1.4}
+.price-hint{background:var(--surface-2);border-radius:9px;padding:.9rem 1rem;
+  margin:0 0 1.4rem}
+.price-hint .n{font-family:var(--mono);font-size:1.5rem;font-weight:500;
+  color:var(--accent);display:block;line-height:1.2;
+  font-variant-numeric:tabular-nums}
+.price-hint .t{display:block;color:var(--ink-soft);font-size:.92rem;
+  margin-top:.25rem;line-height:1.45}
+.price-hint .go{display:inline-block;margin-top:.6rem;font-size:.9rem;
+  color:var(--accent);background:none;border:0;padding:0;cursor:pointer;
+  text-decoration:underline;font-family:var(--sans)}
+/* Обёртка была в разметке, но без стиля: таблица городов шире
+   телефона, и вся страница уезжала вбок. */
+.scroll{overflow-x:auto;-webkit-overflow-scrolling:touch;max-width:100%}
+.cities{width:100%;border-collapse:collapse;font-size:.88rem;min-width:26rem}
+.cities th{text-align:left;font-family:var(--mono);font-size:.64rem;
+  letter-spacing:.07em;text-transform:uppercase;color:var(--accent);
+  font-weight:500;padding:.35rem .6rem .35rem 0;
+  border-bottom:1px solid var(--line-strong);white-space:nowrap}
+.cities td{padding:.45rem .6rem .45rem 0;border-bottom:1px solid var(--line);
+  vertical-align:top}
+.cities td:last-child,.cities th:last-child{padding-right:0}
+.cities .r{font-family:var(--mono);font-variant-numeric:tabular-nums;
+  white-space:nowrap;text-align:right}
+.cities tr.наш{background:var(--accent-soft)}
+.cities tr.наш td{font-weight:600;color:var(--accent)}
+.why-list{list-style:none;margin:0 0 1rem;padding:0}
+.why-list li{padding:.7rem 0;border-bottom:1px solid var(--line)}
+.why-list b{display:block;font-weight:600;font-size:.96rem;margin-bottom:.15rem}
+.why-list span{color:var(--ink-soft);font-size:.89rem}
+.market{background:var(--surface-2);border-radius:8px;padding:.85rem .95rem;
+  margin-bottom:1rem;font-size:.92rem;color:var(--ink-soft)}
+.market b{color:var(--ink)}
+
+/* ---------- перенос ответов из бота ---------- */
+.paste-box{background:var(--surface-2);border-radius:9px;padding:1rem;
+  margin-bottom:1.2rem}
+.paste-box b{display:block;margin-bottom:.25rem}
+.paste-box p{margin:0;color:var(--ink-soft);font-size:.91rem}
+.paste-box .send{margin-top:.7rem}
+.carry{background:var(--ok-bg);border-radius:8px;padding:.85rem .95rem;
+  margin-bottom:1rem;font-size:.93rem;color:var(--ok)}
+.carry b{display:block;margin-bottom:.2rem}
+.paste{width:100%;min-height:5.5rem;font-family:var(--sans);font-size:.9rem;
+  padding:.6rem .7rem;border-radius:8px;border:1px solid var(--line-strong);
+  background:var(--surface);color:var(--ink);margin-top:.5rem}
+.linkish{background:none;border:0;padding:0;font:inherit;color:var(--accent);
+  text-decoration:underline;cursor:pointer}
+
+/* ---------- план ухода ---------- */
+.cq{background:var(--surface);border:1px solid var(--line);border-radius:8px;
+  padding:.85rem .95rem;margin-bottom:.6rem}
+.cq .t{display:block;font-size:.99rem;font-weight:500;margin-bottom:.15rem}
+.from-form{display:inline-block;font-family:var(--mono);font-size:.6rem;
+  letter-spacing:.06em;text-transform:uppercase;color:var(--ok);
+  background:var(--ok-bg);border-radius:4px;padding:.08rem .3rem;
+  margin-left:.4rem;vertical-align:.08em;font-weight:500}
+.tips{display:flex;flex-wrap:wrap;gap:.4rem;margin:.6rem 0 1rem}
+.tip-q{font:inherit;font-size:.86rem;color:var(--ink-soft);cursor:pointer;
+  background:var(--surface-2);border:1px solid var(--line);border-radius:999px;
+  padding:.3rem .7rem}
+.tip-q:hover{border-color:var(--accent);color:var(--accent)}
+.step-hd{font-size:1.02rem;margin:1.6rem 0 .2rem}
+#plan-step-sub{margin-top:0}
+.prog .state{display:inline-block;font-family:var(--mono);font-size:.6rem;
+  letter-spacing:.06em;text-transform:uppercase;color:var(--ok);
+  background:var(--ok-bg);border-radius:4px;padding:.08rem .3rem;
+  margin-left:.4rem;vertical-align:.08em;font-weight:500}
+.prog .state.wait{color:var(--warn);background:var(--warn-bg)}
+.prog .when{color:var(--ink-soft);font-size:.9rem;margin:0 0 .5rem;
+  padding-left:.6rem;border-left:2px solid var(--warn)}
+.many{display:inline-block;font-family:var(--mono);font-size:.62rem;
+  letter-spacing:.06em;text-transform:uppercase;color:var(--accent);
+  background:var(--accent-soft);border-radius:4px;padding:.1rem .35rem;
+  margin-left:.45rem;vertical-align:.08em;font-weight:500}
+.cq .why{display:block;color:var(--ink-faint);font-size:.83rem;
+  margin-bottom:.6rem;line-height:1.4}
+.cq .opt{display:block;width:100%;text-align:left;font-family:var(--sans);
+  font-size:.93rem;padding:.55rem .7rem;margin-bottom:.3rem;border-radius:6px;
+  border:1px solid var(--line-strong);background:transparent;color:var(--ink-soft);
+  cursor:pointer;line-height:1.3}
+.cq .opt[aria-pressed="true"]{border-color:var(--accent);background:var(--accent-soft);
+  color:var(--accent);font-weight:600}
+.plan{border-bottom:2px solid var(--accent);padding:0 0 1.1rem;
+  margin:0 0 1.6rem}
+.plan .kind{font-family:var(--mono);font-size:.7rem;letter-spacing:.1em;
+  text-transform:uppercase;color:var(--accent);display:block;margin-bottom:.3rem}
+.plan h3{font-family:var(--serif);font-size:1.45rem;font-weight:600;
+  margin:0 0 .35rem;line-height:1.2}
+.plan .who{color:var(--ink-soft);font-size:.94rem;margin:0 0 .5rem}
+.plan .hrs{display:inline-block;font-family:var(--mono);font-size:.85rem;
+  background:var(--accent-soft);color:var(--accent);padding:.2rem .5rem;
+  border-radius:5px}
+.part{margin-bottom:1rem}
+.part{scroll-margin-top:8rem}
+.part .hd{display:flex;align-items:baseline;gap:.6rem;margin-bottom:.4rem}
+.part .hd b{font-family:var(--serif);font-size:1.05rem;font-weight:600}
+.part .hd i{flex:1 1 auto;height:1px;background:var(--line-strong);font-style:normal}
+.part ul{list-style:none;margin:0;padding:0}
+.part li{display:flex;gap:.6rem;align-items:flex-start;padding:.45rem 0;
+  border-bottom:1px solid var(--line);font-size:.94rem;line-height:1.45}
+.part li:last-child{border-bottom:0}
+.part li .no{font-family:var(--mono);font-size:.74rem;color:var(--ink-faint);
+  background:var(--surface-2);border-radius:4px;padding:.1rem .3rem;
+  flex:0 0 auto;margin-top:.15rem}
+/* Два блока, которые и правда надо выделить: что делать по часам
+   и когда звонить. Остальное на этой вкладке — обычный текст:
+   когда выделено всё, не выделено ничего. */
+.freq{border-left:3px solid var(--warn);padding:.15rem 0 .15rem 1rem;
+  margin:0 0 1.4rem}
+.freq b{display:block;margin-bottom:.4rem;font-size:.95rem}
+.freq .r{display:block;font-size:.91rem;color:var(--ink-soft);padding:.25rem 0;
+  line-height:1.45}
+.freq .r span{font-weight:600;color:var(--ink)}
+.watch{background:var(--stop-bg);border-radius:9px;padding:.85rem 1rem;
+  margin:0 0 1.4rem;scroll-margin-top:8rem}
+.watch b{color:var(--stop);display:block;margin-bottom:.35rem;font-size:.95rem}
+.watch li,.watch p{color:var(--stop);font-size:.91rem;line-height:1.45;
+  margin:0 0 .2rem}
+.watch ul{margin:0;padding-left:1.1rem}
+.tip{border-left:2px solid var(--accent-soft);padding:.1rem 0 .1rem .9rem;
+  margin-bottom:1rem}
+.tip b{display:block;font-size:.95rem;margin-bottom:.15rem}
+.tip p{margin:0;color:var(--ink-soft);font-size:.91rem}
+
+/* Раскрывашка для всего, что читают один раз. Без неё экран
+   становится полотном, и человек закрывает его, не дойдя до того,
+   ради чего пришёл. */
+.fold{border-top:1px solid var(--line);margin:0}
+.fold + .fold{border-top:1px solid var(--line)}
+.fold > summary{padding:.85rem 0;cursor:pointer;list-style:none;
+  font-size:.96rem;font-weight:500;display:flex;align-items:center;gap:.5rem}
+.fold > summary::-webkit-details-marker{display:none}
+.fold > summary::after{content:"+";margin-left:auto;color:var(--ink-faint);
+  font-family:var(--mono);font-size:1.1rem;line-height:1}
+.fold[open] > summary::after{content:"–"}
+.fold .cnt{font-family:var(--mono);font-size:.72rem;color:var(--accent);
+  background:var(--accent-soft);border-radius:999px;padding:.12rem .45rem}
+.fold .inner{padding:0 0 1rem}
+.fold .inner > p{color:var(--ink-soft);font-size:.91rem}
+.fold .inner > p:last-child{margin-bottom:0}
+
+.invite{border:1px dashed var(--line-strong);border-radius:9px;
+  padding:.9rem 1rem;margin:1.2rem 0}
+.invite b{display:block;margin-bottom:.25rem}
+.invite p{margin:0 0 .5rem;color:var(--ink-soft);font-size:.92rem}
+
+/* ---------- аренда оборудования ---------- */
+.gear{background:var(--surface);border:1px solid var(--line);border-radius:8px;
+  padding:.85rem .95rem;margin-bottom:.6rem}
+.gear .top{display:flex;justify-content:space-between;gap:.8rem;
+  align-items:baseline}
+.gear .name{font-weight:600;font-size:.97rem;line-height:1.3}
+.gear .rub{font-family:var(--mono);font-size:.95rem;font-weight:500;
+  color:var(--accent);white-space:nowrap;flex:0 0 auto;
+  font-variant-numeric:tabular-nums}
+.gear .rub small{display:block;font-size:.72rem;color:var(--ink-faint);
+  text-align:right;font-weight:400}
+.gear .what{display:block;color:var(--ink-soft);font-size:.89rem;
+  margin-top:.4rem;line-height:1.45}
+.gear .row{display:flex;gap:.5rem;align-items:center;margin-top:.6rem;
+  flex-wrap:wrap}
+.gear .take{font-family:var(--sans);font-size:.88rem;padding:.4rem .8rem;
+  border-radius:6px;border:1px solid var(--line-strong);background:transparent;
+  color:var(--ink-soft);cursor:pointer}
+.gear .take[aria-pressed="true"]{border-color:var(--accent);
+  background:var(--accent);color:#fff;font-weight:500}
+.badge{font-family:var(--mono);font-size:.68rem;letter-spacing:.06em;
+  text-transform:uppercase;padding:.15rem .4rem;border-radius:4px}
+.badge.free{background:var(--ok-bg);color:var(--ok)}
+.badge.maybe{background:var(--warn-bg);color:var(--warn)}
+.free-first{background:var(--ok-bg);border-radius:8px;padding:.9rem 1rem;
+  margin-bottom:1rem}
+.free-first b{color:var(--ok);display:block;margin-bottom:.3rem}
+.free-first .w{display:block;padding:.5rem 0;border-top:1px solid rgba(0,0,0,.06);
+  font-size:.91rem;color:var(--ok);line-height:1.45}
+.free-first .w:first-of-type{border-top:0}
+.free-first .w b{display:inline;margin:0}
 
 /* ---------- чек-лист найма ---------- */
 .check{list-style:none;margin:0;padding:0}
@@ -176,40 +548,115 @@ footer{margin-top:2.5rem;padding-top:1.4rem;border-top:1px solid var(--line-stro
 <div class="wrap">
 
 <header>
-  <p class="eyebrow"><a href="index.html" style="color:inherit;text-decoration:none">‹ Навигатор помощи</a> · АНО «СДУТ»</p>
+  <p class="eyebrow">Навигатор помощи · АНО «СДУТ»
+    <span class="theme" id="theme" role="group" aria-label="Тема оформления">
+      <button type="button" data-theme-pick="light" aria-pressed="true">Светлая</button>
+      <button type="button" data-theme-pick="dark" aria-pressed="false">Тёмная</button>
+      <button type="button" data-theme-pick="auto" aria-pressed="false">Авто</button>
+    </span>
+  </p>
   <h1>Помощь дома</h1>
-  <p class="lede">Посчитать, на какую помощь можно рассчитывать, и разобраться, как её получить.</p>
+  <p class="lede">План ухода, расчёт часов и стоимости, оборудование — для семьи,
+  которая ухаживает дома.</p>
 </header>
 
 <div class="emergency">
-  <b>Если человеку плохо прямо сейчас</b> — звоните <a href="tel:103">103</a>,
-  с мобильного также <a href="tel:112">112</a>. Круглосуточно, бесплатно,
-  без направления. Всё остальное подождёт.
+  <b>Плохо прямо сейчас</b> — <a href="tel:103">103</a> или
+  <a href="tel:112">112</a>. Круглосуточно и бесплатно.
 </div>
 
-<div class="tabs" role="tablist">
-  <button class="tab" id="tab-find" role="tab" aria-selected="true" aria-controls="p-find">Справочник</button>
-  <button class="tab" id="tab-calc" role="tab" aria-selected="false" aria-controls="p-calc">Сколько часов положено</button>
-  <button class="tab" id="tab-form" role="tab" aria-selected="false" aria-controls="p-form">Анкета</button>
-  <button class="tab" id="tab-hire" role="tab" aria-selected="false" aria-controls="p-hire">Нанять помощника</button>
-  <button class="tab" id="tab-docs" role="tab" aria-selected="false" aria-controls="p-docs">Что собрать</button>
-</div>
+<div class="tabs-wrap"><div class="tabs" role="tablist">
+  <button class="tab" id="tab-plan" role="tab" aria-selected="true" aria-controls="p-plan">План ухода</button>
+  <button class="tab" id="tab-calc" role="tab" aria-selected="false" aria-controls="p-calc">Часы</button>
+  <button class="tab" id="tab-cost" role="tab" aria-selected="false" aria-controls="p-cost">Стоимость</button>
+  <button class="tab" id="tab-gear" role="tab" aria-selected="false" aria-controls="p-gear">Оборудование</button>
+  <button class="tab" id="tab-find" role="tab" aria-selected="false" aria-controls="p-find">Справочник</button>
+</div></div>
+
+<!-- ============ ПЛАН УХОДА ============ -->
+<!-- Одна вкладка вместо двух. Раньше человек отвечал на девять
+     вопросов здесь, а вставлял ответы бота на соседней вкладке —
+     и не понимал, зачем отвечать дважды. Теперь порядок такой же,
+     как у него в голове: сначала вставил, что уже рассказал,
+     потом дописал то, чего бот не спрашивал. -->
+<section id="p-plan" role="tabpanel" aria-labelledby="tab-plan">
+  <h2>Предварительный план ухода</h2>
+  <p class="sub">Вставьте ответы из бота — и допишите то, о чём он
+  не спрашивал. Получится распорядок с действиями, частотой
+  и оборудованием.</p>
+
+  <div class="carry" id="carry" hidden></div>
+
+  <!-- Пока не вставили — открыто и занимает первый экран. Вставили —
+       сворачивается: держать перед глазами поле, которое больше не
+       нужно, значит отодвигать вниз то, ради чего человек пришёл. -->
+  <details class="fold" id="carry-box" open>
+    <summary id="carry-sum">Шаг 1. Вставьте ответы из бота</summary>
+    <div class="inner paste-box">
+      <p>Скопируйте из чата сообщение бота «Что записано» целиком, вместе
+      со строками вопросов. Ничего никуда не отправляется: разбор идёт
+      в этом телефоне. Не отвечали боту — пропустите шаг.</p>
+      <textarea class="paste" id="paste" placeholder="Что записано:&#10;&#10;• Вы обращаетесь о себе, о близком человеке или по работе?&#10;  О близком человеке"></textarea>
+      <button class="send" id="paste-go">Разобрать и заполнить</button>
+      <div id="paste-out"></div>
+    </div>
+  </details>
+
+  <div class="result" id="plan-top">
+    <div class="line">
+      <span class="lvl" id="plan-count">Отвечено 0</span>
+      <span class="num" id="plan-of">из 9</span>
+    </div>
+    <div class="bar"><i id="plan-bar"></i></div>
+    <div class="hrs" id="plan-hint">План появится после первых ответов.
+    Ничего никуда не отправляется.</div>
+  </div>
+
+  <h3 class="step-hd" id="plan-step">Шаг 2. Что осталось уточнить</h3>
+  <p class="sub" id="plan-step-sub">Об этом бот не спрашивает: он узнаёт,
+  какой человек, а план собирается из того, как устроены его день и дом.</p>
+
+  <div id="plan-form"></div>
+  <div id="plan-filled"></div>
+  <div id="plan-out"></div>
+
+  <details class="fold">
+    <summary>Ответы из бота<span class="cnt" id="form-left"></span></summary>
+    <div class="inner" id="form-wrap">
+      <p>То, что разобрано из сообщения. Здесь же можно ответить с нуля,
+      если боту вы не писали.</p>
+      <div id="form"></div>
+      <div id="form-send"></div>
+    </div>
+  </details>
+
+  <details class="fold">
+    <summary>Что собрать к разговору<span class="cnt">7</span></summary>
+    <div class="inner">
+      <p>Заранее собирать всё не нужно — координатор скажет, что понадобится
+      именно вам. Отметки сохраняются в этом телефоне.</p>
+      <ul class="check" id="docs-check"></ul>
+    </div>
+  </details>
+
+  <a class="cta" href="https://max.ru/id6320093220_bot">Написать координатору в MAX</a>
+</section>
 
 <!-- ============ СПРАВОЧНИК ============ -->
-<section id="p-find" role="tabpanel" aria-labelledby="tab-find">
+<section id="p-find" role="tabpanel" aria-labelledby="tab-find" hidden>
   <h2>Материалы службы</h2>
-  <p class="sub" id="find-sub">Всё, что знает бот, — здесь целиком. Напишите своими
-  словами: «пролежни», «маме нечем платить», «как оформить инвалидность».</p>
+  <p class="sub" id="find-sub">Напишите своими словами: «пролежни», «нечем
+  платить», «как оформить инвалидность».</p>
   <input class="search" id="q" type="search" enterkeyhint="search"
          placeholder="Что случилось или о чём спросить" autocomplete="off">
+  <div class="tips" id="find-tips"></div>
   <div id="find-out"></div>
 </section>
 
 <!-- ============ КАЛЬКУЛЯТОР ============ -->
 <section id="p-calc" role="tabpanel" aria-labelledby="tab-calc" hidden>
   <h2>Сколько часов помощи положено</h2>
-  <p class="sub">Двадцать одна позиция из оценочной шкалы приказа. Отметьте, что человек
-  может делать сам — счёт идёт сразу.</p>
+  <p class="sub">Отметьте, что человек может делать сам. Счёт идёт сразу.</p>
   <div class="result" id="result">
     <div class="line">
       <span class="lvl" id="lvl">Отмечено 0 из 21</span>
@@ -217,101 +664,182 @@ footer{margin-top:2.5rem;padding-top:1.4rem;border-top:1px solid var(--line-stro
     </div>
     <div class="bar"><i id="bar"></i></div>
     <div class="hrs" id="hrs">Уровень появится, когда отмечены все позиции.</div>
+    <p class="note" id="scale-from-form" hidden></p>
     <p class="note" id="note"></p>
   </div>
 
   <div id="scale"></div>
 </section>
 
-<!-- ============ АНКЕТА ============ -->
-<section id="p-form" role="tabpanel" aria-labelledby="tab-form" hidden>
-  <h2>Анкета для координатора</h2>
-  <p class="sub">Те же вопросы, что задаёт бот. Можно заполнить здесь — спокойно,
-  с возможностью вернуться, — а потом передать одним сообщением.</p>
-  <div class="result" id="form-top">
+<!-- ============ СТОИМОСТЬ ============ -->
+<section id="p-cost" role="tabpanel" aria-labelledby="tab-cost" hidden>
+  <h2>Сколько стоит уход</h2>
+  <p class="sub" id="cost-sub">Платный уход по договору. Что положено бесплатно —
+  на вкладке «Часы».</p>
+
+  <div class="result" id="cost-top">
     <div class="line">
-      <span class="lvl" id="form-count">Отвечено 0</span>
-      <span class="num" id="form-of">из 0</span>
+      <span class="lvl" id="cost-what">Выберите, что нужно</span>
+      <span class="num" id="cost-sum">—</span>
     </div>
-    <div class="bar"><i id="form-bar"></i></div>
-    <div class="hrs">Ничего никуда не отправляется, пока вы сами не нажмёте кнопку внизу.</div>
-  </div>
-  <div id="form"></div>
-  <div id="form-send"></div>
-</section>
-
-<!-- ============ НАЙМ ============ -->
-<section id="p-hire" role="tabpanel" aria-labelledby="tab-hire" hidden>
-  <h2>Нанять помощника по уходу</h2>
-  <p class="sub">Сначала — что можно получить бесплатно. Платить имеет смысл за то,
-  что сверх этого.</p>
-
-  <div class="card free">
-    <span class="h">Социальный пакет долговременного ухода<span class="tag free">бесплатно</span></span>
-    <p>Помощник приходит домой и делает то, что человек не может сам: моет, кормит,
-    перемещает, меняет подгузник. Объём — от одиннадцати до двадцати восьми часов
-    в неделю, в зависимости от уровня нуждаемости. Считается на первой вкладке.</p>
+    <div class="hrs" id="cost-hour">Цена за час появится, когда выбран формат ухода.</div>
+    <p class="note" id="cost-note"></p>
   </div>
 
-  <div class="card free">
-    <span class="h">Социальное обслуживание на дому<span class="tag free">бесплатно или с доплатой</span></span>
-    <p>Соцработник: покупки, лекарства, уборка, оплата счетов. Бесплатно, если доход
-    ниже полутора прожиточных минимумов; иначе — с частичной оплатой.</p>
+  <div class="group">
+    <h3>Что нужно</h3>
+    <div class="kinds" id="cost-kinds"></div>
+    <div id="cost-picks"></div>
   </div>
 
-  <div class="card free">
-    <span class="h">Выплата родственнику<span class="tag free">бесплатно</span></span>
-    <p>Если уход берёт на себя неработающий член семьи, за это бывает положена
-    ежемесячная выплата. Условия уточняет координатор — они зависят от группы
-    инвалидности и возраста.</p>
+  <div class="group" id="cost-count-box" hidden>
+    <h3>Сколько</h3>
+    <div class="step">
+      <button type="button" id="cost-minus" aria-label="Уменьшить">−</button>
+      <span class="n" id="cost-n">1</span>
+      <button type="button" id="cost-plus" aria-label="Увеличить">+</button>
+      <span class="unit" id="cost-unit"></span>
+    </div>
   </div>
 
-  <div class="card paid">
-    <span class="h">Частная сиделка<span class="tag paid">платно</span></span>
-    <p>Имеет смысл, когда нужно больше часов, чем даёт пакет, или круглосуточно.
-    Ниже — что спросить, прежде чем договариваться.</p>
+  <div class="group">
+    <h3>Из чего складывается сумма</h3>
+    <div class="lines" id="cost-lines"></div>
   </div>
 
-  <h3>Что спросить у сиделки до того, как договоритесь</h3>
-  <ul class="check" id="hire-check"></ul>
+  <details class="fold">
+    <summary>Что усложняет уход<span class="cnt" id="adds-n"></span></summary>
+    <div class="inner"><ul class="adds" id="cost-adds"></ul></div>
+  </details>
 
-  <h3>Когда стоит насторожиться</h3>
-  <div class="card flag">
-    <span class="h">Не даёт документы и не хочет договор</span>
-    <p>Без договора нельзя ни спросить за качество, ни расстаться без скандала.</p>
-  </div>
-  <div class="card flag">
-    <span class="h">Обещает «вылечить» или отменяет назначения врача</span>
-    <p>Помощник по уходу не лечит. Отмена лекарств — повод прекратить сразу.</p>
-  </div>
-  <div class="card flag">
-    <span class="h">Просит доступ к банковской карте или документам на квартиру</span>
-    <p>Покупки — по чекам и наличным. Ничего больше.</p>
-  </div>
-  <div class="card flag">
-    <span class="h">Человек стал молчаливым, боится или появились синяки</span>
-    <p>Это разговор не с сиделкой, а с координатором службы. Сразу.</p>
-  </div>
+  <details class="fold">
+    <summary>Что снижает цену<span class="cnt" id="cuts-n"></span></summary>
+    <div class="inner"><ul class="adds" id="cost-cuts"></ul></div>
+  </details>
 
-  <!-- Телефон службы в справочнике не заполнен (phone: "" в настройках
-       index.html), и ставить сюда выдуманный нельзя: человек позвонит
-       в никуда. Ведём в бота — его адрес настоящий и работает. -->
+  <div class="cover" id="cost-cover" hidden></div>
+
+  <details class="fold">
+    <summary>Чем закрывается разница<span class="cnt" id="prog-n"></span></summary>
+    <div class="inner">
+      <p>Цена назначена по рынку, а не по себестоимости. Разницу служба
+      добирает сама — ради этого она и некоммерческая. Часть программ
+      ниже уже работает, часть мы только ждём: на что рассчитывать
+      сегодня, написано у каждой.</p>
+      <div id="cost-programs"></div>
+    </div>
+  </details>
+
+  <details class="fold">
+    <summary>Где эта цена на фоне рынка</summary>
+    <div class="inner">
+      <div class="scale" id="cost-scale"></div>
+      <div class="market" id="cost-market"></div>
+      <ul class="why-list" id="cost-why"></ul>
+      <p>Рынок в Москве и в райцентре различается вчетверо. Цены — нижняя
+      граница «от», как их публикуют.</p>
+      <div class="scroll"><table class="cities" id="cost-cities"></table></div>
+      <p class="note" id="cost-customs"></p>
+    </div>
+  </details>
+
+  <details class="fold">
+    <summary>Из чего складывается час</summary>
+    <div class="inner">
+      <p class="note" id="split-note"></p>
+      <div class="split" id="cost-split"></div>
+    </div>
+  </details>
+
+  <details class="fold">
+    <summary>Круглые сутки: три способа</summary>
+    <div class="inner"><div class="cmp" id="cost-round"></div></div>
+  </details>
+
+  <details class="fold">
+    <summary>Что входит в уход<span class="cnt">50</span></summary>
+    <div class="inner">
+      <p>Перечень приложения № 6 к Приказу № 731 — тот же, по которому
+      собирается и социальный пакет. Отметки попадут в расчёт.</p>
+      <div id="cost-catalog"></div>
+    </div>
+  </details>
+
+  <details class="fold">
+    <summary>Что в уход не входит<span class="cnt">7</span></summary>
+    <div class="inner"><div id="cost-not"></div></div>
+  </details>
+
+  <details class="fold">
+    <summary>Условия</summary>
+    <div class="inner"><ul class="plain" id="cost-terms"></ul></div>
+  </details>
+
+  <button class="send" id="cost-send">Собрать расчёт для координатора</button>
+  <div id="cost-out"></div>
+
+  <details class="fold">
+    <summary>Если нанимаете помощника сами</summary>
+    <div class="inner">
+      <p>Служба нанимает помощников по трудовому договору и отвечает за замену
+      и качество. Если вы ищете сиделку сами — вот что спросить до того,
+      как договоритесь.</p>
+      <ul class="check" id="hire-check"></ul>
+      <p><b>Когда стоит насторожиться.</b> Не даёт документы и не хочет договор.
+      Обещает «вылечить» или отменяет назначения врача. Просит доступ
+      к банковской карте или документам на квартиру. Человек стал молчаливым,
+      боится или появились синяки — это разговор не с сиделкой,
+      а с координатором, и сразу.</p>
+    </div>
+  </details>
+
   <a class="cta" href="https://max.ru/id6320093220_bot">Написать координатору в MAX</a>
 </section>
 
-<!-- ============ ДОКУМЕНТЫ ============ -->
-<section id="p-docs" role="tabpanel" aria-labelledby="tab-docs" hidden>
-  <h2>Что собрать</h2>
-  <p class="sub">Заранее собирать всё не нужно — координатор скажет, что понадобится
-  именно вам. Этот список на случай, если хочется подготовиться.</p>
-  <ul class="check" id="docs-check"></ul>
-  <p class="note">Отметки сохраняются в этом телефоне. Ничего никуда не отправляется.</p>
-  <a class="cta" href="https://max.ru/id6320093220_bot">Написать координатору в MAX</a>
+<!-- ============ ОБОРУДОВАНИЕ ============ -->
+<section id="p-gear" role="tabpanel" aria-labelledby="tab-gear" hidden>
+  <h2>Оборудование: аренда и что положено даром</h2>
+  <p class="sub">Сначала — что положено бесплатно, потом цена аренды.</p>
+
+  <div class="free-first" id="gear-free"></div>
+
+  <div class="result" id="gear-top">
+    <div class="line">
+      <span class="lvl" id="gear-what">Ничего не выбрано</span>
+      <span class="num" id="gear-sum">—</span>
+    </div>
+    <div class="hrs" id="gear-hint">Отметьте нужное — посчитаем аренду
+    и сравним с покупкой.</div>
+    <p class="note" id="gear-note"></p>
+  </div>
+
+  <div class="group">
+    <h3>На сколько месяцев</h3>
+    <div class="step">
+      <button type="button" id="gear-minus" aria-label="Меньше">−</button>
+      <span class="n" id="gear-n">1</span>
+      <button type="button" id="gear-plus" aria-label="Больше">+</button>
+      <span class="unit" id="gear-unit">месяц</span>
+    </div>
+  </div>
+
+  <div id="gear-list"></div>
+
+  <h3>Почему аренда, а не покупка</h3>
+  <ul class="plain" id="gear-why"></ul>
+
+  <h3>Условия</h3>
+  <ul class="plain" id="gear-terms"></ul>
+
+  <button class="send" id="gear-send">Собрать заявку для координатора</button>
+  <div id="gear-out"></div>
 </section>
 
 <footer>
   АНО «Система долговременного ухода», Тольятти.
   Расчёт предварительный и не заменяет очную оценку.
+  <br>Согласие на обработку данных, реквизиты и источники — в справочнике
+  выше: наберите «согласие», «реквизиты» или «источники».
 </footer>
 
 </div>
@@ -320,10 +848,40 @@ footer{margin-top:2.5rem;padding-top:1.4rem;border-top:1px solid var(--line-stro
 (function(){
   "use strict";
 
+  /* ---------------- тема ----------------
+     Пока темы не было в настройках, приложение брало её только
+     у телефона: ночной режим в телефоне — вечная тёмная тема
+     в приложении, и переключить нечем. Выбор запоминается
+     в этом телефоне и переживает перезагрузку страницы. */
+  function поставитьТему(выбор){
+    var корень = document.documentElement;
+    if (выбор === 'light' || выбор === 'dark') корень.setAttribute('data-theme', выбор);
+    else корень.removeAttribute('data-theme');
+    [].forEach.call(document.querySelectorAll('[data-theme-pick]'), function(к){
+      к.setAttribute('aria-pressed',
+        к.getAttribute('data-theme-pick') === выбор ? 'true' : 'false');
+    });
+    try { localStorage.setItem('sdut-theme', выбор); } catch(e){}
+  }
+
+  (function(){
+    // По умолчанию светлая: это тема паблика службы, и человек,
+    // пришедший из соцсетей, должен увидеть знакомое. Ночной режим
+    // телефона её больше не перебивает — но выбрать тёмную можно.
+    var было = 'light';
+    try { было = localStorage.getItem('sdut-theme') || 'light'; } catch(e){}
+    поставитьТему(было);
+    document.getElementById('theme').addEventListener('click', function(ev){
+      var кнопка = ev.target.closest && ev.target.closest('[data-theme-pick]');
+      if (кнопка) поставитьТему(кнопка.getAttribute('data-theme-pick'));
+    });
+  })();
+
   /* ---------------- вкладки ---------------- */
   var tabs = [].slice.call(document.querySelectorAll('.tab'));
   tabs.forEach(function(t){
     t.addEventListener('click', function(){
+      if (t.id === 'tab-gear' && ЖЕЛЕЗО) рисоватьЖелезо();
       tabs.forEach(function(o){
         var panel = document.getElementById(o.getAttribute('aria-controls'));
         var on = (o === t);
@@ -331,6 +889,8 @@ footer{margin-top:2.5rem;padding-top:1.4rem;border-top:1px solid var(--line-stro
         if (panel) panel.hidden = !on;
       });
       window.scrollTo({top: 0, behavior: 'smooth'});
+      if (t.scrollIntoView) t.scrollIntoView({block: 'nearest', inline: 'center',
+                                              behavior: 'smooth'});
     });
   });
 
@@ -355,7 +915,9 @@ footer{margin-top:2.5rem;padding-top:1.4rem;border-top:1px solid var(--line-stro
     корень.innerHTML = разделы.map(function(р){
       var список = ШКАЛА.позиции.filter(function(п){ return п.раздел === р; });
       return '<div class="group"><h3>' + р + '</h3>' + список.map(function(п){
-        return '<div class="q"><span class="t">' + п.вопрос + '</span>' +
+        return '<div class="q"><span class="t">' + п.вопрос +
+          '<span class="from-form" data-mark="' + п.id + '" hidden>из анкеты</span>' +
+          '</span>' +
           '<div class="opts" data-id="' + п.id + '">' +
             '<button type="button" data-g="может_сам">Сам</button>' +
             '<button type="button" data-g="частично">С трудом</button>' +
@@ -370,6 +932,8 @@ footer{margin-top:2.5rem;padding-top:1.4rem;border-top:1px solid var(--line-stro
       var id = кнопка.parentNode.getAttribute('data-id');
       ОТВЕТЫ[id] = (ОТВЕТЫ[id] === кнопка.getAttribute('data-g'))
         ? null : кнопка.getAttribute('data-g');
+      // Человек ответил сам — это больше не предположение из анкеты.
+      if (ИЗ_АНКЕТЫ[id]){ delete ИЗ_АНКЕТЫ[id]; save('sdut-scale-from-form', ИЗ_АНКЕТЫ); }
       save('sdut-scale', ОТВЕТЫ);
       обновить();
     });
@@ -398,6 +962,24 @@ footer{margin-top:2.5rem;padding-top:1.4rem;border-top:1px solid var(--line-stro
       });
     });
 
+    // Что заполнено из анкеты — видно на самой позиции: человек
+    // должен знать, что за него предположили, и мочь исправить.
+    var предположено = 0;
+    ШКАЛА.позиции.forEach(function(п){
+      var метка = document.querySelector('.from-form[data-mark="' + п.id + '"]');
+      var своё = ИЗ_АНКЕТЫ[п.id] && ОТВЕТЫ[п.id];
+      if (своё) предположено++;
+      if (метка) метка.hidden = !своё;
+    });
+    var изАнкетыСтрока = document.getElementById('scale-from-form');
+    if (изАнкетыСтрока){
+      изАнкетыСтрока.hidden = !предположено;
+      изАнкетыСтрока.textContent = предположено
+        ? предположено + ' ' + множ(предположено, ['позиция', 'позиции', 'позиций']) +
+          ' заполнено из вашей анкеты — проверьте и поправьте, если не так.'
+        : '';
+    }
+
     var всего = ШКАЛА.позиции.length;
     document.getElementById('num').textContent =
       (Math.round(сумма * 10) / 10) + ' / ' + ШКАЛА.максимум;
@@ -408,20 +990,58 @@ footer{margin-top:2.5rem;padding-top:1.4rem;border-top:1px solid var(--line-stro
     var часы = document.getElementById('hrs');
     var сноска = document.getElementById('note');
 
-    if (отвечено < всего){
-      подпись.textContent = 'Отмечено ' + отвечено + ' из ' + всего;
-      часы.textContent = 'Уровень считается, когда отмечены все позиции.';
-      сноска.textContent = '';
-      return;
-    }
     var уровень = ШКАЛА.уровни.filter(function(у){ return сумма >= у.от; })[0]
                   || ШКАЛА.уровни[ШКАЛА.уровни.length - 1];
+
+    /* Раньше уровень не показывался, пока не отмечены все двадцать
+       одна позиция, — и человек, у которого четырнадцать пришли
+       из анкеты, видел «уровень считается, когда отмечены все»
+       и пустую цену.
+
+       Неотмеченная позиция даёт ноль баллов, то есть «справляется
+       сам». Значит, счёт по неполным ответам — это нижняя граница:
+       уровень может только вырасти. Так и говорим. */
+    if (отвечено < всего){
+      подпись.textContent = отвечено
+        // Название не понижаем в регистре: в нём римская цифра,
+        // и «ii уровень» читается как опечатка.
+        ? 'Пока не ниже: ' + уровень.название
+        : 'Отмечено 0 из ' + всего;
+      часы.textContent = отвечено
+        ? (уровень.номер > 0
+            ? 'Это уже ' + уровень.часов_в_неделю[0] + '–' +
+              уровень.часов_в_неделю[1] + ' часов помощи в неделю. Осталось ' +
+              'отметить ' + (всего - отвечено) + ' ' +
+              множ(всего - отвечено, ['позицию', 'позиции', 'позиций']) +
+              ' — уровень может подняться, ниже он не станет.'
+            : 'Отметьте остальные ' + (всего - отвечено) + ' ' +
+              множ(всего - отвечено, ['позицию', 'позиции', 'позиций']) +
+              ': пока баллов мало, но уровень может подняться.')
+        : 'Уровень появится после первых отметок.';
+      сноска.textContent = отвечено ? ШКАЛА.оговорка : '';
+      if (отвечено) установитьУровень(уровень.номер);
+      return;
+    }
     подпись.textContent = уровень.название;
     часы.textContent = уровень.номер > 0
       ? 'Социальный пакет: ' + уровень.часов_в_неделю[0] + '–' +
         уровень.часов_в_неделю[1] + ' часов помощи в неделю.'
       : 'По этой шкале уровень не устанавливается. Это не значит «помощь не нужна» — позвоните координатору.';
     сноска.textContent = ШКАЛА.оговорка;
+    установитьУровень(уровень.номер);
+  }
+
+  /* Уровень нужен не только этой вкладке: по нему считается цена
+     в плане и подсказка в калькуляторе. Пока уровень менялся молча,
+     человек отмечал позиции шкалы, возвращался в план — и видел там
+     старую, меньшую сумму. Два числа за один уход. */
+  function установитьУровень(номер){
+    if (УРОВЕНЬ_ПО_ШКАЛЕ !== номер){
+      УРОВЕНЬ_ПО_ШКАЛЕ = номер;
+      // рисоватьОпросник сам позовёт подсказатьПакет в конце.
+      if (ПЛАН){ рисоватьОпросник(); return; }
+    }
+    if (ПРАЙС) подсказатьПакет();
   }
 
   /* ---------------- чек-листы ---------------- */
@@ -475,44 +1095,156 @@ footer{margin-top:2.5rem;padding-top:1.4rem;border-top:1px solid var(--line-stro
   чеклист(document.getElementById('docs-check'), ДОКУМЕНТЫ, 'sdut-docs');
 
   /* ---------------- поиск по материалам ----------------
-     Ищем так же, как бот: по началу слова. Русский склоняется,
-     и «уровень», «уровня», «уровни» должны находиться одинаково. */
-  var БАЗА = null;
 
-  function основы(текст){
-    var слова = (текст || '').toLowerCase().replace(/ё/g,'е').match(/[а-яa-z0-9]+/g) || [];
-    return слова.filter(function(с){ return с.length >= 4 || /^\d+$/.test(с); })
-                .map(function(с){ return с.slice(0, 5); });
+     Тот же поиск, что у бота, слово в слово. Раньше здесь был свой,
+     попроще: без синонимов, без оборотов, без учёта редкости слова.
+     Человек писал «памперсы» в чат и получал ответ, писал то же
+     в приложении — и не получал ничего. Хуже того, он не мог понять,
+     почему: снаружи это одна и та же служба.
+
+     Механизм целиком приезжает данными в kb.json из knowledge.py,
+     а здесь только исполняется. Совпадение выдач на сотне живых
+     запросов сверяет tests/test_поиск.py через node: разойдутся —
+     тест упадёт, а не человек останется без ответа. */
+  var БАЗА = null, ПОИСК = null, РЕДКОСТЬ = null;
+
+  function основа(слово){
+    слово = слово.replace(/ё/g, 'е');
+    for (var i = 0; i < ПОИСК.окончания.length; i++){
+      var конец = ПОИСК.окончания[i];
+      if (слово.length - конец.length >= ПОИСК.минимум_основы &&
+          слово.slice(-конец.length) === конец){
+        слово = слово.slice(0, слово.length - конец.length);
+        break;
+      }
+    }
+    return слово.slice(0, ПОИСК.основа);
   }
 
-  function искать(запрос){
-    var нужно = основы(запрос);
-    if (!нужно.length) return [];
-    var фраза = (запрос || '').toLowerCase().replace(/ё/g,'е').trim();
-    return БАЗА.статьи.map(function(с){
-      // Места разной ценности считаем раздельно. Пока они были свалены
-      // в одну строку, «пролежни» находило статью про паллиативный
-      // статус: слово стояло у неё в ключах и весило столько же,
-      // сколько чужой заголовок.
-      var заголовок = с.заголовок.toLowerCase().replace(/ё/g,'е');
-      var ключи = с.ключи.join(' ').toLowerCase().replace(/ё/g,'е');
-      var раздел = с.раздел.toLowerCase().replace(/ё/g,'е');
-      var тело = с.текст.toLowerCase().replace(/ё/g,'е');
-      var вес = 0, совпало = 0;
-      нужно.forEach(function(о){
-        if (заголовок.indexOf(о) >= 0)      { вес += 10; совпало++; }
-        else if (ключи.indexOf(о) >= 0)     { вес += 5;  совпало++; }
-        else if (раздел.indexOf(о) >= 0)    { вес += 2;  совпало++; }
-        else if (тело.indexOf(о) >= 0)      { вес += 1;  совпало++; }
+  function основы(текст){
+    var слова = String(текст || '').toLowerCase().match(/[0-9а-яёa-z]+/g) || [];
+    var вышло = [];
+    слова.forEach(function(с){
+      if (ПОИСК.шум.indexOf(с) >= 0) return;
+      if (/^\d+$/.test(с)) вышло.push(с);
+      else if (с.length >= ПОИСК.короткие) вышло.push(основа(с));
+    });
+    return вышло;
+  }
+
+  /* Люди спрашивают своими словами, материалы написаны служебными.
+     Расширение добавляет вторые к первым — по точной форме слова,
+     а не по основе: иначе «есть ли льготы» уезжает в питание. */
+  function расширить(вопрос){
+    var низом = String(вопрос || '').toLowerCase();
+    var добавка = [];
+    (низом.match(/[а-яё]+/g) || []).forEach(function(с){
+      if (ПОИСК.синонимы[с]) добавка.push(ПОИСК.синонимы[с]);
+    });
+    Object.keys(ПОИСК.обороты).forEach(function(оборот){
+      if (низом.indexOf(оборот) >= 0) добавка.push(ПОИСК.обороты[оборот]);
+    });
+    return добавка.length ? вопрос + ' ' + добавка.join(' ') : вопрос;
+  }
+
+  // Основы статьи с весами места, где слово стоит: в заголовке оно
+  // значит больше, чем в теле. Считается один раз при загрузке.
+  function разобратьСтатьи(){
+    var в = ПОИСК.веса;
+    БАЗА.статьи.forEach(function(с){
+      var карта = {};
+      [[с.заголовок, в.заголовок], [(с.ключи || []).join(' '), в.ключи],
+       [с.раздел, в.раздел], [с.текст, в.текст]].forEach(function(пара){
+        основы(пара[0]).forEach(function(о){
+          карта[о] = (карта[о] || 0) + пара[1];
+        });
       });
-      // Запрос целиком в заголовке — это почти наверняка та статья.
-      if (фраза.length >= 4 && заголовок.indexOf(фраза) >= 0) вес += 8;
-      // Длинный запрос, совпавший одним частым словом, — обычно случайность.
-      if (нужно.length >= 3 && совпало < 2) вес = 0;
-      return {статья: с, вес: вес};
-    }).filter(function(р){ return р.вес > 0; })
-      .sort(function(a,b){ return b.вес - a.вес; })
-      .slice(0, 12).map(function(р){ return р.статья; });
+      // Одно слово, повторённое двадцать раз, не делает статью
+      // в двадцать раз более подходящей.
+      Object.keys(карта).forEach(function(о){
+        if (карта[о] > ПОИСК.потолок) карта[о] = ПОИСК.потолок;
+      });
+      с._основы = карта;
+      // Для надбавки: назвал ли человек статью её собственным именем.
+      с._вЗаголовке = {};
+      основы(с.заголовок).forEach(function(о){ с._вЗаголовке[о] = true; });
+      с._вКлючах = {};
+      основы((с.ключи || []).join(' ')).forEach(function(о){ с._вКлючах[о] = true; });
+    });
+    var изСкольких = {};
+    БАЗА.статьи.forEach(function(с){
+      Object.keys(с._основы).forEach(function(о){
+        изСкольких[о] = (изСкольких[о] || 0) + 1;
+      });
+    });
+    var всего = Math.max(БАЗА.статьи.length, 1);
+    РЕДКОСТЬ = {};
+    Object.keys(изСкольких).forEach(function(о){
+      РЕДКОСТЬ[о] = Math.log(1 + всего / изСкольких[о]);
+    });
+  }
+
+  function весСтатьи(с, спрошено){
+    var попало = спрошено.filter(function(о){ return с._основы[о] !== undefined; });
+    if (!попало.length) return 0;
+    var сумма = 0;
+    попало.forEach(function(о){
+      сумма += с._основы[о] * Math.pow(РЕДКОСТЬ[о] === undefined ? 1 : РЕДКОСТЬ[о],
+                                       ПОИСК.резкость);
+    });
+    return сумма * (1 + ПОИСК.разнообразие * (попало.length - 1));
+  }
+
+  /* Человек написал ровно то, как статья и называется, — значит,
+     её и ищет. Без этого редкость слова решала всё, и статья,
+     названная обычными словами, не находилась по собственному
+     заголовку. Считается по словам самого вопроса, без синонимов:
+     иначе расширение подберёт чужой заголовок. */
+  function надбавка(с, свои){
+    if (!свои.length) return 1;
+    var вЗаг = свои.every(function(о){ return с._вЗаголовке[о]; });
+    if (вЗаг) return ПОИСК.заголовок_целиком;
+    var вКлюч = свои.every(function(о){ return с._вКлючах[о]; });
+    return вКлюч ? ПОИСК.ключи_целиком : 1;
+  }
+
+  function искать(запрос, сколько){
+    if (!ПОИСК || !РЕДКОСТЬ) return [];
+    var спрошено = [], видели = {};
+    основы(расширить(запрос)).forEach(function(о){
+      if (!видели[о]){ видели[о] = true; спрошено.push(о); }
+    });
+    if (!спрошено.length) return [];
+    var свои = [], своиВидели = {};
+    основы(запрос).forEach(function(о){
+      if (!своиВидели[о]){ своиВидели[о] = true; свои.push(о); }
+    });
+    var нужноПопаданий = спрошено.length >= 3 ? 2 : 1;
+    var итог = [];
+    БАЗА.статьи.forEach(function(с){
+      var совпало = спрошено.filter(function(о){
+        return с._основы[о] !== undefined;
+      });
+      // Одно редкое слово решает вопрос не хуже двух частых:
+      // «пролежень» указывает точнее, чем «помощь» и «уход» вместе.
+      var редкое = совпало.some(function(о){
+        return о.length >= ПОИСК.основа - 1 &&
+               (РЕДКОСТЬ[о] === undefined ? 1 : РЕДКОСТЬ[о]) >= ПОИСК.решающее;
+      });
+      var попаданий = совпало.length + (редкое && совпало.length ? 1 : 0);
+      if (попаданий < нужноПопаданий) return;
+      var вес = весСтатьи(с, спрошено) * надбавка(с, свои);
+      if (вес < ПОИСК.порог) return;
+      итог.push({статья: с, вес: вес});
+    });
+    // Ничьи разбиваются тем же ключом, что у бота, иначе при равном
+    // весе первая строка в чате и в приложении разная.
+    итог.sort(function(a, b){
+      if (b.вес !== a.вес) return b.вес - a.вес;
+      return a.статья.сорт < b.статья.сорт ? -1
+           : (a.статья.сорт > b.статья.сорт ? 1 : 0);
+    });
+    return итог.slice(0, сколько || 12).map(function(р){ return р.статья; });
   }
 
   function экранировать(т){
@@ -522,44 +1254,100 @@ footer{margin-top:2.5rem;padding-top:1.4rem;border-top:1px solid var(--line-stro
   }
 
   function карточка(с){
+    // Картинка вставляется ссылкой на файл, а не данными внутрь
+    // страницы: два десятка снимков весят больше четырёх мегабайт,
+    // и тянуть их при каждом открытии приложения незачем. Папка img
+    // выкладывается рядом, и браузер берёт снимок только тогда,
+    // когда человек раскрыл статью.
+    var снимок = с.картинка
+      ? '<figure><img src="' + экранировать(с.картинка) + '" alt="' +
+        экранировать(с.подпись || с.заголовок) + '" loading="lazy">' +
+        (с.подпись ? '<figcaption>' + экранировать(с.подпись) + '</figcaption>' : '') +
+        '</figure>'
+      : '';
     return '<details class="hit"><summary><span class="where">' +
       экранировать(с.раздел) + '</span>' + экранировать(с.заголовок) + '</summary>' +
-      '<div class="body">' + экранировать(с.текст) +
+      '<div class="body">' + экранировать(с.текст) + снимок +
       (с.источник ? '<span class="src">Источник: ' + экранировать(с.источник) + '</span>' : '') +
       '</div></details>';
   }
 
+  /* Раньше здесь разворачивались все двести сорок две статьи разом:
+     страница уезжала на двадцать три тысячи пикселей, и человек
+     видел полотно вместо справочника. Теперь сначала разделы,
+     статьи — когда раздел открыли. */
   function поРазделам(){
-    var разделы = {};
+    var разделы = {}, порядок = [];
     БАЗА.статьи.forEach(function(с){
-      (разделы[с.раздел] = разделы[с.раздел] || []).push(с);
+      if (!разделы[с.раздел]){ разделы[с.раздел] = []; порядок.push(с.раздел); }
+      разделы[с.раздел].push(с);
     });
-    return Object.keys(разделы).map(function(р){
-      return '<div class="sect">' + экранировать(р) + ' · ' + разделы[р].length + '</div>' +
-        разделы[р].map(карточка).join('');
+    return порядок.map(function(р){
+      return '<details class="fold"><summary>' + экранировать(р) +
+        '<span class="cnt">' + разделы[р].length + '</span></summary>' +
+        '<div class="inner">' + разделы[р].map(карточка).join('') +
+        '</div></details>';
     }).join('');
   }
+
+  /* Подсказки под полем — не украшение. Человек, у которого дома
+     беда, не знает, какими словами тут принято спрашивать, и пустое
+     поле его останавливает. Эти четыре — самые частые обращения. */
+  var ПОДСКАЗКИ = ['пролежни', 'нечем платить', 'коляска', 'я не справляюсь'];
 
   function рисоватьПоиск(){
     var поле = document.getElementById('q');
     var вывод = document.getElementById('find-out');
     var подпись = document.getElementById('find-sub');
-    подпись.textContent = 'Все ' + БАЗА.статей + ' материалов службы — здесь целиком. ' +
-      'Напишите своими словами: «пролежни», «маме нечем платить», «как оформить инвалидность».';
+    var чипы = document.getElementById('find-tips');
+    подпись.textContent = 'Все ' + БАЗА.статей + ' материалов службы — здесь ' +
+      'целиком, и бот в чате отвечает по ним же. Спрашивайте своими словами.';
+    чипы.innerHTML = ПОДСКАЗКИ.map(function(п){
+      return '<button type="button" class="tip-q" data-q="' + экранировать(п) +
+        '">' + экранировать(п) + '</button>';
+    }).join('');
+    чипы.addEventListener('click', function(ev){
+      var к = ev.target.closest('.tip-q');
+      if (!к) return;
+      поле.value = к.getAttribute('data-q');
+      показать(поле.value);
+      поле.scrollIntoView({block: 'center'});
+    });
+
+    function показать(запрос){
+      запрос = String(запрос || '').trim();
+      if (!запрос){ вывод.innerHTML = поРазделам(); return; }
+      // Первая тройка — ровно то, что ответит бот на этот же вопрос.
+      // Ниже — остальное найденное: человек видит, что у него есть
+      // выбор, но не тонет в нём.
+      var первые = искать(запрос, 3);
+      if (!первые.length){
+        вывод.innerHTML = '<p class="empty"><b>По этим словам ничего ' +
+          'не нашлось.</b> Так же ответил бы и бот в чате: мы нарочно ' +
+          'молчим, когда не уверены, — лучше промолчать, чем ответить ' +
+          'не по делу. Попробуйте одним-двумя словами: «пролежни», ' +
+          '«коляска», «инвалидность». Или напишите вопрос в бот — ' +
+          'координатор ответит сам.</p>';
+        return;
+      }
+      var все = искать(запрос, 12);
+      var ещё = все.slice(первые.length);
+      вывод.innerHTML =
+        '<div class="sect">Так же ответит бот в чате' +
+        '<span class="cnt">' + первые.length + '</span></div>' +
+        первые.map(карточка).join('') +
+        (ещё.length
+          ? '<details class="fold"><summary>Ещё по этому вопросу' +
+            '<span class="cnt">' + ещё.length + '</span></summary>' +
+            '<div class="inner">' + ещё.map(карточка).join('') + '</div></details>'
+          : '');
+    }
+
     вывод.innerHTML = поРазделам();
     var таймер = null;
     поле.addEventListener('input', function(){
       clearTimeout(таймер);
-      таймер = setTimeout(function(){
-        var запрос = поле.value.trim();
-        if (!запрос){ вывод.innerHTML = поРазделам(); return; }
-        var найдено = искать(запрос);
-        вывод.innerHTML = найдено.length
-          ? '<div class="sect">Нашлось: ' + найдено.length + '</div>' + найдено.map(карточка).join('')
-          : '<p class="empty">По этим словам ничего не нашлось. Попробуйте одним-двумя ' +
-            'словами — «пролежни», «коляска», «инвалидность» — или напишите вопрос ' +
-            'в бот: координатор ответит сам.</p>';
-      }, 180);
+      таймер = setTimeout(function(){ показать(поле.value); }, 180);
     });
   }
 
@@ -598,14 +1386,16 @@ footer{margin-top:2.5rem;padding-top:1.4rem;border-top:1px solid var(--line-stro
           экранировать(ОТВЕТЫ_АНКЕТЫ[в.id] || '') + '" ' +
           (в.вид === 'phone' ? 'inputmode="tel" placeholder="8 917 000 00 00"' : '') + '>';
       }
-      return '<div class="fq"><span class="t">' + экранировать(в.текст) + '</span>' + тело + '</div>';
+      var много = в.несколько
+        ? '<span class="many">можно отметить несколько</span>' : '';
+      return '<div class="fq"><span class="t">' + экранировать(в.текст) + много +
+        '</span>' + тело + '</div>';
     }).join('');
 
     var всего = видимые.length;
     var отвечено = видимые.filter(function(в){ return ОТВЕТЫ_АНКЕТЫ[в.id]; }).length;
-    document.getElementById('form-count').textContent = 'Отвечено ' + отвечено;
-    document.getElementById('form-of').textContent = 'из ' + всего;
-    document.getElementById('form-bar').style.width = всего ? (отвечено / всего * 100) + '%' : '0';
+    var счётчик = document.getElementById('form-left');
+    if (счётчик) счётчик.textContent = отвечено + ' из ' + всего;
     рисоватьОтправку(отвечено);
   }
 
@@ -657,6 +1447,9 @@ footer{margin-top:2.5rem;padding-top:1.4rem;border-top:1px solid var(--line-stro
     }
     save('sdut-form', ОТВЕТЫ_АНКЕТЫ);
     рисоватьАнкету();
+    // Ответ анкеты мог уточнить план: кожа, боль, память меняют его
+    // содержимое, и узнать об этом человек должен сразу.
+    if (ПЛАН) рисоватьОпросник();
   });
 
   document.addEventListener('input', function(ev){
@@ -664,6 +1457,1416 @@ footer{margin-top:2.5rem;padding-top:1.4rem;border-top:1px solid var(--line-stro
     if (!поле) return;
     ОТВЕТЫ_АНКЕТЫ[поле.getAttribute('data-q')] = поле.value;
     save('sdut-form', ОТВЕТЫ_АНКЕТЫ);
+  });
+
+  /* ---------------- план ухода ----------------
+     Опросник про устройство дня и дома. С анкетой бота не
+     пересекается ни одним вопросом: там спрашивают, какой человек,
+     здесь — как устроен его день. Проверка tests/test_care.py
+     следит, чтобы так и осталось. */
+  var ПЛАН = null, ОТВЕТЫ_ПЛАНА = load('sdut-plan');
+  // Какие из этих ответов не человек отметил, а мы предположили
+  // по его анкете из бота. Пометка видна на самом вопросе.
+  var ИЗ_АНКЕТЫ_ПЛАН = load('sdut-plan-from-form');
+
+  function planОтмечен(вопрос, вариант){
+    var было = ОТВЕТЫ_ПЛАНА[вопрос.id] || '';
+    return вопрос.несколько
+      ? было.split('; ').indexOf(вариант) >= 0
+      : было === вариант;
+  }
+
+  function вопросПлана(в){
+    // Что можно отметить несколько вариантов, из вида кнопок
+    // не следует никак: человек выбирает один и идёт дальше.
+    var много = в.несколько
+      ? '<span class="many">можно отметить несколько</span>' : '';
+    // Что ответ пришёл из анкеты, а не от человека, — видно на
+    // самом вопросе. Иначе он решит, что это его собственный ответ.
+    var изБота = (ИЗ_АНКЕТЫ_ПЛАН[в.id] && ОТВЕТЫ_ПЛАНА[в.id])
+      ? '<span class="from-form">из вашей анкеты</span>' : '';
+    return '<div class="cq"><span class="t">' + экранировать(в.текст) + много +
+      изБота + '</span>' +
+      (в.зачем ? '<span class="why">' + экранировать(в.зачем) + '</span>' : '') +
+      в.варианты.map(function(вар){
+        return '<button type="button" class="opt" data-pq="' + в.id +
+          '" data-pv="' + экранировать(вар) + '" aria-pressed="' +
+          (planОтмечен(в, вар) ? 'true' : 'false') + '">' +
+          экранировать(вар) + '</button>';
+      }).join('') + '</div>';
+  }
+
+  /* Вопросы делятся надвое: что человеку ещё предстоит отметить —
+     открыто, что мы уже вывели из его анкеты — под раскрывашкой.
+
+     Иначе выходило нечестно к его вниманию: он вставлял анкету,
+     видел девять вопросов, восемь из которых уже отвечены, и не
+     понимал, что от него хотят. Теперь перед ним ровно то, чего
+     не хватает. */
+  function рисоватьОпросник(){
+    var ждут = [], готовы = [];
+    ПЛАН.вопросы.forEach(function(в){
+      ((ИЗ_АНКЕТЫ_ПЛАН[в.id] && ОТВЕТЫ_ПЛАНА[в.id]) ? готовы : ждут).push(в);
+    });
+
+    document.getElementById('plan-form').innerHTML =
+      ждут.map(вопросПлана).join('');
+
+    var свёрнутые = document.getElementById('plan-filled');
+    свёрнутые.innerHTML = готовы.length
+      ? '<details class="fold"><summary>Заполнено по вашей анкете' +
+        '<span class="cnt">' + готовы.length + '</span></summary>' +
+        '<div class="inner"><p>Это мы вывели из ваших ответов боту. ' +
+        'Поправьте, если поняли не так, — план пересоберётся.</p>' +
+        готовы.map(вопросПлана).join('') + '</div></details>'
+      : '';
+
+    var заголовок = document.getElementById('plan-step');
+    var подзаголовок = document.getElementById('plan-step-sub');
+    if (готовы.length && ждут.length){
+      заголовок.textContent = 'Шаг 2. Осталось ' + ждут.length + ' ' +
+        множ(ждут.length, ['вопрос', 'вопроса', 'вопросов']);
+      подзаголовок.textContent = 'Об этом бот не спрашивает: он узнаёт, ' +
+        'какой человек, а план собирается из того, как устроены его день и дом.';
+    } else if (готовы.length){
+      заголовок.textContent = 'Шаг 2. Вопросов не осталось';
+      подзаголовок.textContent = 'Всё, что нужно для плана, видно из вашей ' +
+        'анкеты. Проверьте, что мы поняли верно.';
+    } else {
+      заголовок.textContent = 'Шаг 2. Девять вопросов о дне и доме';
+      подзаголовок.textContent = 'Об этом бот не спрашивает: он узнаёт, ' +
+        'какой человек, а план собирается из того, как устроены его день и дом.';
+    }
+
+    var отвечено = ПЛАН.вопросы.filter(function(в){
+      return ОТВЕТЫ_ПЛАНА[в.id];
+    }).length;
+    document.getElementById('plan-count').textContent = 'Отвечено ' + отвечено;
+    document.getElementById('plan-of').textContent = 'из ' + ПЛАН.вопросы.length;
+    document.getElementById('plan-bar').style.width =
+      (отвечено / ПЛАН.вопросы.length * 100) + '%';
+    рисоватьШаблон(отвечено);
+  }
+
+  /* Тот же подбор, что в уход.py: правила по порядку, побеждает
+     первое подошедшее — от самого тяжёлого к самому лёгкому.
+     Разойдётся — человек с лежачим близким получит план прогулок. */
+  function подобратьШаблон(){
+    for (var i = 0; i < ПЛАН.правила.length; i++){
+      var правило = ПЛАН.правила[i], подходит = true;
+      for (var ключ in правило['если']){
+        var было = String(ОТВЕТЫ_ПЛАНА[ключ] || '');
+        var годные = правило['если'][ключ], нашлось = false;
+        for (var j = 0; j < годные.length; j++){
+          if (было.indexOf(годные[j]) >= 0){ нашлось = true; break; }
+        }
+        if (!нашлось){ подходит = false; break; }
+      }
+      if (подходит){
+        var ид = правило.шаблон;
+        return ПЛАН.шаблоны.filter(function(ш){ return ш.id === ид; })[0] || null;
+      }
+    }
+    return null;
+  }
+
+  /* Одна цена на все вкладки.
+
+     Раньше план считал по своему шаблону, а калькулятор — по шкале,
+     и человек с одной и той же анкетой видел 30 600 ₽ на первой
+     вкладке и 25 100 ₽ на четвёртой. Два разных числа за один
+     и тот же уход — самый быстрый способ перестать нам верить.
+
+     Шкала, заполненная не до конца, даёт нижнюю границу: неотмеченная
+     позиция — это ноль баллов, то есть «справляется сам». Поэтому
+     берём большее из двух: шкала не может опустить уровень ниже
+     того, что видно из плана. */
+  function уровеньПозиции(поз){
+    var м = /^level([0-9])$/.exec(String(поз || ''));
+    return м ? Number(м[1]) : 0;
+  }
+
+  function ценаПлана(шаблон){
+    var своё = шаблон && шаблон.сколько;
+    if (!своё) return null;
+    // Круглосуточный уход шкалой не описывается — у него своя цена.
+    if (своё.посуточно || !ПРАЙС) return своё;
+    var номер = Math.max(УРОВЕНЬ_ПО_ШКАЛЕ || 0, уровеньПозиции(своё.позиция));
+    var пакет = ПРАЙС.пакеты.filter(function(п){ return п.уровень === номер; })[0];
+    if (!пакет) return своё;
+    return {позиция: пакет.id, название: пакет.название, в_месяц: пакет.цена,
+            доля_семьи: пакет.доля_семьи, посуточно: false,
+            выше_шаблона: номер > уровеньПозиции(своё.позиция)};
+  }
+
+  function изАнкеты(){
+    if (!ПЛАН.из_анкеты) return [];
+    return ПЛАН.из_анкеты.filter(function(у){
+      var было = String(ОТВЕТЫ_АНКЕТЫ[у.ключ] || '').toLowerCase();
+      return у['если'].some(function(з){
+        return было.indexOf(з.toLowerCase()) >= 0;
+      });
+    });
+  }
+
+  function расхождения(){
+    if (!ПЛАН.противоречия) return [];
+    return ПЛАН.противоречия.filter(function(п){
+      var анкета = String(ОТВЕТЫ_АНКЕТЫ[п.ключ_анкеты] || '').toLowerCase();
+      var план = String(ОТВЕТЫ_ПЛАНА[п.ключ_плана] || '').toLowerCase();
+      return п.если_анкета.some(function(з){ return анкета.indexOf(з.toLowerCase()) >= 0; })
+          && п.если_план.some(function(з){ return план.indexOf(з.toLowerCase()) >= 0; });
+    });
+  }
+
+  function точностьПлана(){
+    var полезные = {};
+    (ПЛАН.из_анкеты || []).forEach(function(у){ полезные[у.ключ] = true; });
+    var учтено = Object.keys(полезные).filter(function(к){
+      return ОТВЕТЫ_АНКЕТЫ[к];
+    }).length;
+    return {учтено: учтено,
+            степень: учтено >= 3 ? 'Уточнённый план' : 'Первичная оценка'};
+  }
+
+  function уточнения(){
+    return ПЛАН.добавки.filter(function(д){
+      var было = String(ОТВЕТЫ_ПЛАНА[д.ключ] || '');
+      return д['если'].some(function(з){ return было.indexOf(з) >= 0; });
+    });
+  }
+
+  function частиСуток(шаблон){
+    // Почти постоянно — значит все части суток: отмечать «когда
+    // нужнее» тут бессмысленно, и половина плана иначе не появится.
+    if (String(ОТВЕТЫ_ПЛАНА['раз'] || '').indexOf('Почти постоянно') >= 0)
+      return шаблон.блоки;
+    var отмечено = String(ОТВЕТЫ_ПЛАНА['когда'] || '');
+    var лежит = String(ОТВЕТЫ_ПЛАНА['день'] || '').indexOf('В кровати') >= 0;
+    var выбрано = шаблон.блоки.filter(function(б){
+      return отмечено.indexOf(б.когда) >= 0 || (лежит && б.время === 'Ночь');
+    });
+    return выбрано.length ? выбрано : шаблон.блоки;
+  }
+
+  function часовВДень(шаблон){
+    return String(ОТВЕТЫ_ПЛАНА['раз'] || '').indexOf('Почти постоянно') >= 0
+      ? 'больше 8 часов в день' : шаблон.часов_в_день;
+  }
+
+  function рисоватьШаблон(отвечено){
+    var узел = document.getElementById('plan-out');
+    var подсказка = document.getElementById('plan-hint');
+    var шаблон = подобратьШаблон();
+
+    if (!шаблон){
+      узел.innerHTML = '';
+      подсказка.textContent = отвечено
+        ? 'Ответьте, где человек проводит день, — с этого начинается план.'
+        : 'План появится после первых ответов.';
+      return;
+    }
+
+    var точность = точностьПлана();
+    var споры = расхождения();
+    var изБота = изАнкеты();
+    var свои = уточнения();
+    подсказка.textContent = точность.учтено
+      ? 'План уточнён по ' + точность.учтено + ' ' +
+        множ(точность.учтено, ['ответу', 'ответам', 'ответам']) + ' из анкеты.'
+      : 'План готов. Вставьте анкету из бота — станет точнее.';
+
+    var части = частиСуток(шаблон).map(function(б){
+      return '<div class="part"><div class="hd"><b>' + экранировать(б.время) +
+        '</b><i></i></div><ul>' + б.дела.map(function(д){
+          return '<li><span class="no">' + д.номер + '</span><span>' +
+            экранировать(д.текст) + '</span></li>';
+        }).join('') + '</ul></div>';
+    }).join('');
+
+    // Расхождение между анкетой и опросником — единственное, что
+    // показываем во всю ширину и красным: план на неверной посылке
+    // выглядит так же уверенно, как правильный.
+    var спорно = споры.map(function(с){
+      return '<div class="watch"><b>Ответы расходятся</b><p>' +
+        экранировать(с.текст) + '</p></div>';
+    }).join('');
+
+    var частота = шаблон.частота.length
+      ? '<div class="freq"><b>По часам, а не по самочувствию</b>' +
+        шаблон.частота.map(function(ч){
+          return '<span class="r"><span>' + экранировать(ч.что) + '.</span> ' +
+            экранировать(ч.как) + '</span>';
+        }).join('') + '</div>'
+      : '';
+
+    var следить = шаблон.следить.length
+      ? '<div class="watch"><b>Когда звонить, не дожидаясь визита</b><ul>' +
+        шаблон.следить.map(function(с){
+          return '<li>' + экранировать(с) + '</li>';
+        }).join('') + '</ul></div>'
+      : '';
+
+    // Всё, что читают один раз, — под раскрывашку. Иначе экран
+    // превращается в полотно, и человек закрывает его, не дочитав
+    // до того, ради чего пришёл.
+    function свёрток(заголовок, сколько, внутри, открыт){
+      if (!внутри) return '';
+      return '<details class="fold"' + (открыт ? ' open' : '') +
+        '><summary>' + экранировать(заголовок) +
+        (сколько ? '<span class="cnt">' + сколько + '</span>' : '') +
+        '</summary><div class="inner">' + внутри + '</div></details>';
+    }
+
+    var советы = (изБота.concat(свои)).map(function(д){
+      return '<div class="tip"><b>' + экранировать(д.заголовок) + '</b><p>' +
+        экранировать(д.текст) + '</p></div>';
+    }).join('');
+
+    var железо = шаблон.оборудование.map(function(о){
+      return '<li>' + экранировать(о) + '</li>';
+    }).join('');
+    if (железо) железо = '<ul class="plain">' + железо + '</ul>' +
+      '<button class="send" id="plan-gear">Что положено даром и почём аренда</button>';
+
+    var сумма = ценаПлана(шаблон);
+    var цена = сумма
+      ? '<div class="price-hint"><span class="n">' +
+        рубли(сумма.в_месяц) + ' в месяц</span>' +
+        '<span class="t">Столько стоит этот уход, если его берёт служба. ' +
+        'Сумму семья платит целиком: программы софинансирования до города ' +
+        'пока не дошли.' +
+        (сумма.выше_шаблона
+          ? ' Уровень поднят по вашим отметкам на вкладке «Сколько часов ' +
+            'положено».' : '') +
+        '</span>' +
+        '<button type="button" class="go" id="plan-cost">Посчитать точнее' +
+        '</button></div>'
+      : '';
+
+    var приглашение = точность.учтено ? '' :
+      '<div class="invite"><b>План можно сделать точнее</b>' +
+      '<p>Если вы отвечали боту, вставьте оттуда ответы в поле наверху — ' +
+      'план учтёт состояние кожи, боль, память и то, как человек ест, ' +
+      'и заполнит за вас большую часть вопросов.</p>' +
+      '<button type="button" class="go" id="plan-form-go">Показать, куда ' +
+      'вставить</button></div>';
+
+    узел.innerHTML =
+      '<div class="plan"><span class="kind">' + экранировать(точность.степень) +
+      '</span><h3>' + экранировать(шаблон.название) + '</h3>' +
+      '<p class="who">' + экранировать(шаблон.кому) + '</p>' +
+      '<span class="hrs">' + экранировать(часовВДень(шаблон)) + '</span></div>' +
+      спорно + части + частота + следить + цена +
+      свёрток('Что учесть именно вам', (изБота.length + свои.length) || '',
+              советы, false) +
+      свёрток('Минимум оборудования', шаблон.оборудование.length, железо, false) +
+      свёрток('Оговорки', '', (шаблон.примечания || []).concat([ПЛАН.оговорка])
+              .map(function(п){ return '<p>' + экранировать(п) + '</p>'; })
+              .join(''), false) +
+      приглашение +
+      '<button class="send" id="plan-send">Собрать план для координатора</button>' +
+      '<div id="plan-dump"></div>';
+
+    var кнопкаЦена = document.getElementById('plan-cost');
+    if (кнопкаЦена) кнопкаЦена.addEventListener('click', function(){
+      if (сумма && ПРАЙС){
+        var поз = сумма.позиция;
+        ВЫБОР.раздел = (поз.indexOf('level') === 0)
+          ? 'Регулярный пакет' : 'Круглосуточно';
+        ВЫБОР.позиция = поз;
+        ВЫБОР.сколько = 1;
+        ВЫБОР.выбрано = true;
+        save('sdut-cost', ВЫБОР);
+        рисоватьСтоимость();
+      }
+      document.getElementById('tab-cost').click();
+    });
+
+    var кнопкаЖелезо = document.getElementById('plan-gear');
+    if (кнопкаЖелезо) кнопкаЖелезо.addEventListener('click', function(){
+      ВЫБРАНО_ПО_ПЛАНУ = шаблон.id;
+      document.getElementById('tab-gear').click();
+    });
+
+    var кнопкаАнкета = document.getElementById('plan-form-go');
+    if (кнопкаАнкета) кнопкаАнкета.addEventListener('click', function(){
+      // Поле вставки теперь на этой же вкладке, выше. Переносить
+      // человека некуда — надо просто показать, куда вставлять.
+      var коробка = document.getElementById('carry-box');
+      var поле = document.getElementById('paste');
+      if (коробка){
+        коробка.open = true;
+        коробка.scrollIntoView({behavior: 'smooth', block: 'center'});
+      }
+      if (поле) поле.focus({preventScroll: true});
+    });
+
+    document.getElementById('plan-send').addEventListener('click', собратьПлан);
+
+    // Калькулятор подсказывает по тому же уровню, что и план.
+    // Свой выбор человека подсказка не трогает.
+    if (ПРАЙС) подсказатьПакет();
+  }
+
+  function текстПлана(){
+    var шаблон = подобратьШаблон();
+    if (!шаблон) return '';
+    var строки = ['Предварительный план ухода, СДУТ', '',
+                  шаблон.название + ' — ' + часовВДень(шаблон), ''];
+    ПЛАН.вопросы.forEach(function(в){
+      if (ОТВЕТЫ_ПЛАНА[в.id]) строки.push(в.текст + ' — ' + ОТВЕТЫ_ПЛАНА[в.id]);
+    });
+    частиСуток(шаблон).forEach(function(б){
+      строки.push('', б.время + ':');
+      б.дела.forEach(function(д){ строки.push('  ' + д.номер + '. ' + д.текст); });
+    });
+    if (шаблон.частота.length){
+      строки.push('', 'По часам:');
+      шаблон.частота.forEach(function(ч){ строки.push('  ' + ч.что + ' — ' + ч.как); });
+    }
+    var у = изАнкеты().concat(уточнения());
+    if (у.length){
+      строки.push('', 'Отдельно:');
+      у.forEach(function(д){ строки.push('  ' + д.заголовок + ': ' + д.текст); });
+    }
+    var споры = расхождения();
+    if (споры.length){
+      строки.push('', 'Ответы расходятся:');
+      споры.forEach(function(с){ строки.push('  ' + с.текст); });
+    }
+    if (шаблон.оборудование.length){
+      строки.push('', 'Минимум оборудования:');
+      шаблон.оборудование.forEach(function(о){ строки.push('  • ' + о); });
+    }
+    var сумма = ценаПлана(шаблон);
+    if (сумма){
+      строки.push('', 'Порядок суммы, если уход берёт служба: ' +
+        рубли(сумма.в_месяц) + ' в месяц (' + сумма.название +
+        '). Эту сумму семья платит целиком: софинансирование пока ' +
+        'в ожидании.');
+    }
+    строки.push('', ПЛАН.оговорка);
+    return строки.join('\n');
+  }
+
+  function собратьПлан(){
+    var текст = текстПлана();
+    var узел = document.getElementById('plan-dump');
+    узел.innerHTML = '<textarea class="dump" id="plan-text" readonly></textarea>' +
+      '<div class="sent">Скопируйте и отправьте в бот — координатор увидит план ' +
+      'и уточнит его на выезде. Заодно он задаст вопросы про самого человека: ' +
+      'их здесь не было специально, чтобы не спрашивать дважды.</div>' +
+      '<a class="cta" href="https://max.ru/id6320093220_bot">Открыть бот в MAX</a>';
+    var поле = document.getElementById('plan-text');
+    поле.value = текст;
+    поле.focus(); поле.select();
+    try { navigator.clipboard && navigator.clipboard.writeText(текст); } catch(e){}
+  }
+
+  document.addEventListener('click', function(ev){
+    var кнопка = ev.target.closest ? ev.target.closest('.cq .opt') : null;
+    if (!кнопка) return;
+    var q = кнопка.getAttribute('data-pq'), v = кнопка.getAttribute('data-pv');
+    var вопрос = ПЛАН.вопросы.filter(function(в){ return в.id === q; })[0];
+    if (вопрос && вопрос.несколько){
+      var было = (ОТВЕТЫ_ПЛАНА[q] || '').split('; ').filter(Boolean);
+      var где = было.indexOf(v);
+      if (где >= 0) было.splice(где, 1); else было.push(v);
+      ОТВЕТЫ_ПЛАНА[q] = было.join('; ');
+    } else {
+      ОТВЕТЫ_ПЛАНА[q] = (ОТВЕТЫ_ПЛАНА[q] === v) ? '' : v;
+    }
+    // Ответил сам — это больше не предположение из анкеты.
+    if (ИЗ_АНКЕТЫ_ПЛАН[q]){
+      delete ИЗ_АНКЕТЫ_ПЛАН[q];
+      save('sdut-plan-from-form', ИЗ_АНКЕТЫ_ПЛАН);
+    }
+    save('sdut-plan', ОТВЕТЫ_ПЛАНА);
+    рисоватьОпросник();
+  });
+
+  /* ---------------- аренда оборудования ---------------- */
+  var ЖЕЛЕЗО = null, ВЫБРАНО_ПО_ПЛАНУ = '';
+  var ВЫБОР_ЖЕЛЕЗА = load('sdut-gear');
+  if (!ВЫБОР_ЖЕЛЕЗА.взято) ВЫБОР_ЖЕЛЕЗА.взято = {};
+  if (!ВЫБОР_ЖЕЛЕЗА.месяцев) ВЫБОР_ЖЕЛЕЗА.месяцев = 1;
+
+  function рисоватьБесплатное(){
+    document.getElementById('gear-free').innerHTML =
+      '<b>Сначала — что положено даром</b>' +
+      ЖЕЛЕЗО.сначала_бесплатно.map(function(п){
+        return '<span class="w"><b>' + экранировать(п.что) + '.</b> ' +
+          экранировать(п.как) + '</span>';
+      }).join('');
+    document.getElementById('gear-why').innerHTML =
+      ЖЕЛЕЗО.почему_аренда.map(function(п){
+        return '<li>' + экранировать(п) + '</li>';
+      }).join('');
+    document.getElementById('gear-terms').innerHTML =
+      ЖЕЛЕЗО.условия.map(function(у){
+        return '<li>' + экранировать(у) + '</li>';
+      }).join('') +
+      '<li>Доставка и сборка — ' + рубли(ЖЕЛЕЗО.доставка.цена) + '. ' +
+      экранировать(ЖЕЛЕЗО.доставка.условие) + '</li>' +
+      '<li class="note">Цены рыночные: ' + экранировать(ЖЕЛЕЗО.откуда) + '.</li>';
+  }
+
+  function значокИПРА(средство){
+    if (средство.ипра === 'да')
+      return '<span class="badge free">по ИПРА бесплатно</span>';
+    if (средство.ипра === 'иногда')
+      return '<span class="badge maybe">иногда по ИПРА</span>';
+    if (средство.ипра === 'по паллиативу')
+      return '<span class="badge free">по паллиативному статусу</span>';
+    return '';
+  }
+
+  function рисоватьЖелезо(){
+    var подсветить = ВЫБРАНО_ПО_ПЛАНУ;
+    document.getElementById('gear-list').innerHTML =
+      ЖЕЛЕЗО.группы.map(function(г, номер){
+        var свои = ЖЕЛЕЗО.средства.filter(function(с){ return с.группа === г; });
+        var взято = свои.filter(function(с){ return ВЫБОР_ЖЕЛЕЗА.взято[с.id]; }).length;
+        var нужных = подсветить
+          ? свои.filter(function(с){ return с.шаблоны.indexOf(подсветить) >= 0; }).length
+          : 0;
+        // Открыт только первый раздел и те, где что-то выбрано или
+        // нужно по плану: двадцать позиций разом — это уже каталог,
+        // а не помощь.
+        var открыт = номер === 0 || взято > 0 || нужных > 0;
+        return '<details class="fold"' + (открыт ? ' open' : '') +
+          '><summary>' + экранировать(г) + '<span class="cnt">' +
+          (взято ? 'выбрано ' + взято : свои.length) + '</span></summary>' +
+          '<div class="inner">' +
+          свои.map(function(с){
+            var нужно = подсветить && с.шаблоны.indexOf(подсветить) >= 0;
+            return '<div class="gear"><div class="top">' +
+              '<span class="name">' + экранировать(с.название) +
+              (нужно ? ' <span class="badge maybe">нужно по вашему плану</span>' : '') +
+              '</span><span class="rub">' + рубли(с.аренда) +
+              '<small>в месяц</small></span></div>' +
+              '<span class="what">' + экранировать(с.зачем) + '</span>' +
+              '<div class="row"><button type="button" class="take" data-gear="' +
+              с.id + '" aria-pressed="' +
+              (ВЫБОР_ЖЕЛЕЗА.взято[с.id] ? 'true' : 'false') + '">' +
+              (ВЫБОР_ЖЕЛЕЗА.взято[с.id] ? '✓ выбрано' : 'Выбрать') + '</button>' +
+              значокИПРА(с) +
+              '<span class="badge">купить ' + рубли(с.покупка) + '</span>' +
+              (с.залог ? '<span class="badge">залог ' + рубли(с.залог) + '</span>' : '') +
+              '</div></div>';
+          }).join('') + '</div></details>';
+      }).join('');
+  }
+
+  /* Та же арифметика, что в тср.за_месяцы. */
+  function счётЖелеза(){
+    var взято = ЖЕЛЕЗО.средства.filter(function(с){
+      return ВЫБОР_ЖЕЛЕЗА.взято[с.id];
+    });
+    var месяцев = Math.max(1, ВЫБОР_ЖЕЛЕЗА.месяцев);
+    var аренда = взято.reduce(function(с, п){ return с + п.аренда; }, 0) * месяцев;
+    var залог = взято.reduce(function(с, п){ return с + п.залог; }, 0);
+    var покупка = взято.reduce(function(с, п){ return с + п.покупка; }, 0);
+    var доставка = взято.length ? ЖЕЛЕЗО.доставка.цена : 0;
+    return {
+      взято: взято, месяцев: месяцев, аренда: аренда, залог: залог,
+      покупка: покупка, доставка: доставка, итого: аренда + доставка,
+      выгоднее_купить: взято.length > 0 && аренда >= покупка,
+      по_ипра: взято.filter(function(с){ return с.ипра === 'да'; })
+    };
+  }
+
+  function рисоватьСчётЖелеза(){
+    var счёт = счётЖелеза();
+    var что = document.getElementById('gear-what');
+    var сумма = document.getElementById('gear-sum');
+    var подсказка = document.getElementById('gear-hint');
+    var сноска = document.getElementById('gear-note');
+
+    document.getElementById('gear-n').textContent = ВЫБОР_ЖЕЛЕЗА.месяцев;
+    document.getElementById('gear-unit').textContent =
+      множ(ВЫБОР_ЖЕЛЕЗА.месяцев, ЕДИНИЦЫ['месяц']);
+
+    if (!счёт.взято.length){
+      что.textContent = 'Ничего не выбрано';
+      сумма.textContent = '—';
+      подсказка.textContent = 'Отметьте нужное — посчитаем аренду и сравним ' +
+        'с покупкой.';
+      сноска.textContent = '';
+      return;
+    }
+    что.textContent = счёт.взято.length + ' ' +
+      множ(счёт.взято.length, ['позиция', 'позиции', 'позиций']) +
+      ' на ' + счёт.месяцев + ' ' + множ(счёт.месяцев, ЕДИНИЦЫ['месяц']);
+    сумма.textContent = рубли(счёт.итого);
+    подсказка.textContent = 'Аренда ' + рубли(счёт.аренда) + ' + доставка ' +
+      рубли(счёт.доставка) +
+      (счёт.залог ? '. Залог ' + рубли(счёт.залог) + ' возвращается' : '');
+
+    var примечания = [];
+    if (счёт.выгоднее_купить){
+      примечания.push('За ' + счёт.месяцев + ' ' +
+        множ(счёт.месяцев, ЕДИНИЦЫ['месяц']) + ' аренда догнала покупку (' +
+        рубли(счёт.покупка) + '). На такой срок дешевле купить — скажите об ' +
+        'этом координатору, мы не будем спорить.');
+    }
+    if (счёт.по_ипра.length){
+      примечания.push('Из выбранного по ИПРА положено бесплатно: ' +
+        счёт.по_ипра.map(function(с){ return с.название; }).join(', ') +
+        '. Сначала впишите в программу — платить, возможно, не придётся.');
+    }
+    сноска.textContent = примечания.join(' ');
+  }
+
+  function текстЖелеза(){
+    var счёт = счётЖелеза();
+    var строки = ['Заявка на оборудование, СДУТ', ''];
+    if (!счёт.взято.length) return строки.concat(['Ничего не выбрано.']).join('\n');
+    строки.push('Срок: ' + счёт.месяцев + ' ' +
+                множ(счёт.месяцев, ЕДИНИЦЫ['месяц']), '');
+    счёт.взято.forEach(function(с){
+      строки.push('• ' + с.название + ' — ' + рубли(с.аренда) + ' в месяц' +
+        (с.ипра === 'да' ? ' (может быть положено по ИПРА)' : ''));
+    });
+    строки.push('', 'Аренда: ' + рубли(счёт.аренда),
+                'Доставка и сборка: ' + рубли(счёт.доставка));
+    if (счёт.залог) строки.push('Залог (возвращается): ' + рубли(счёт.залог));
+    строки.push('Итого к оплате: ' + рубли(счёт.итого));
+    if (счёт.по_ипра.length){
+      строки.push('', 'Проверить по ИПРА: ' +
+        счёт.по_ипра.map(function(с){ return с.название; }).join(', '));
+    }
+    return строки.join('\n');
+  }
+
+  document.addEventListener('click', function(ev){
+    var кнопка = ev.target.closest ? ev.target.closest('.take[data-gear]') : null;
+    if (!кнопка) return;
+    var ид = кнопка.getAttribute('data-gear');
+    if (ВЫБОР_ЖЕЛЕЗА.взято[ид]) delete ВЫБОР_ЖЕЛЕЗА.взято[ид];
+    else ВЫБОР_ЖЕЛЕЗА.взято[ид] = true;
+    save('sdut-gear', ВЫБОР_ЖЕЛЕЗА);
+    кнопка.setAttribute('aria-pressed', ВЫБОР_ЖЕЛЕЗА.взято[ид] ? 'true' : 'false');
+    кнопка.textContent = ВЫБОР_ЖЕЛЕЗА.взято[ид] ? '✓ выбрано' : 'Выбрать';
+    рисоватьСчётЖелеза();
+  });
+
+  /* ---------------- перенос ответов из бота ----------------
+     Анкета одна и та же в боте и здесь. Человек, прошедший её
+     в чате, не должен отвечать второй раз: бот отдаёт ссылку,
+     в которой ответы уже лежат, а мы их читаем.
+
+     Часть адреса после решётки браузер на сервер не отправляет —
+     в журналах хостинга ответов не окажется. Вход по номеру
+     телефона тут не годится: номер знает полгорода, и он открыл бы
+     чужие ответы о здоровье любому, кто его наберёт. */
+  var ПЕРЕНЕСЕНО = 0;
+
+  function изХеша(){
+    var хвост = (location.hash || '').replace(/^#/, '');
+    if (!хвост) return null;
+    var найдено = null;
+    хвост.split('&').forEach(function(кусок){
+      var где = кусок.indexOf('=');
+      if (где < 0) return;
+      var имя;
+      try { имя = decodeURIComponent(кусок.slice(0, где)); }
+      catch(e){ имя = кусок.slice(0, где); }
+      if (имя === 'анкета' || имя === 'a') найдено = кусок.slice(где + 1);
+    });
+    return найдено;
+  }
+
+  function раскодировать(код){
+    try {
+      var b64 = String(код).replace(/-/g, '+').replace(/_/g, '/');
+      while (b64.length % 4) b64 += '=';
+      var сырое = atob(b64);
+      var байты = new Uint8Array(сырое.length);
+      for (var i = 0; i < сырое.length; i++) байты[i] = сырое.charCodeAt(i);
+      var данные = JSON.parse(new TextDecoder('utf-8').decode(байты));
+      return (данные && typeof данные === 'object' && !Array.isArray(данные))
+        ? данные : null;
+    } catch(e){ return null; }
+  }
+
+  function влить(данные){
+    var сколько = 0;
+    Object.keys(данные || {}).forEach(function(к){
+      if (данные[к]){ ОТВЕТЫ_АНКЕТЫ[к] = String(данные[к]); сколько++; }
+    });
+    if (сколько) save('sdut-form', ОТВЕТЫ_АНКЕТЫ);
+    return сколько;
+  }
+
+  /* Четырнадцать позиций шкалы видно прямо из ответов боту: человек
+     уже рассказал, как близкий ест, моется и передвигается. Двигать
+     те же кнопки второй раз — неуважение к его времени.
+
+     Своё не перебиваем: если человек отметил позицию руками, его
+     ответ важнее нашего предположения. Заполненное помечаем —
+     он должен видеть, что за него предположили, и мочь исправить. */
+  var ИЗ_АНКЕТЫ = load('sdut-scale-from-form');
+
+  function заполнитьШкалу(){
+    if (!ПЛАН || !ПЛАН.шкала_из_анкеты || !ШКАЛА) return 0;
+    var порядок = {'может_сам': 0, 'частично': 1, 'не_может': 2};
+    var стало = 0;
+    Object.keys(ПЛАН.шкала_из_анкеты).forEach(function(позиция){
+      var правило = ПЛАН.шкала_из_анкеты[позиция];
+      var было = String(ОТВЕТЫ_АНКЕТЫ[правило.вопрос] || '').toLowerCase();
+      if (!было) return;
+      var подошло = null;
+      Object.keys(правило.ответы).forEach(function(ответ){
+        if (было.indexOf(ответ.toLowerCase()) < 0) return;
+        var степень = правило.ответы[ответ];
+        if (подошло === null || порядок[степень] > порядок[подошло])
+          подошло = степень;
+      });
+      if (подошло === null) return;
+      // Руками отмеченное не трогаем.
+      if (ОТВЕТЫ[позиция] && !ИЗ_АНКЕТЫ[позиция]) return;
+      if (ОТВЕТЫ[позиция] === подошло && ИЗ_АНКЕТЫ[позиция]) { стало++; return; }
+      ОТВЕТЫ[позиция] = подошло;
+      ИЗ_АНКЕТЫ[позиция] = true;
+      стало++;
+    });
+    if (стало){
+      save('sdut-scale', ОТВЕТЫ);
+      save('sdut-scale-from-form', ИЗ_АНКЕТЫ);
+      if (typeof обновить === 'function') обновить();
+    }
+    return стало;
+  }
+
+  /* Уровень по шкале — и сразу подходящий пакет в калькуляторе.
+     Человек не должен нажимать три раза, чтобы увидеть цену того,
+     что уже посчитано. */
+  function подставитьПакетПоУровню(){
+    if (!ПРАЙС) return;
+    var шаблон = (ПЛАН && ПЛАН.правила) ? подобратьШаблон() : null;
+    var сумма = ценаПлана(шаблон);
+    var поз = сумма ? сумма.позиция
+            : (УРОВЕНЬ_ПО_ШКАЛЕ ? 'level' + УРОВЕНЬ_ПО_ШКАЛЕ : '');
+    if (!поз) return;
+    ВЫБОР.раздел = (поз.indexOf('level') === 0)
+      ? 'Регулярный пакет' : 'Круглосуточно';
+    ВЫБОР.позиция = поз;
+    ВЫБОР.сколько = 1;
+    save('sdut-cost', ВЫБОР);
+    рисоватьСтоимость();
+  }
+
+  /* Заполняем опросник плана из анкеты бота. Без этого человек,
+     вставивший всю анкету, видел на первой вкладке «План появится
+     после первых ответов» — хотя про передвижение, про уход и про
+     часы он боту уже рассказал. А без плана не было и его стоимости.
+
+     Что бот не спрашивает — расстояние до туалета, кто готовит —
+     остаётся человеку: угадать и ошибиться хуже, чем спросить. */
+  function заполнитьОпросник(){
+    if (!ПЛАН || !ПЛАН.опрос_из_анкеты) return 0;
+    var стало = 0;
+    Object.keys(ПЛАН.опрос_из_анкеты).forEach(function(ключ){
+      var вопрос = ПЛАН.вопросы.filter(function(в){ return в.id === ключ; })[0];
+      if (!вопрос) return;
+      var правила = ПЛАН.опрос_из_анкеты[ключ], собрано = [];
+      for (var i = 0; i < правила.length; i++){
+        var было = String(ОТВЕТЫ_АНКЕТЫ[правила[i].вопрос] || '').toLowerCase();
+        if (!было) continue;
+        var таблица = правила[i].ответы, подошло = [];
+        Object.keys(таблица).forEach(function(ответ){
+          if (было.indexOf(ответ.toLowerCase()) >= 0) подошло.push(таблица[ответ]);
+        });
+        if (!подошло.length) continue;
+        if (!вопрос.несколько){ собрано = [подошло[0]]; break; }
+        подошло.forEach(function(з){ собрано = собрано.concat(з.split('; ')); });
+      }
+      if (!собрано.length) return;
+      // Порядок — как в самом вопросе, чтобы кнопки загорались
+      // слева направо, а не в порядке срабатывания правил.
+      var значение = вопрос.несколько
+        ? вопрос.варианты.filter(function(в){ return собрано.indexOf(в) >= 0; })
+            .join('; ')
+        : собрано[0];
+      // Своё не перебиваем: ответ человека важнее предположения.
+      if (ОТВЕТЫ_ПЛАНА[ключ] && !ИЗ_АНКЕТЫ_ПЛАН[ключ]) return;
+      if (ОТВЕТЫ_ПЛАНА[ключ] === значение && ИЗ_АНКЕТЫ_ПЛАН[ключ]){ стало++; return; }
+      ОТВЕТЫ_ПЛАНА[ключ] = значение;
+      ИЗ_АНКЕТЫ_ПЛАН[ключ] = true;
+      стало++;
+    });
+    if (стало){
+      save('sdut-plan', ОТВЕТЫ_ПЛАНА);
+      save('sdut-plan-from-form', ИЗ_АНКЕТЫ_ПЛАН);
+    }
+    return стало;
+  }
+
+  /* Одно действие человека — вставил анкету — должно пересчитать
+     всё, что от неё зависит: шкалу, уровень, пакет, план и цену.
+     Раньше он вставлял ответы и потом ходил по вкладкам руками. */
+  function пересчитатьВсё(){
+    // Порядок важен: уровень считается по плану и по шкале вместе,
+    // поэтому сначала план. Иначе человек видел в плане третий
+    // уровень, а в калькуляторе — второй.
+    var опрос = заполнитьОпросник();
+    var шкала = заполнитьШкалу();
+    if (ПЛАН) рисоватьОпросник();
+    // Анкета — свежие данные о человеке: они важнее того, что было
+    // выбрано в калькуляторе до неё.
+    if (опрос || шкала) подставитьПакетПоУровню();
+    return {шкала: шкала, опрос: опрос};
+  }
+
+  function принятьИзСсылки(){
+    var код = изХеша();
+    if (!код) return;
+    var данные = раскодировать(код);
+    if (!данные) return;
+    ПЕРЕНЕСЕНО = влить(данные);
+    // Убираем ответы из адресной строки: иначе человек, переславший
+    // ссылку «посмотри, что это за приложение», перешлёт вместе с ней
+    // и рассказ о здоровье близкого.
+    try { history.replaceState(null, '', location.pathname + location.search); }
+    catch(e){}
+  }
+
+  function ключСтроки(с){
+    return String(с).toLowerCase().replace(/ё/g, 'е')
+      .replace(/[^а-яa-z0-9]+/g, ' ').trim();
+  }
+
+  function разобратьТекст(текст){
+    if (!АНКЕТА) return {};
+    var карта = {};
+    АНКЕТА.вопросы.forEach(function(в){
+      карта[ключСтроки(в.текст.split('\n')[0])] = в.id;
+    });
+    var найдено = {}, ждём = null;
+    String(текст || '').split('\n').forEach(function(строка){
+      var чистая = строка.replace(/^[\s•\-–—*]+/, '').trim();
+      if (!чистая) return;
+      var части = чистая.split(/\s+[—–]\s+/);
+      if (части.length >= 2 && карта[ключСтроки(части[0])]){
+        найдено[карта[ключСтроки(части[0])]] = части.slice(1).join(' — ').trim();
+        ждём = null;
+        return;
+      }
+      if (карта[ключСтроки(чистая)]){ ждём = карта[ключСтроки(чистая)]; return; }
+      if (ждём){ найдено[ждём] = чистая; ждём = null; }
+    });
+    return найдено;
+  }
+
+  function показатьПеренос(сколько, посчитано){
+    var узел = document.getElementById('carry');
+    var коробка = document.getElementById('carry-box');
+    var подпись = document.getElementById('carry-sum');
+    if (!сколько){
+      узел.hidden = true;
+      if (коробка) коробка.open = true;
+      if (подпись) подпись.textContent = 'Шаг 1. Вставьте ответы из бота';
+      return;
+    }
+    var заодно = [];
+    if (посчитано && посчитано.опрос)
+      заодно.push('план ухода собран по ' + посчитано.опрос + ' ' +
+        множ(посчитано.опрос, ['ответу', 'ответам', 'ответам']));
+    if (посчитано && посчитано.шкала)
+      заодно.push('в расчёте часов заполнено ' + посчитано.шкала + ' ' +
+        множ(посчитано.шкала, ['позиция', 'позиции', 'позиций']));
+    узел.hidden = false;
+    узел.innerHTML = '<b>Ответы из бота перенесены</b>' + сколько + ' ' +
+      множ(сколько, ['ответ', 'ответа', 'ответов']) + ' уже заполнено.' +
+      (заодно.length
+        ? ' Заодно ' + заодно.join(', ') + '. Уровень и стоимость ' +
+          'пересчитаны — проверьте, что мы поняли верно.'
+        : ' Проверьте и допишите, чего не хватает.');
+    if (коробка) коробка.open = false;
+    if (подпись) подпись.textContent = 'Шаг 1. Вставить ответы из бота ещё раз';
+  }
+
+  document.getElementById('paste-go').addEventListener('click', function(){
+    var поле = document.getElementById('paste');
+    var вывод = document.getElementById('paste-out');
+    var найдено = разобратьТекст(поле.value);
+    var сколько = влить(найдено);
+    if (!сколько){
+      вывод.innerHTML = '<p class="empty">Не удалось разобрать. Нужно сообщение ' +
+        'бота «Что записано» целиком — вместе со строками вопросов, а не только ' +
+        'ответы.</p>';
+      return;
+    }
+    вывод.innerHTML = '';
+    var посчитано = пересчитатьВсё();
+    поле.value = '';
+    рисоватьАнкету();
+    // Отчёт пишем над свёртком, а не внутри него: коробка сейчас
+    // закроется, и человек не увидит, что вообще что-то произошло.
+    показатьПеренос(сколько, посчитано);
+  });
+
+  /* ---------------- калькулятор стоимости ---------------- */
+  var ПРАЙС = null;
+  var ВЫБОР = load('sdut-cost');
+  if (!ВЫБОР.поправки) ВЫБОР.поправки = [];
+  if (!ВЫБОР.услуги) ВЫБОР.услуги = {};
+  if (!ВЫБОР.сколько) ВЫБОР.сколько = 1;
+  // Без выбора по умолчанию вкладка открывалась пустой: чипы есть,
+  // а под ними ничего и прочерк вместо суммы, пока не догадаешься
+  // нажать. Показываем самый частый случай — визит на два часа, —
+  // и человек сразу видит, как устроен расчёт.
+  if (!ВЫБОР.раздел) ВЫБОР.раздел = 'Разовые визиты';
+  if (!ВЫБОР.позиция) ВЫБОР.позиция = 'v2';
+  var УРОВЕНЬ_ПО_ШКАЛЕ = 0;
+
+  var ЕДИНИЦЫ = {
+    'визит': ['визит', 'визита', 'визитов'],
+    'выезд': ['выезд', 'выезда', 'выездов'],
+    'смена': ['смена', 'смены', 'смен'],
+    'сутки': ['сутки', 'суток', 'суток'],
+    'месяц': ['месяц', 'месяца', 'месяцев']
+  };
+
+  function множ(число, формы){
+    var сто = Math.abs(число) % 100, десять = сто % 10;
+    if (сто > 10 && сто < 20) return формы[2];
+    if (десять > 1 && десять < 5) return формы[1];
+    if (десять === 1) return формы[0];
+    return формы[2];
+  }
+
+  function рубли(число){
+    return String(Math.round(число)).replace(/\B(?=(\d{3})+(?!\d))/g, ' ') + ' ₽';
+  }
+
+  function всеПозиции(){
+    var список = ПРАЙС.услуги.slice();
+    ПРАЙС.пакеты.forEach(function(п){
+      список.push({
+        id: п.id, раздел: 'Регулярный пакет', название: п.название,
+        цена: п.цена, часов: п.часов_в_месяц, единица: 'месяц',
+        ночная: false, уровень: п.уровень,
+        // Без этих двух полей блок покрытия у пакетов просто исчезал:
+        // человек, выбравший пакет, переставал видеть, что часть часа
+        // оплачивает не он.
+        покрытие: п.покрытие, доля_семьи: п.доля_семьи,
+        входит: п.кому + '. ' + п.график + ' — около ' +
+                Math.round(п.часов_в_месяц) + ' часов в месяц. ' + п.входит
+      });
+    });
+    return список;
+  }
+
+  function позиция(){
+    var все = всеПозиции();
+    for (var i = 0; i < все.length; i++) if (все[i].id === ВЫБОР.позиция) return все[i];
+    return null;
+  }
+
+  function поправка(ид){
+    for (var i = 0; i < ПРАЙС.поправки.length; i++)
+      if (ПРАЙС.поправки[i].id === ид) return ПРАЙС.поправки[i];
+    return null;
+  }
+
+  /* Арифметика та же, что в прайс.py: проценты складываются к базовой
+     цене, а не накручиваются друг на друга. Разойдутся — человек увидит
+     на экране одну сумму, а в договоре другую. */
+  function посчитать(){
+    var поз = позиция();
+    if (!поз) return null;
+    var процент = 0, разовые = 0, учтено = [], пропущено = [];
+    ВЫБОР.поправки.forEach(function(ид){
+      var п = поправка(ид);
+      if (!п) return;
+      if (п.процент === null || п.справочно || п.кроме.indexOf(поз.id) >= 0){
+        пропущено.push(п);
+        return;
+      }
+      if (п.разово) разовые += п.процент;
+      else процент += п.скидка ? -п.процент : п.процент;
+      учтено.push(п);
+    });
+    var доля = Math.max(0, 1 + процент / 100);
+    var заЕдиницу = Math.round(поз.цена * доля);
+    var разом = Math.round(поз.цена * разовые / 100);
+    return {
+      поз: поз, процент: процент, заЕдиницу: заЕдиницу, разом: разом,
+      итог: Math.max(0, Math.round(заЕдиницу * ВЫБОР.сколько + разом)),
+      вЧас: поз.часов ? Math.round(заЕдиницу / поз.часов) : null,
+      учтено: учтено, пропущено: пропущено
+    };
+  }
+
+  function разделы(){
+    var порядок = [], видели = {};
+    всеПозиции().forEach(function(п){
+      if (!видели[п.раздел]){ видели[п.раздел] = true; порядок.push(п.раздел); }
+    });
+    return порядок;
+  }
+
+  function рисоватьРазделы(){
+    document.getElementById('cost-kinds').innerHTML = разделы().map(function(р){
+      return '<button type="button" data-kind="' + экранировать(р) + '" aria-pressed="' +
+        (ВЫБОР.раздел === р ? 'true' : 'false') + '">' + экранировать(р) + '</button>';
+    }).join('');
+  }
+
+  function рисоватьПозиции(){
+    var узел = document.getElementById('cost-picks');
+    var список = всеПозиции().filter(function(п){ return п.раздел === ВЫБОР.раздел; });
+    узел.innerHTML = список.map(function(п){
+      var вЧас = п.часов ? Math.round(п.цена / п.часов) : null;
+      return '<button type="button" class="pick" data-pos="' + п.id + '" aria-pressed="' +
+        (ВЫБОР.позиция === п.id ? 'true' : 'false') + '">' +
+        '<span class="top"><span class="name">' + экранировать(п.название) + '</span>' +
+        '<span class="rub">' + рубли(п.цена) + '<span class="hour">' +
+        (вЧас ? рубли(вЧас) + ' в час' : '&nbsp;') + '</span></span></span>' +
+        '<span class="what">' + экранировать(п.входит) + '</span></button>';
+    }).join('');
+  }
+
+  function рисоватьКоличество(){
+    var поз = позиция();
+    var коробка = document.getElementById('cost-count-box');
+    if (!поз){ коробка.hidden = true; return; }
+    коробка.hidden = false;
+    document.getElementById('cost-n').textContent = ВЫБОР.сколько;
+    var формы = ЕДИНИЦЫ[поз.единица] || ['раз', 'раза', 'раз'];
+    document.getElementById('cost-unit').textContent =
+      множ(ВЫБОР.сколько, формы) + (поз.единица === 'месяц' ? '' : ' в месяц');
+  }
+
+  function рисоватьПоправки(){
+    var поз = позиция();
+    function строка(п){
+      var выключена = поз && п.кроме.indexOf(поз.id) >= 0;
+      var отмечена = ВЫБОР.поправки.indexOf(п.id) >= 0;
+      var знак = п.процент === null ? 'по расчёту'
+               : (п.скидка ? '−' : '+') + п.процент + ' %';
+      var почему = п.пояснение;
+      if (выключена) почему = 'Для этой позиции уже учтено в цене. ' + почему;
+      if (п.справочно) почему = 'Считается отдельно, в этот расчёт не входит. ' + почему;
+      return '<li' + (выключена || п.справочно ? ' class="off"' : '') + '>' +
+        '<input type="checkbox" id="add-' + п.id + '" data-add="' + п.id + '"' +
+        (отмечена ? ' checked' : '') + (выключена ? ' disabled' : '') + '>' +
+        '<span class="txt"><label for="add-' + п.id + '">' +
+        экранировать(п.основание) + '</label>' +
+        '<span class="why">' + экранировать(почему) + '</span></span>' +
+        '<span class="pct' + (п.скидка ? ' down' : '') + '">' + знак + '</span></li>';
+    }
+    var надбавки = ПРАЙС.поправки.filter(function(п){ return !п.скидка; });
+    var скидки = ПРАЙС.поправки.filter(function(п){ return п.скидка; });
+    document.getElementById('cost-adds').innerHTML = надбавки.map(строка).join('');
+    document.getElementById('cost-cuts').innerHTML = скидки.map(строка).join('');
+    // Сколько выбрано — видно, не раскрывая: иначе человек забудет,
+    // что отметил надбавку, и удивится сумме.
+    var выбрано = function(набор){
+      return набор.filter(function(п){
+        return ВЫБОР.поправки.indexOf(п.id) >= 0;
+      }).length;
+    };
+    var метка = function(ид, набор){
+      var узел = document.getElementById(ид);
+      if (!узел) return;
+      var сколько = выбрано(набор);
+      узел.textContent = сколько ? 'выбрано ' + сколько : набор.length;
+      узел.style.background = сколько ? '' : 'var(--surface-2)';
+      узел.style.color = сколько ? '' : 'var(--ink-faint)';
+    };
+    метка('adds-n', надбавки);
+    метка('cuts-n', скидки);
+  }
+
+  function рисоватьИтог(){
+    var счёт = посчитать();
+    var что = document.getElementById('cost-what');
+    var сумма = document.getElementById('cost-sum');
+    var час = document.getElementById('cost-hour');
+    var сноска = document.getElementById('cost-note');
+    var строки = document.getElementById('cost-lines');
+
+    if (!счёт){
+      что.textContent = 'Выберите, что нужно';
+      сумма.textContent = '—';
+      час.textContent = 'Цена за час появится, когда выбран формат ухода.';
+      сноска.textContent = ПРАЙС.частный_порядок;
+      строки.innerHTML = '<div class="r"><span>Пока нечего считать</span><span></span></div>';
+      return;
+    }
+
+    var формы = ЕДИНИЦЫ[счёт.поз.единица] || ['раз', 'раза', 'раз'];
+    что.textContent = счёт.поз.название;
+    сумма.textContent = рубли(счёт.итог);
+    час.textContent = (счёт.вЧас ? рубли(счёт.вЧас) + ' за час у подопечного · ' : '') +
+      ВЫБОР.сколько + ' ' + множ(ВЫБОР.сколько, формы) +
+      (счёт.поз.единица === 'месяц' ? '' : ' в месяц');
+    сноска.textContent = ПРАЙС.оговорка;
+
+    var ряды = ['<div class="r"><span>' + экранировать(счёт.поз.название) + ' × ' +
+      ВЫБОР.сколько + '</span><span>' + рубли(счёт.поз.цена * ВЫБОР.сколько) + '</span></div>'];
+    счёт.учтено.forEach(function(п){
+      var сколько = п.разово ? 1 : ВЫБОР.сколько;
+      var сумма_п = Math.round(счёт.поз.цена * сколько * п.процент / 100);
+      ряды.push('<div class="r"><span>' + экранировать(п.основание) + ' ' +
+        (п.скидка ? '−' : '+') + п.процент + ' %' +
+        (п.разово ? ', один раз' : '') + '</span><span>' +
+        (п.скидка ? '−' : '+') + рубли(сумма_п) + '</span></div>');
+    });
+    счёт.пропущено.forEach(function(п){
+      ряды.push('<div class="r skip"><span>' + экранировать(п.основание) +
+        ' — в этот расчёт не входит</span><span></span></div>');
+    });
+    ряды.push('<div class="r sum"><span>' + подписьИтога(счёт) + '</span><span>' +
+      рубли(счёт.итог) + '</span></div>');
+    строки.innerHTML = ряды.join('');
+  }
+
+  function подписьИтога(счёт){
+    if (счёт.поз.единица !== 'месяц') return 'Итого в месяц';
+    return ВЫБОР.сколько > 1
+      ? 'Итого за ' + ВЫБОР.сколько + ' ' +
+        множ(ВЫБОР.сколько, ЕДИНИЦЫ['месяц'])
+      : 'Итого в месяц';
+  }
+
+  function подсказатьПакет(){
+    if (!ПРАЙС) return;
+    // Тот же уровень, что показан в плане: два разных числа
+    // за один и тот же уход человек нам не простит.
+    var шаблон = (ПЛАН && ПЛАН.правила) ? подобратьШаблон() : null;
+    var сумма = ценаПлана(шаблон);
+    var номер = Math.max(УРОВЕНЬ_ПО_ШКАЛЕ || 0,
+                         сумма ? уровеньПозиции(сумма.позиция) : 0);
+    if (!номер) return;
+    var пакет = ПРАЙС.пакеты.filter(function(п){
+      return п.уровень === номер;
+    })[0];
+    if (!пакет) return;
+    var узел = document.getElementById('cost-sub');
+    узел.innerHTML = 'По вашим ответам — <b>' +
+      экранировать(пакет.название.toLowerCase()) + '</b>: ' +
+      экранировать(пакет.график) + ', ' + рубли(пакет.цена) + ' в месяц. ' +
+      'Это платный уход по договору с семьёй, в частном порядке. Сколько часов ' +
+      'положено бесплатно — на вкладке «Сколько часов положено».';
+    // Своё человек не перебиваем: подставляем пакет только пока
+    // он сам ничего не выбрал.
+    if (!ВЫБОР.выбрано){
+      ВЫБОР.раздел = 'Регулярный пакет';
+      ВЫБОР.позиция = пакет.id;
+      ВЫБОР.сколько = 1;
+      save('sdut-cost', ВЫБОР);
+      рисоватьСтоимость();
+    }
+  }
+
+  function рисоватьСутки(){
+    var предел = Math.max.apply(null, ПРАЙС.круглосуточно.map(function(в){
+      return в.в_месяц;
+    }));
+    document.getElementById('cost-round').innerHTML =
+      ПРАЙС.круглосуточно.map(function(в){
+        return '<div class="row"><div class="hd"><b>' + экранировать(в.вариант) +
+          '</b><span class="rub">' + рубли(в.в_месяц) + ' в месяц</span></div>' +
+          '<div class="track"><i style="width:' +
+          Math.round(в.в_месяц / предел * 100) + '%"></i></div>' +
+          '<div class="who">' + рубли(в.в_сутки) + ' в сутки. ' +
+          экранировать(в.кому) + '</div></div>';
+      }).join('') +
+      '<p class="note">Разница между первым и последним вариантом — почти в шесть ' +
+      'раз. Обучение родственника в Школе ухода делает уход дома реально доступным.</p>';
+  }
+
+  function рисоватьКаталог(){
+    var группы = {}, порядок = [];
+    ПРАЙС.каталог.forEach(function(у){
+      if (!группы[у.группа]){ группы[у.группа] = []; порядок.push(у.группа); }
+      группы[у.группа].push(у);
+    });
+    document.getElementById('cost-catalog').innerHTML = порядок.map(function(г){
+      var отмечено = группы[г].filter(function(у){ return ВЫБОР.услуги[у.номер]; }).length;
+      return '<details class="grp"><summary>' + экранировать(г) +
+        '<span class="cnt">' + (отмечено ? отмечено + ' из ' : '') +
+        группы[г].length + '</span></summary><div class="inner"><ul class="check">' +
+        группы[г].map(function(у){
+          return '<li><input type="checkbox" id="srv-' + у.номер + '" data-srv="' +
+            у.номер + '"' + (ВЫБОР.услуги[у.номер] ? ' checked' : '') + '>' +
+            '<label class="txt" for="srv-' + у.номер + '">' +
+            экранировать(у.услуга) + '</label></li>';
+        }).join('') + '</ul></div></details>';
+    }).join('');
+  }
+
+  function обновитьСчётчики(){
+    [].forEach.call(document.querySelectorAll('#cost-catalog .grp'), function(д){
+      var поля = д.querySelectorAll('input[data-srv]');
+      var отмечено = д.querySelectorAll('input[data-srv]:checked').length;
+      var счёт = д.querySelector('.cnt');
+      if (счёт) счёт.textContent = (отмечено ? отмечено + ' из ' : '') + поля.length;
+    });
+  }
+
+  function рисоватьПокрытие(){
+    var поз = позиция();
+    var узел = document.getElementById('cost-cover');
+    if (!поз || поз.покрытие === undefined || !поз.покрытие){
+      узел.hidden = true;
+      return;
+    }
+    var часов = поз.единица === 'месяц' ? поз.часов : поз.часов;
+    var мой = Math.round(поз.цена / часов);
+    var их = поз.покрытие;
+    var всего = мой + их;
+    узел.hidden = false;
+    // Ни слова про то, что часть счёта семьи оплатит регион.
+    // Система долговременного ухода до Тольятти не дошла, и обещать
+    // семье чужие деньги — значит соврать ей про её же бюджет.
+    узел.innerHTML =
+      '<b>Вы платите ' + рубли(мой) + ' за час. Службе он обходится в ' +
+      рубли(всего) + '</b>' +
+      'Разницу — ' + рубли(их) + ' в час — служба добирает сама: из ' +
+      'пожертвований и целевых средств. Программы софинансирования, которые ' +
+      'должны закрывать её вместо семьи, до города пока не дошли.' +
+      '<div class="two"><i class="mine" style="width:' +
+      Math.round(мой / всего * 100) + '%"></i><i class="theirs" style="width:' +
+      Math.round(их / всего * 100) + '%"></i></div>' +
+      '<div class="legend"><span><i class="k mine"></i>ваш платёж — <b>' +
+      рубли(мой) + '</b> (' + поз.доля_семьи + ' %)</span>' +
+      '<span><i class="k theirs"></i>добирает служба — <b>' + рубли(их) +
+      '</b></span></div>';
+  }
+
+  function рисоватьПрограммы(){
+    var счёт = document.getElementById('prog-n');
+    if (счёт) счёт.textContent = ПРАЙС.программы.length;
+    document.getElementById('cost-programs').innerHTML =
+      ПРАЙС.программы.map(function(п){
+        var ждём = п.состояние !== 'действует';
+        return '<details class="prog"><summary><span class="who">' +
+          экранировать(п.кому) + '</span>' + экранировать(п.название) +
+          '<span class="state' + (ждём ? ' wait' : '') + '">' +
+          экранировать(п.состояние || '') + '</span>' +
+          '</summary><div class="inner">' +
+          (п.когда ? '<p class="when">' + экранировать(п.когда) + '</p>' : '') +
+          '<p>' + экранировать(п.что_закрывает) +
+          '</p><p><b>Как попасть.</b> ' + экранировать(п.как_попасть) + '</p>' +
+          '<span class="law">' + экранировать(п.основание) + '</span></div></details>';
+      }).join('');
+  }
+
+  function рисоватьШкалуРынка(){
+    var где = ПРАЙС.где_на_рынке;
+    document.getElementById('cost-scale').innerHTML =
+      где.шкала.map(function(с){
+        var моя = с.что === 'Наша цена';
+        return '<div class="row' + (моя ? ' mine' : '') + '">' +
+          '<div class="hd"><b>' + экранировать(с.что) + '</b>' +
+          '<span class="rub">' + рубли(с.рублей) + ' в час</span></div>' +
+          '<div class="track"><i style="width:' +
+          Math.round(с.рублей / где.предел * 100) + '%"></i></div>' +
+          '<div class="why">' + экранировать(с.пояснение) + '</div></div>';
+      }).join('');
+
+    document.getElementById('cost-cities').innerHTML =
+      '<tr><th>Город</th><th>Частник</th><th>Служба</th><th>Сутки</th>' +
+      '<th>Проживание</th></tr>' +
+      ПРАЙС.города.map(function(г){
+        return '<tr' + (г.наш ? ' class="наш"' : '') + '><td>' +
+          экранировать(г.название) + '</td><td class="r">' +
+          рубли(г.частник_час) + '</td><td class="r">' + г.вилка[0] +
+          '–' + рубли(г.вилка[1]) + '</td><td class="r">' + рубли(г.сутки) +
+          '</td><td class="r">' + рубли(г.проживание_месяц) + '</td></tr>';
+      }).join('');
+
+    document.getElementById('cost-customs').textContent =
+      'На рынке принято: ' + ПРАЙС.обычаи_рынка.map(function(о){
+        return о.что.toLowerCase() + ' ' + о.сколько;
+      }).join('; ') + '.';
+  }
+
+  function рисоватьРазбор(){
+    var цвета = ['var(--accent)', 'var(--ok)', 'var(--warn)',
+                 'var(--line-strong)', 'var(--ink-faint)'];
+    var всего = ПРАЙС.разбор_часа.reduce(function(с, р){ return с + р.рублей; }, 0);
+    document.getElementById('split-note').textContent =
+      'Во что обходится час у подопечного при визите на ' + ПРАЙС.разбор_блок +
+      ' часа. Сумма строк больше цены на экране — цену задаёт рынок, ' +
+      'а разницу служба добирает сама.';
+    var полосы = ПРАЙС.разбор_часа.map(function(р, i){
+      return '<i style="width:' + (р.рублей / всего * 100) + '%;background:' +
+        цвета[i % цвета.length] + '"></i>';
+    }).join('');
+    document.getElementById('cost-split').innerHTML =
+      '<div class="bar">' + полосы + '</div>' +
+      ПРАЙС.разбор_часа.map(function(р){
+        return '<div class="r"><span>' + экранировать(р.строка) + '</span><span>' +
+          рубли(р.рублей) + '</span></div>';
+      }).join('') +
+      '<div class="r sum"><span>Час обходится службе</span><span>' +
+      рубли(всего) + '</span></div>' +
+      '<div class="r"><span>Из них платит семья</span><span>' +
+      рубли(ПРАЙС.разбор_цена) + '</span></div>';
+
+    document.getElementById('cost-market').innerHTML =
+      'В Тольятти частные объявления начинаются от <b>' +
+      рубли(ПРАЙС.рынок.частник_в_час) + ' в час</b>, агентства просят <b>' +
+      рубли(ПРАЙС.рынок.агентство_в_час[0]) + ' – ' +
+      рубли(ПРАЙС.рынок.агентство_в_час[1]) + ' в час</b>, с проживанием — от <b>' +
+      рубли(ПРАЙС.рынок.агентство_проживание_сутки) + ' в сутки</b>. Служба ' +
+      'держится в этих же деньгах, хотя её час обходится дороже. Законный ' +
+      'минимум ставки помощника при полной занятости — ' +
+      рубли(ПРАЙС.минимальная_ставка) + ' в час: ниже него трудовой договор ' +
+      'заключить нельзя, и частник за 160 ₽ дешевле ровно на это.';
+
+    document.getElementById('cost-why').innerHTML =
+      ПРАЙС.почему_столько.map(function(п){
+        return '<li><b>' + экранировать(п.что) + '</b><span>' +
+          экранировать(п.почему) + '</span></li>';
+      }).join('');
+  }
+
+  function рисоватьНеВходит(){
+    document.getElementById('cost-not').innerHTML = ПРАЙС.не_входит.map(function(н){
+      return '<div class="card flag"><span class="h">' + экранировать(н.что) +
+        '</span><p>' + экранировать(н.почему) + '</p></div>';
+    }).join('');
+    document.getElementById('cost-terms').innerHTML = ПРАЙС.условия.map(function(у){
+      return '<li>' + экранировать(у) + '</li>';
+    }).join('') + '<li>Прайс действует с ' + экранировать(ПРАЙС.действует_с) + '.</li>';
+  }
+
+  function рисоватьСтоимость(){
+    рисоватьРазделы();
+    рисоватьПозиции();
+    рисоватьКоличество();
+    рисоватьПоправки();
+    рисоватьИтог();
+    if (ПРАЙС.программы) рисоватьПокрытие();
+  }
+
+  function текстРасчёта(){
+    var счёт = посчитать();
+    var строки = ['Расчёт стоимости ухода, СДУТ', ''];
+    if (счёт){
+      var формы = ЕДИНИЦЫ[счёт.поз.единица] || ['раз', 'раза', 'раз'];
+      строки.push('Формат: ' + счёт.поз.название + ' × ' + ВЫБОР.сколько + ' ' +
+        множ(ВЫБОР.сколько, формы));
+      строки.push('Базовая цена: ' + рубли(счёт.поз.цена) + ' за ' + счёт.поз.единица);
+      счёт.учтено.forEach(function(п){
+        строки.push('  ' + (п.скидка ? '−' : '+') + п.процент + ' % — ' +
+          п.основание + (п.разово ? ' (один раз)' : ''));
+      });
+      строки.push(подписьИтога(счёт) + ': ' + рубли(счёт.итог) +
+        (счёт.вЧас ? ' (' + рубли(счёт.вЧас) + ' за час у подопечного)' : ''));
+    } else {
+      строки.push('Формат ухода ещё не выбран.');
+    }
+    var нужно = ПРАЙС.каталог.filter(function(у){ return ВЫБОР.услуги[у.номер]; });
+    if (нужно.length){
+      строки.push('', 'Что нужно из перечня услуг:');
+      нужно.forEach(function(у){ строки.push('• ' + у.услуга); });
+    }
+    строки.push('', 'Расчёт предварительный. Точную сумму называет договор ' +
+      'после первичного выезда организатора ухода.');
+    return строки.join('\n');
+  }
+
+  document.getElementById('cost-send').addEventListener('click', function(){
+    var текст = текстРасчёта();
+    var узел = document.getElementById('cost-out');
+    узел.innerHTML = '<textarea class="dump" id="cost-dump" readonly></textarea>' +
+      '<div class="sent">Скопируйте и отправьте одним сообщением в бот — ' +
+      'координатор увидит расчёт целиком. Пока вы не отправили, он лежит только ' +
+      'в этом телефоне.</div>' +
+      '<a class="cta" href="https://max.ru/id6320093220_bot">Открыть бот в MAX</a>';
+    var поле = document.getElementById('cost-dump');
+    поле.value = текст;
+    поле.focus(); поле.select();
+    try { navigator.clipboard && navigator.clipboard.writeText(текст); } catch(e){}
+  });
+
+  document.getElementById('cost-kinds').addEventListener('click', function(ev){
+    var кнопка = ev.target.closest('button[data-kind]');
+    if (!кнопка) return;
+    ВЫБОР.раздел = кнопка.getAttribute('data-kind');
+    save('sdut-cost', ВЫБОР);
+    рисоватьСтоимость();
+  });
+
+  document.getElementById('cost-picks').addEventListener('click', function(ev){
+    var кнопка = ev.target.closest('.pick');
+    if (!кнопка) return;
+    var ид = кнопка.getAttribute('data-pos');
+    // Количество сбрасываем: восемь визитов, оставшись «восемью»
+    // при переключении на пакет, превращались в восемь месяцев —
+    // и семья видела 449 120 ₽ там, где речь о сорока тысячах.
+    if (ВЫБОР.позиция !== ид) ВЫБОР.сколько = 1;
+    ВЫБОР.позиция = (ВЫБОР.позиция === ид) ? '' : ид;
+    ВЫБОР.выбрано = true;
+    save('sdut-cost', ВЫБОР);
+    рисоватьСтоимость();
+  });
+
+  document.getElementById('gear-minus').addEventListener('click', function(){
+    ВЫБОР_ЖЕЛЕЗА.месяцев = Math.max(1, ВЫБОР_ЖЕЛЕЗА.месяцев - 1);
+    save('sdut-gear', ВЫБОР_ЖЕЛЕЗА);
+    рисоватьСчётЖелеза();
+  });
+  document.getElementById('gear-plus').addEventListener('click', function(){
+    ВЫБОР_ЖЕЛЕЗА.месяцев = Math.min(24, ВЫБОР_ЖЕЛЕЗА.месяцев + 1);
+    save('sdut-gear', ВЫБОР_ЖЕЛЕЗА);
+    рисоватьСчётЖелеза();
+  });
+  document.getElementById('gear-send').addEventListener('click', function(){
+    var текст = текстЖелеза();
+    var узел = document.getElementById('gear-out');
+    узел.innerHTML = '<textarea class="dump" id="gear-dump" readonly></textarea>' +
+      '<div class="sent">Скопируйте и отправьте в бот. Координатор сначала ' +
+      'проверит, что из этого положено бесплатно, и только потом посчитает ' +
+      'аренду.</div>' +
+      '<a class="cta" href="https://max.ru/id6320093220_bot">Открыть бот в MAX</a>';
+    var поле = document.getElementById('gear-dump');
+    поле.value = текст;
+    поле.focus(); поле.select();
+    try { navigator.clipboard && navigator.clipboard.writeText(текст); } catch(e){}
+  });
+
+  document.getElementById('cost-minus').addEventListener('click', function(){
+    ВЫБОР.сколько = Math.max(1, ВЫБОР.сколько - 1);
+    save('sdut-cost', ВЫБОР);
+    рисоватьКоличество(); рисоватьИтог();
+  });
+  document.getElementById('cost-plus').addEventListener('click', function(){
+    ВЫБОР.сколько = Math.min(31, ВЫБОР.сколько + 1);
+    save('sdut-cost', ВЫБОР);
+    рисоватьКоличество(); рисоватьИтог();
+  });
+
+  document.addEventListener('change', function(ev){
+    var поле = ev.target;
+    if (поле.hasAttribute && поле.hasAttribute('data-add')){
+      var ид = поле.getAttribute('data-add');
+      var где = ВЫБОР.поправки.indexOf(ид);
+      if (поле.checked && где < 0) ВЫБОР.поправки.push(ид);
+      if (!поле.checked && где >= 0) ВЫБОР.поправки.splice(где, 1);
+      save('sdut-cost', ВЫБОР);
+      рисоватьИтог();
+      рисоватьПоправки();
+      return;
+    }
+    if (поле.hasAttribute && поле.hasAttribute('data-srv')){
+      var номер = поле.getAttribute('data-srv');
+      if (поле.checked) ВЫБОР.услуги[номер] = true;
+      else delete ВЫБОР.услуги[номер];
+      save('sdut-cost', ВЫБОР);
+      // Не перерисовываем список целиком: на телефоне это схлопывает
+      // группу и уводит палец с того места, куда человек целился.
+      обновитьСчётчики();
+    }
   });
 
   /* ---------------- загрузка шкалы ---------------- */
@@ -689,7 +2892,9 @@ footer{margin-top:2.5rem;padding-top:1.4rem;border-top:1px solid var(--line-stro
       document.getElementById('result').hidden = true;
     });
 
-  взять('kb.json').then(function(d){ БАЗА = d; рисоватьПоиск(); })
+  взять('kb.json').then(function(d){
+      БАЗА = d; ПОИСК = d.поиск; разобратьСтатьи(); рисоватьПоиск();
+    })
     .catch(function(){
       document.getElementById('find-out').innerHTML =
         '<p class="empty">Материалы не загрузились. Проверьте соединение ' +
@@ -697,11 +2902,61 @@ footer{margin-top:2.5rem;padding-top:1.4rem;border-top:1px solid var(--line-stro
         'материалам.</p>';
     });
 
-  взять('survey.json').then(function(d){ АНКЕТА = d; рисоватьАнкету(); })
+  взять('care.json').then(function(d){ ПЛАН = d; рисоватьОпросник(); })
+    .catch(function(){
+      document.getElementById('plan-form').innerHTML =
+        '<p class="empty">Опросник не загрузился. План ухода составит ' +
+        'координатор — напишите в бот.</p>';
+      document.getElementById('plan-top').hidden = true;
+    });
+
+  взять('gear.json').then(function(d){
+      ЖЕЛЕЗО = d;
+      рисоватьБесплатное();
+      рисоватьЖелезо();
+      рисоватьСчётЖелеза();
+    })
+    .catch(function(){
+      document.getElementById('gear-list').innerHTML =
+        '<p class="empty">Список оборудования не загрузился. ' +
+        'Спросите у координатора — он знает, что есть в прокате сейчас.</p>';
+      document.getElementById('gear-top').hidden = true;
+    });
+
+  взять('price.json').then(function(d){
+      ПРАЙС = d;
+      рисоватьСтоимость();
+      рисоватьСутки();
+      рисоватьШкалуРынка();
+      рисоватьПрограммы();
+      рисоватьПокрытие();
+      рисоватьРазбор();
+      рисоватьКаталог();
+      рисоватьНеВходит();
+      подсказатьПакет();
+    })
+    .catch(function(){
+      document.getElementById('cost-picks').innerHTML =
+        '<p class="empty">Прайс не загрузился. Стоимость назовёт координатор — ' +
+        'напишите в бот.</p>';
+      document.getElementById('cost-top').hidden = true;
+    });
+
+  принятьИзСсылки();
+
+  взять('survey.json').then(function(d){
+      АНКЕТА = d; рисоватьАнкету();
+      // Считаем не то, что приехало сейчас, а то, что вообще есть:
+      // после перезагрузки ответы уже в памяти телефона, и открывать
+      // поле вставки заново незачем.
+      показатьПеренос(Object.keys(ОТВЕТЫ_АНКЕТЫ).filter(function(к){
+        return ОТВЕТЫ_АНКЕТЫ[к];
+      }).length);
+      if (ПЕРЕНЕСЕНО) пересчитатьВсё();
+    })
     .catch(function(){
       document.getElementById('form').innerHTML =
         '<p class="empty">Анкета не загрузилась. Её всегда можно пройти в самом боте.</p>';
-      document.getElementById('form-top').hidden = true;
     });
 })();
 </script>

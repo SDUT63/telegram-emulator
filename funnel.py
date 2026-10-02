@@ -197,7 +197,9 @@ if __name__ == "__main__":                                  # pragma: no cover
 
         анкета: Any = PostgresSurvey()
     else:
-        from chatbot_survey import Survey
+        from chatbot_survey import STORAGE, Survey
 
-        анкета = Survey(storage_path=sys.argv[1] if len(sys.argv) > 1 else None)
+        # Без аргумента — то же хранилище, что у бота. Раньше сюда уходил
+        # None, и команда, которую советует preflight, падала с ошибкой.
+        анкета = Survey(storage_path=sys.argv[1] if len(sys.argv) > 1 else STORAGE)
     print(по_анкете(анкета).как_текст())

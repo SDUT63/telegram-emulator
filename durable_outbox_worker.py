@@ -48,19 +48,49 @@ def _claim_still_deliverable(queue: PostgresOutbox, message_id: int, user_id: st
 
     A deletion committed between claim and send invalidates the claim — except
     for the farewell row, which is the deletion confirmation itself and is the
-    one message a purged user is still owed.
+    one message a purged user is still owed. An automatic message is
+    deliverable only while its CASE is open (contract 9.1): closing the CASE
+    under the same user lock cancels it, so it is either sent before the
+    closure commits or not at all.
     """
     with psycopg.connect(queue.db_url, row_factory=dict_row) as conn:
         row = conn.execute(
             """
-            SELECT 1 FROM outbox_messages o
-            LEFT JOIN deleted_users d ON d.user_id=o.user_id
-            WHERE o.id=%s AND o.status='sending' AND o.locked_by=%s
-              AND o.user_id=%s AND (d.user_id IS NULL OR o.farewell)
+            SELECT 1
+              FROM outbox_messages o
+              LEFT JOIN deleted_users d ON d.user_id=o.user_id
+              LEFT JOIN cases c ON c.case_id=o.case_id
+             WHERE o.id=%s
+               AND o.status='sending'
+               AND o.locked_by=%s
+               AND o.user_id=%s
+               AND (d.user_id IS NULL OR o.farewell)
+               AND (NOT o.automatic OR c.status <> 'CLOSED')
             """,
             (message_id, queue.worker_id, str(user_id)),
         ).fetchone()
     return row is not None
+
+
+def close_abandoned_drafts(db_url: str) -> list[int]:
+    """Брошенные черновики закрываются системой (7.7 контракта).
+
+    Живёт здесь, потому что этот цикл и так раз в час обслуживает базу
+    в обеих боевых точках входа. Сбой не останавливает доставку: следующая
+    попытка — через час.
+    """
+    from cases import CaseService
+    from cases_postgres import PostgresCaseRepository
+
+    try:
+        closed = CaseService(PostgresCaseRepository(db_url)).close_abandoned_drafts()
+    except Exception as error:  # noqa: BLE001
+        METRICS.inc("sdut_case_maintenance_failures_total", {"error_class": type(error).__name__})
+        log.warning("CASE: закрытие брошенных черновиков не удалось: %s", type(error).__name__)
+        return []
+    if closed:
+        log.info("CASE: закрыто брошенных черновиков: %s", len(closed))
+    return closed
 
 
 async def deliver_once(bot, *, queue: PostgresOutbox | None = None) -> int:
@@ -126,6 +156,7 @@ async def run(
                     removed = queue.prune_sent(retention_seconds=retention_seconds)
                     if removed:
                         log.info("MAX durable outbox: очищено sent-записей: %s", removed)
+                    close_abandoned_drafts(queue.db_url)
                 finally:
                     next_prune = time.monotonic() + prune_interval_seconds
             claimed = await deliver_once(bot, queue=queue)

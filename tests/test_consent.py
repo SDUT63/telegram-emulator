@@ -189,3 +189,15 @@ def test_до_согласия_материалы_действительно_о�
     assert бот.кнопки[0], "карта тем до согласия не открылась"
     # Ничего при этом не записано: согласия ещё нет
     assert not survey.state["u1"]["answers"]
+
+
+def test_подпись_кнопки_согласия_текстом_тоже_согласие(tmp_path):
+    """«Согласен, продолжим», напечатанное руками, — это согласие, а не
+    повод ответить «пока кнопка не нажата»."""
+    from chatbot_survey import CONSENT_YES, Survey
+    s = Survey(storage_path=str(tmp_path / "x.json"), list_options=False)
+    s.handle("u", "здравствуйте")
+    assert s.handle("u", "Согласен, продолжим").startswith(CONSENT_YES)
+    s2 = Survey(storage_path=str(tmp_path / "y.json"), list_options=False)
+    s2.handle("u", "здравствуйте")
+    assert not s2.handle("u", "Не согласен").startswith(CONSENT_YES)

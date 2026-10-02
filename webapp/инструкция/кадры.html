@@ -55,6 +55,9 @@ body{margin:0;background:var(--ground);color:var(--ink);font:400 16px/1.5 var(--
      padding:9px 11px;font-size:13px;line-height:1.42;white-space:pre-wrap}
 .msg.me{background:var(--mine);border-radius:14px 14px 4px 14px;align-self:flex-end;max-width:78%}
 .msg.al{border-left:3px solid #FFC53D}
+/* Разделитель бот шлёт строкой из двадцати тире. Перенести её браузеру
+   негде, и в кадре она вылезала за край пузыря — рисуем линией. */
+.sep{display:block;height:0;border-top:1px solid var(--bubble-meta);opacity:.5;margin:2px 0}
 .mt{display:block;font-size:10.5px;color:var(--bubble-meta);margin-bottom:5px}
 .pk,.mk2{display:block;margin-top:8px;color:#C9CBE8;font-weight:600}
 .keys{display:flex;flex-direction:column;gap:4px;margin-top:8px}
@@ -93,6 +96,7 @@ function bubble(text, cls, rows){
     while (lines.length && !lines[0].trim()) lines.shift();
   }
   var body = esc(lines.join("\n"))
+    .replace(/—{10,}/g, '<span class="sep"></span>')
     .replace(/^➤ (.*)$/m, '<span class="pk">➤ $1</span>')
     .replace(/^Отмечено: (.*)$/m, '<span class="mk2">Отмечено: $1</span>');
   return '<div class="msg' + (cls ? " " + cls : "") + '">' + meta + body + keys(rows) + '</div>';

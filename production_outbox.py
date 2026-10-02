@@ -42,6 +42,9 @@ def _enqueue_text(outbox: PostgresOutbox, conn, survey: ProductionPostgresSurvey
         # rather than append one. The worker falls back to sending when the
         # target is gone, so a stale button never leaves the person in silence.
         payload = {"kind": "max_edit", "message_id": str(edit_message_id), "text": str(text), "keyboard_rows": rows}
+    # Ответ бота на сообщение человека — не автоматическое сообщение
+    # (9.1 г контракта): если родственник пишет после закрытия обращения,
+    # бот не должен молчать. Поэтому без case_id и automatic.
     outbox.enqueue(delivery_key=delivery_key(event_id, ordinal=ordinal), user_id=str(user_id), payload=payload, conn=conn, farewell=farewell)
 
 
