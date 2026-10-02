@@ -1,0 +1,12 @@
+[Unit]
+Description=СДУТ: резервная копия базы раз в сутки
+
+[Timer]
+OnCalendar=*-*-* 02:30:00
+# Машина была выключена в это время — копия снимется сразу после
+# включения, а не пропустится молча до завтра.
+Persistent=true
+RandomizedDelaySec=300
+
+[Install]
+WantedBy=timers.target

@@ -152,3 +152,23 @@ def test_у_каждого_нового_вопроса_короткие_подп
                 if max_bot._width(o) > 17.5:
                     беда.append((q["id"], o))
     assert not беда, f"не влезет в два столбца: {беда}"
+
+
+def test_слишком_длинный_номер_не_принимается(consented):
+    """По номеру перезванивают: опечатка или два номера подряд — не номер."""
+    import walk
+
+    walk.дойти_до(consented, "phone", u="u1")
+    ответ = consented.handle("u1", "8917123456789012")
+
+    assert (consented.state.get("u1") or {}).get("answers", {}).get("phone") is None
+    assert "слишком много цифр" in ответ
+
+
+def test_международный_номер_принимается(consented):
+    import walk
+
+    walk.дойти_до(consented, "phone", u="u1")
+    consented.handle("u1", "+380 44 123 45 67")
+
+    assert (consented.state.get("u1") or {}).get("answers", {}).get("phone")

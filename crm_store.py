@@ -5,7 +5,7 @@
 Почему отдельно от анкет
 ------------------------
 Бот держит анкеты в памяти и целиком перезаписывает survey_responses.json
-после каждого ответа. Если бы CRM писала заметки туда же, бот затирал бы
+после каждого ответа. Если бы CRM писала заметки туда же, бот затирал
 их следующей записью. Поэтому:
 
     survey_responses.json   пишет только бот,   CRM читает
@@ -27,26 +27,21 @@ import uuid
 from datetime import datetime
 from typing import Any
 
+import файловый_замок
+
 HERE = os.path.dirname(os.path.abspath(__file__))
 
 CRM_DATA = os.path.join(HERE, "crm_data.json")
 OPERATORS = os.path.join(HERE, "operators.json")
 OUTBOX_DIR = os.path.join(HERE, "outbox")
 SENT_DIR = os.path.join(OUTBOX_DIR, "sent")
-# Вложения оператора: бот берёт их отсюда по пути, поэтому лежать они
-# должны на той же машине. CRM и бот и так запускаются рядом.
 FILES_DIR = os.path.join(OUTBOX_DIR, "files")
 
-# Что оператор может отправить человеку. Список закрытый: чужой файл
-# с неизвестным расширением бот пересылать не станет.
 FILE_TYPES = {".pdf", ".docx", ".doc", ".rtf", ".txt", ".odt",
               ".jpg", ".jpeg", ".png", ".heic", ".webp"}
-FILE_LIMIT = 10 * 1024 * 1024        # 10 МБ: памятка или фотография
+FILE_LIMIT = 10 * 1024 * 1024
 
 STATUSES = ["Новое", "В работе", "Закрыто"]
-
-# Контрольные звонки после закрытия случая — как описано в регламенте
-# службы: через 7 дней и через 30 дней.
 CALL_STAGES = {"7": 7, "30": 30}
 
 
@@ -65,18 +60,11 @@ def _read(path: str, default: Any) -> Any:
 
 
 def _write(path: str, data: Any) -> None:
-    """Запись через временный файл: обрыв не оставит покорёженный файл."""
-    tmp = path + ".tmp"
-    with open(tmp, "w", encoding="utf-8") as fh:
-        json.dump(data, fh, ensure_ascii=False, indent=2)
-    os.replace(tmp, path)
-
-
-# ---------------------------------------------------------------- операторы
+    файловый_замок.записать_надёжно(
+        path, json.dumps(data, ensure_ascii=False, indent=2))
 
 
 def hash_password(password: str, salt: str | None = None) -> str:
-    """Пароль хранится не в открытом виде, а как соль и хеш."""
     salt = salt or secrets.token_hex(16)
     digest = hashlib.pbkdf2_hmac("sha256", password.encode(), salt.encode(), 200_000)
     return f"{salt}${digest.hex()}"
@@ -98,23 +86,29 @@ def save_operators(data: dict[str, dict[str, str]]) -> None:
     _write(OPERATORS, data)
 
 
-def add_operator(login: str, name: str, password: str) -> None:
+def add_operator(login: str, name: str, password: str, role: str = "operator") -> None:
     data = load_operators()
-    data[login] = {"name": name, "password": hash_password(password)}
+    data[login] = {"name": name, "password": hash_password(password), "role": role}
     save_operators(data)
 
 
+def role_of(login: str) -> str:
+    """Роль оператора для RBAC.
+
+    Записи, созданные до появления ролей, поля не содержат: такой оператор
+    получает обычные права оператора, а не расширенные. Повышение роли —
+    осознанное действие администратора, а не следствие давности записи.
+    """
+    return str((load_operators().get(login) or {}).get("role") or "operator")
+
+
 def verify(login: str, password: str) -> str | None:
-    """Вернуть имя оператора, если логин и пароль сошлись."""
     operator = load_operators().get(login)
     if not operator:
         return None
     if not check_password(password, operator.get("password", "")):
         return None
     return operator.get("name") or login
-
-
-# -------------------------------------------------------------- дела в работе
 
 
 def _blank_case() -> dict[str, Any]:
@@ -126,7 +120,6 @@ def _all() -> dict[str, Any]:
 
 
 def case(user_id: str) -> dict[str, Any]:
-    """Данные оператора по одному обращению."""
     data = _all()
     return data["cases"].get(user_id, _blank_case())
 
@@ -136,11 +129,19 @@ def all_cases() -> dict[str, Any]:
 
 
 def _update(user_id: str, change) -> dict[str, Any]:
-    data = _all()
-    entry = data["cases"].setdefault(user_id, _blank_case())
-    change(entry)
-    _write(CRM_DATA, data)
-    return entry
+    """Прочитать, изменить, записать — целиком под замком.
+
+    Без замка это классическая потеря обновления: один координатор
+    ставит статус, другой в тот же момент пишет заметку, и каждый
+    записывает файл, прочитанный до чужой правки. Стенд показал:
+    из шестидесяти одновременных заметок доживало две.
+    """
+    with файловый_замок.занять(CRM_DATA):
+        data = _all()
+        entry = data["cases"].setdefault(user_id, _blank_case())
+        change(entry)
+        _write(CRM_DATA, data)
+        return entry
 
 
 def set_status(user_id: str, status: str, who: str) -> dict[str, Any]:
@@ -167,19 +168,15 @@ def assign(user_id: str, who: str) -> dict[str, Any]:
 
 
 def mark_call(user_id: str, which: str, who: str) -> dict[str, Any]:
-    """Отметить контрольный звонок сделанным. which — «7» или «30»."""
     if which not in CALL_STAGES:
         raise ValueError(f"неизвестный звонок: {which}")
 
     def change(entry: dict[str, Any]) -> None:
         entry.setdefault("calls", {})[which] = {"at": now(), "who": who}
         entry.setdefault("notes", []).append(
-            {
-                "at": now(),
-                "who": who,
-                "text": f"Контрольный звонок через {which} дней — сделан",
-                "system": True,
-            }
+            {"at": now(), "who": who,
+             "text": f"Контрольный звонок через {which} дней — сделан",
+             "system": True}
         )
 
     return _update(user_id, change)
@@ -199,15 +196,11 @@ def add_note(user_id: str, text: str, who: str) -> dict[str, Any]:
     return _update(user_id, change)
 
 
-# ------------------------------------------------------------ исходящие
+def check_file(filename: str, data: bytes) -> str:
+    """Проверить вложение и вернуть безопасное короткое имя.
 
-
-def save_file(user_id: str, filename: str, data: bytes) -> dict[str, Any]:
-    """Сохранить вложение оператора рядом с очередью. Вызывает CRM.
-
-    Имя, пришедшее из браузера, для файловой системы не используем:
-    в нём может быть что угодно, вплоть до «../». Кладём под своим
-    именем, а человеческое несём отдельным полем.
+    Вынесено отдельно от записи: в production файл не попадает на локальный
+    диск вообще — он уходит в очередь содержимым, — но проверки те же.
     """
     короткое = os.path.basename(filename or "").strip() or "файл"
     расширение = os.path.splitext(короткое)[1].lower()
@@ -215,6 +208,13 @@ def save_file(user_id: str, filename: str, data: bytes) -> dict[str, Any]:
         raise ValueError(f"такие файлы не отправляем: {расширение or 'без расширения'}")
     if len(data) > FILE_LIMIT:
         raise ValueError("файл больше 10 МБ — его не примет и мессенджер")
+    return короткое
+
+
+def save_file(user_id: str, filename: str, data: bytes) -> dict[str, Any]:
+    """Store an operator attachment under a server-generated filename."""
+    короткое = check_file(filename, data)
+    расширение = os.path.splitext(короткое)[1].lower()
 
     os.makedirs(FILES_DIR, exist_ok=True)
     path = os.path.join(FILES_DIR, uuid.uuid4().hex + расширение)
@@ -225,7 +225,7 @@ def save_file(user_id: str, filename: str, data: bytes) -> dict[str, Any]:
 
 def queue_message(user_id: str, text: str, who: str,
                   files: list[dict[str, Any]] | None = None) -> str:
-    """Положить сообщение в очередь. Отправит его бот — у него есть связь."""
+    """Queue an outbound message for the MAX bot."""
     os.makedirs(OUTBOX_DIR, exist_ok=True)
     message_id = uuid.uuid4().hex
     payload = {
@@ -236,8 +236,6 @@ def queue_message(user_id: str, text: str, who: str,
         "files": [dict(f) for f in (files or [])],
         "created": now(),
     }
-    # Пишем во временный файл и переименовываем: бот не подхватит
-    # наполовину записанное сообщение
     tmp = os.path.join(OUTBOX_DIR, f".{message_id}.tmp")
     final = os.path.join(OUTBOX_DIR, f"{message_id}.json")
     with open(tmp, "w", encoding="utf-8") as fh:
@@ -256,7 +254,6 @@ def queue_message(user_id: str, text: str, who: str,
 
 
 def pending_messages() -> list[dict[str, Any]]:
-    """Что боту предстоит отправить. Вызывает бот."""
     if not os.path.isdir(OUTBOX_DIR):
         return []
     out: list[dict[str, Any]] = []
@@ -272,20 +269,29 @@ def pending_messages() -> list[dict[str, Any]]:
 
 
 def mark_sent(payload: dict[str, Any], error: str = "") -> None:
-    """Убрать сообщение из очереди. Вызывает бот после отправки."""
-    os.makedirs(SENT_DIR, exist_ok=True)
+    """Commit successful delivery or persist failure for retry.
+
+    A failed MAX send must remain in outbox. The previous implementation
+    moved failures to ``sent`` and thereby lost operator messages forever.
+    """
     path = payload.pop("_path", None)
-    payload["delivered"] = not error
-    payload["delivered_at"] = now()
     if error:
-        payload["error"] = error
+        payload["attempts"] = int(payload.get("attempts", 0)) + 1
+        payload["last_error"] = error[:1000]
+        payload["last_attempt_at"] = now()
+        if path:
+            _write(path, payload)
+        return
+
+    os.makedirs(SENT_DIR, exist_ok=True)
+    payload["delivered"] = True
+    payload["delivered_at"] = now()
     _write(os.path.join(SENT_DIR, f"{payload['id']}.json"), payload)
     if path and os.path.exists(path):
         os.remove(path)
 
 
 def delivery_state() -> dict[str, dict[str, Any]]:
-    """Что уже отправлено: id сообщения -> сведения о доставке."""
     if not os.path.isdir(SENT_DIR):
         return {}
     state: dict[str, dict[str, Any]] = {}
@@ -298,36 +304,119 @@ def delivery_state() -> dict[str, dict[str, Any]]:
     return state
 
 
-# ------------------------------------------------------------------ запуск
+# Слова для готового пароля: только кириллица, без «ё», без слов,
+# которые путаются на слух. Шестьдесят слов по четыре — тринадцать
+# миллионов сочетаний; вместе с задержкой после неудачных попыток
+# перебор занимает годы.
+СЛОВА = (
+    "берег", "ветер", "гнездо", "дерево", "камень", "лодка", "мостик",
+    "облако", "письмо", "ручей", "свеча", "тропа", "уголь", "фонарь",
+    "хлеб", "чайник", "шишка", "якорь", "ягода", "заря", "искра",
+    "колос", "невод", "остров", "парус", "роща", "сугроб", "терем",
+    "варенье", "грядка", "дорога", "ежевика", "жаворонок", "зеркало",
+    "калина", "ландыш", "малина", "невеста", "орешник", "пристань",
+    "радуга", "скатерть", "тропинка", "утёс", "форточка", "холмы",
+    "цапля", "черника", "шиповник", "щегол", "эхо", "юрта", "ясень",
+    "амбар", "бузина", "валенки", "горница", "дубрава", "ельник",
+    "жёлудь",
+)
+# «ё» всё же встречается в двух словах — заменяем на «е»: пароль
+# набирают с чужой клавиатуры, где «ё» ищут дольше, чем печатают.
+СЛОВА = tuple(с.replace("ё", "е") for с in СЛОВА)
+
+РОЛИ = {
+    "1": ("operator", "оператор — ведёт обращения, ставит статусы и заметки"),
+    "2": ("supervisor", "старший — то же плюс отмена контрольного звонка"),
+    "3": ("viewer", "наблюдатель — только смотрит, ничего не меняет"),
+}
+
+
+def _пароль_по_умолчанию() -> str:
+    """Надёжный пароль, который человеку не надо придумывать.
+
+    Четыре слова читаются вслух по телефону и набираются без ошибок,
+    в отличие от «Xq7!vB2z». Словарь короткий и намеренно бытовой:
+    его задача — не быть словарём для перебора, а дать человеку
+    что-то, что он не постесняется продиктовать коллеге.
+    """
+    # Без «ё» и без похожих пар: пароль диктуют по телефону и набирают
+    # с чужой клавиатуры.
+    return "-".join(secrets.choice(СЛОВА) for _ in range(4))
 
 
 def _cli() -> None:
-    """Завести оператора: python crm_store.py"""
-    import getpass
-
     print()
     print("=" * 62)
     print("  Новый оператор CRM")
     print("=" * 62)
+
+    уже = load_operators()
+    if уже:
+        print()
+        print(f"  Сейчас заведено: {len(уже)}")
+        for логин, запись in sorted(уже.items()):
+            роль = (запись or {}).get("role") or "operator"
+            print(f"    {логин:<16} {(запись or {}).get('name', ''):<24} {роль}")
     print()
 
     login = input("  Логин (латиницей, без пробелов): ").strip()
     if not login:
         print("\n  Пусто, отмена.\n")
         return
+    if login in уже:
+        ответ = input(f"  Логин «{login}» уже есть. Сменить ему пароль? (да/нет): ")
+        if ответ.strip().lower() not in ("да", "y", "yes", "д"):
+            print("\n  Отмена.\n")
+            return
+
     name = input("  Имя, как показывать в заметках: ").strip() or login
-    password = getpass.getpass("  Пароль: ")
-    if len(password) < 8:
-        print("\n  Пароль короче восьми символов — так нельзя.\n")
+
+    print()
+    print("  Роль:")
+    for ключ, (_, описание) in РОЛИ.items():
+        print(f"    {ключ} — {описание}")
+    выбор = input("  Номер роли [1]: ").strip() or "1"
+    if выбор not in РОЛИ:
+        print("\n  Такой роли нет, отмена.\n")
         return
-    if password != getpass.getpass("  Пароль ещё раз: "):
-        print("\n  Пароли не совпали.\n")
+    role = РОЛИ[выбор][0]
+
+    # Пароль виден на экране, и это осознанно. Программа запускается
+    # на том же компьютере, где лежит CRM с телефонами и адресами;
+    # скрытый ввод здесь ничего не защищает, зато человек не видит
+    # раскладку, опечатку и залипший Caps Lock — и узнаёт об этом
+    # только когда оператор не может войти.
+    предложенный = _пароль_по_умолчанию()
+    print()
+    print("  Пароль будет виден на экране — если рядом посторонние,")
+    print("  отойдите или закройте окно после записи.")
+    print(f"  Готовый надёжный пароль: {предложенный}")
+    password = input("  Пароль (Enter — взять готовый): ").strip() or предложенный
+
+    if len(password) < 8:
+        print("\n  Пароль короче восьми знаков — так нельзя.\n")
+        return
+    if password.lower() in ("password", "пароль", "12345678", "qwertyui"):
+        print("\n  Такой пароль подберут за минуту. Возьмите готовый.\n")
         return
 
-    add_operator(login, name, password)
+    add_operator(login, name, password, role=role)
+
     print()
-    print(f"  Готово. Оператор «{name}» может входить под логином {login}.")
-    print(f"  Всего операторов: {len(load_operators())}")
+    print("  " + "-" * 58)
+    print("  Готово. Передайте оператору эти три строки:")
+    print()
+    print(f"    адрес    http://127.0.0.1:5001")
+    print(f"    логин    {login}")
+    print(f"    пароль   {password}")
+    print()
+    print(f"  Роль: {role}. Всего операторов: {len(load_operators())}")
+    старшие = [л for л, з in load_operators().items()
+               if ((з or {}).get("role") or "operator") in ("supervisor", "admin")]
+    if not старшие:
+        print()
+        print("  Ни одного старшего. Отменить ошибочный контрольный звонок")
+        print("  будет некому — заведите кого-то с ролью 2.")
     print()
 
 

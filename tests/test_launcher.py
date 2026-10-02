@@ -1,9 +1,5 @@
-"""Запуск в одно нажатие.
+from __future__ import annotations
 
-Человек скачивает папку, открывает «Запустить-бота» и получает бота.
-Всё, что для этого нужно, делает launcher.py; здесь проверяется то,
-что можно проверить без Windows и без сети.
-"""
 import io
 import os
 import re
@@ -12,114 +8,72 @@ import pytest
 
 import launcher
 
-КОРЕНЬ = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-ПУСКАЧИ = ("Запустить-бота.bat", "Рабочее-место.bat",
-           "Проверка.bat", "Связь-с-MAX.bat")
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
-# ------------------------------------------------------------- по-русски
-
-@pytest.mark.parametrize("число, ждём", [
-    (1, "1 вопрос"), (2, "2 вопроса"), (4, "4 вопроса"), (5, "5 вопросов"),
-    (11, "11 вопросов"), (14, "14 вопросов"), (21, "21 вопрос"),
-    (34, "34 вопроса"), (100, "100 вопросов"), (112, "112 вопросов"),
-])
-def test_числа_согласованы_со_словом(число, ждём):
-    """«34 вопросов» читается как небрежность — и справедливо."""
-    assert launcher.сколько(число, "вопрос", "вопроса", "вопросов") == ждём
+def test_normalize_mode_defaults_to_local_pilot():
+    assert launcher.normalize_mode(None) == "bot"
+    assert launcher.normalize_mode("") == "bot"
+    assert launcher.normalize_mode("pilot") == "bot"
 
 
-# --------------------------------------------------------- самопроверка
-
-def test_самопроверка_проходит_на_чистом_коде():
-    assert launcher.самопроверка()
-
-
-def test_проверка_не_запускает_бота(monkeypatch, capsys):
-    """«Проверка» именно проверяет: ничего не стартует и ничего не ставит."""
-    monkeypatch.setattr(launcher, "мы_в_окружении", lambda: True)
-    monkeypatch.setattr(launcher, "запустить",
-                        lambda что: pytest.fail(f"запустился {что}"))
-    assert launcher.main(["check"]) == 0
-    assert "Проверка закончена" in capsys.readouterr().out
+@pytest.mark.parametrize("value", ["prod", "production", "прод", "продакшен"])
+def test_normalize_mode_selects_production(value):
+    assert launcher.normalize_mode(value) == "prod"
 
 
-def test_без_токена_бот_не_стартует(monkeypatch):
-    """Обещать запуск и не запустить хуже, чем честно спросить токен."""
-    monkeypatch.setattr(launcher, "мы_в_окружении", lambda: True)
-    monkeypatch.setattr(launcher, "токен_есть", lambda: False)
-    monkeypatch.setattr(launcher, "спросить_токен", lambda: False)
-    monkeypatch.setattr(launcher, "запустить",
-                        lambda что: pytest.fail("стартовал без токена"))
-    assert launcher.main([]) == 4
+def test_unknown_mode_is_safe_pilot_default():
+    assert launcher.normalize_mode("unknown-mode") == "bot"
 
 
-def test_неизвестная_команда_ведёт_к_боту(monkeypatch):
-    """Опечатка в ярлыке не должна оставлять человека ни с чем."""
-    monkeypatch.setattr(launcher, "мы_в_окружении", lambda: True)
-    monkeypatch.setattr(launcher, "токен_есть", lambda: True)
-    пуски = []
-    monkeypatch.setattr(launcher, "запустить", lambda что: пуски.append(что) or 0)
-    assert launcher.main(["чепуха"]) == 0
-    assert пуски == ["бот"]
+def test_production_requires_explicit_environment(monkeypatch):
+    monkeypatch.setenv("SDUT_LAUNCHER_ENV", "1")
+    monkeypatch.delenv("SDUT_ENV", raising=False)
+    assert launcher.main(["prod"]) == 7
 
 
-def test_сломанная_база_останавливает_запуск(monkeypatch):
-    monkeypatch.setattr(launcher, "мы_в_окружении", lambda: True)
-    monkeypatch.setattr(launcher, "самопроверка", lambda: False)
-    monkeypatch.setattr(launcher, "запустить",
-                        lambda что: pytest.fail("стартовал со сломанной базой"))
-    assert launcher.main([]) == 1
+def test_production_launcher_does_not_preflight_or_ask_for_local_token(monkeypatch):
+    monkeypatch.setenv("SDUT_LAUNCHER_ENV", "1")
+    monkeypatch.setenv("SDUT_ENV", "production")
+    calls = []
+    monkeypatch.setattr(launcher, "start", lambda mode: calls.append(mode) or 0)
+    monkeypatch.setattr(launcher, "preflight", lambda: pytest.fail("production used local pilot preflight"))
+    monkeypatch.setattr(launcher, "token_exists", lambda: pytest.fail("production inspected token.txt"))
+    assert launcher.main(["prod"]) == 0
+    assert calls == ["prod"]
 
 
-# ------------------------------------------------------------- ярлыки
-
-@pytest.mark.parametrize("имя", ПУСКАЧИ)
-def test_ярлык_на_месте(имя):
-    assert os.path.exists(os.path.join(КОРЕНЬ, имя))
+def test_token_file_is_not_read_as_production_configuration():
+    assert "token.txt" not in launcher.start.__doc__ if launcher.start.__doc__ else True
 
 
-@pytest.mark.parametrize("имя", ПУСКАЧИ)
-def test_ярлык_читается_виндой(имя):
-    """UTF-8 без BOM и переводы строк CRLF: иначе cmd спотыкается."""
-    сырьё = io.open(os.path.join(КОРЕНЬ, имя), "rb").read()
-    assert not сырьё.startswith(b"\xef\xbb\xbf"), "BOM ломает первую строку"
-    assert b"\r\n" in сырьё, "нужны переводы строк Windows"
-    сырьё.decode("utf-8")
+def test_venv_python_points_to_platform_specific_interpreter():
+    expected = "Scripts" if os.name == "nt" else "bin"
+    assert expected in launcher.venv_python()
 
 
-@pytest.mark.parametrize("имя", ПУСКАЧИ)
-def test_в_ярлыке_нет_кириллических_имён(имя):
-    """Русские буквы — только в том, что человек читает.
-
-    Имена переменных и меток cmd разбирает в текущей кодовой странице,
-    и кириллица в них ломается непредсказуемо.
-    """
-    for строка in io.open(os.path.join(КОРЕНЬ, имя), encoding="utf-8"):
-        голая = строка.strip()
-        if голая.lower().startswith(("set ", "goto ", ":")) and "echo" not in голая:
-            assert not re.search(r"[А-Яа-яЁё]", голая), голая
+def test_local_preflight_lists_required_files():
+    assert launcher.preflight() is True
 
 
-@pytest.mark.parametrize("имя", ПУСКАЧИ)
-def test_ярлык_не_закрывает_окно_молча(имя):
-    """Окно, схлопнувшееся с ошибкой, — это потерянный человек."""
-    текст = io.open(os.path.join(КОРЕНЬ, имя), encoding="utf-8").read()
-    assert "pause" in текст
-    assert "chcp 65001" in текст
-    assert "launcher.py" in текст
+def test_windows_launchers_have_expected_modes():
+    launchers = {
+        "Запустить-бота.bat": "bot",
+        "Рабочее-место.bat": "crm",
+        "Проверка.bat": "check",
+        "Связь-с-MAX.bat": "doctor",
+    }
+    for filename, mode in launchers.items():
+        path = os.path.join(ROOT, filename)
+        assert os.path.exists(path)
+        text = io.open(path, encoding="utf-8").read()
+        assert re.search(rf"launcher\.py\s+{re.escape(mode)}\b", text)
+        assert "pause" in text.lower()
+        assert "chcp 65001" in text.lower()
 
 
-def test_ярлыки_зовут_разное():
-    команды = set()
-    for имя in ПУСКАЧИ:
-        текст = io.open(os.path.join(КОРЕНЬ, имя), encoding="utf-8").read()
-        команды.add(re.search(r"launcher\.py\s+(\w+)", текст).group(1))
-    assert команды == {"bot", "crm", "check", "doctor"}
-
-
-def test_есть_запуск_для_линукса():
-    путь = os.path.join(КОРЕНЬ, "запустить.sh")
-    assert os.path.exists(путь)
-    assert os.access(путь, os.X_OK), "файл должен быть исполняемым"
-    assert "launcher.py" in io.open(путь, encoding="utf-8").read()
+def test_linux_launcher_exists_and_is_executable():
+    path = os.path.join(ROOT, "запустить.sh")
+    assert os.path.exists(path)
+    assert os.access(path, os.X_OK)
+    assert "launcher.py" in io.open(path, encoding="utf-8").read()

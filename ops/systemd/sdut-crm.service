@@ -1,0 +1,36 @@
+[Unit]
+Description=СДУТ: рабочее место координатора (CRM)
+After=network-online.target postgresql.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=sdut
+Group=sdut
+WorkingDirectory=/opt/sdut
+EnvironmentFile=/etc/sdut/bot.env
+
+# Слушает только этот компьютер. Открывать CRM в сеть можно лишь
+# за HTTPS и после разговора о том, кто получит доступ к персональным
+# данным: здесь имена, телефоны, адреса и сведения о здоровье.
+Environment=CRM_HOST=127.0.0.1
+ExecStart=/opt/sdut/.venv/bin/python /opt/sdut/crm_server.py
+
+Restart=always
+RestartSec=5s
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=sdut-crm
+
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/sdut/data /opt/sdut/outbox /opt/sdut/access.log
+ProtectKernelTunables=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true
+
+[Install]
+WantedBy=multi-user.target

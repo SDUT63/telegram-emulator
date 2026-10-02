@@ -1,25 +1,22 @@
-FROM python:3.9-slim
+FROM python:3.13-slim
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1
 
 WORKDIR /app
 
-# Install dependencies
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir --no-compile -r requirements.txt \
+    && useradd --create-home --uid 10001 --shell /usr/sbin/nologin sdut
 
-# Copy application
-COPY chatbot_survey.py .
-COPY max_bot_integration.py .
-COPY webapp/ ./webapp/
+COPY . .
 
-# Create data directory
-RUN mkdir -p /app/data
+RUN chown -R sdut:sdut /app
+USER sdut
 
-# Expose port
-EXPOSE 5000
+EXPOSE 8080
 
-# Health check
-HEALTHCHECK --interval=10s --timeout=5s --retries=3 \
-  CMD python -c "import requests; requests.get('http://localhost:5000/health')"
+HEALTHCHECK --interval=15s --timeout=5s --start-period=20s --retries=3 \
+  CMD python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/ready', timeout=3)"
 
-# Run application
-CMD ["python", "max_bot_integration.py"]
+CMD ["python", "max_webhook.py"]

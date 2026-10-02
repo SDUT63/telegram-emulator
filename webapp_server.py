@@ -18,23 +18,22 @@ import os
 
 from flask import Flask, jsonify, send_from_directory
 
-from chatbot_survey import Survey
+import storage
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 WEBAPP_DIR = os.path.join(HERE, "webapp")
 
-# По сети отдаём обычную версию, а не единый файл: сама страница весит
-# 135 КБ и открывается сразу, а картинки подгружаются по мере прокрутки
-# и кэшируются на сутки. Единый файл в четыре с лишним мегабайта
-# пришлось бы качать целиком при каждом открытии — он нужен для другого,
-# чтобы страницу можно было скачать и открыть без интернета.
+# По корню отдаём мини-приложение: поиск по материалам, расчёт часов
+# и стоимости, анкета, аренда оборудования. Длинной страницы-справочника
+# больше нет: её статьи лежат в базе знаний и ищутся поиском, а картинки
+# к ним — в папке img рядом.
 PAGE = "index.html"
 
 app = Flask(__name__)
 
 
-def serve_page():
-    response = send_from_directory(WEBAPP_DIR, PAGE)
+def serve_page(имя: str = PAGE):
+    response = send_from_directory(WEBAPP_DIR, имя)
     # Кэш короткий: страницу правим часто, а мини-приложение должно
     # показывать свежую версию, а не вчерашнюю из памяти браузера.
     response.headers["Cache-Control"] = "public, max-age=60"
@@ -49,8 +48,9 @@ def serve_page():
 @app.route("/app")
 @app.route("/app/")
 def index():
-    """Страница-справочник. Корневой адрес — для мини-приложения MAX."""
+    """Мини-приложение. Корневой адрес — то, что открывает кнопка в MAX."""
     return serve_page()
+
 
 
 @app.route("/img/<path:filename>")
@@ -70,7 +70,7 @@ def health():
 @app.route("/stats")
 def stats():
     """Сколько обращений собрал бот. Без персональных данных."""
-    started, finished = Survey().stats()
+    started, finished = storage.открыть().stats()
     return jsonify({"started": started, "finished": finished})
 
 

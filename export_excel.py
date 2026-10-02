@@ -26,7 +26,8 @@ from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 from openpyxl.utils import get_column_letter
 
 import crm_store as store
-from chatbot_survey import Survey
+import storage
+import таблицы
 from survey_questions import QUESTIONS
 
 # Фирменные цвета: тот же петроль и песочный, что на страницах
@@ -79,7 +80,9 @@ def style_header(sheet, widths: list[int]) -> None:
 
 
 def build(path: str | None = None) -> str:
-    survey = Survey()          # только чтение
+    # То же хранилище, в котором работает бот: на боевом PostgreSQL
+    # файловый Survey() выгрузил бы пустую книгу, не сказав почему.
+    survey = storage.открыть()          # только чтение
     cases = store.all_cases()
     delivered = store.delivery_state()
     today = datetime.now()
@@ -90,7 +93,7 @@ def build(path: str | None = None) -> str:
     # Первым, потому что с него начинают день
     calls_sheet = book.active
     calls_sheet.title = "Звонки"
-    calls_sheet.append(
+    таблицы.строкой(calls_sheet, 
         # Координатор звонит из этого листа: рядом с телефоном должно
         # стоять всё, что нужно сказать в первую минуту — к кому едем,
         # куда и когда человеку удобно ответить.
@@ -134,7 +137,7 @@ def build(path: str | None = None) -> str:
 
     for (due, label, colour, name, phone, when_call, patient, where,
          days, status, who, alerts) in rows:
-        calls_sheet.append(
+        таблицы.строкой(calls_sheet, 
             [due.strftime("%d.%m.%Y"), label, name, phone, when_call,
              patient, where, days, status, who, alerts]
         )
@@ -160,7 +163,7 @@ def build(path: str | None = None) -> str:
         # району считается маршрут, а лифт решает, как поедет бригада.
         "Район (из адреса)", "Лифт (из адреса)",
     ] + [q["text"].splitlines()[0] for q in QUESTIONS]
-    sheet.append(header)
+    таблицы.строкой(sheet, header)
 
     for user_id, person in survey.state.items():
         answers = person.get("answers", {})
@@ -186,7 +189,7 @@ def build(path: str | None = None) -> str:
             for m in operator.get("sent", [])
         )
         alerts = "; ".join(person.get("alerts", []))
-        sheet.append(
+        таблицы.строкой(sheet, 
             [
                 (person.get("started") or "")[:16].replace("T", " "),
                 ((person.get("consent") or {}).get("at") or "")[:16].replace("T", " "),
@@ -226,7 +229,7 @@ def build(path: str | None = None) -> str:
 
 
 def _cli() -> int:
-    survey = Survey()
+    survey = storage.открыть()
     if not survey.state:
         print()
         print("  Обращений пока нет — выгружать нечего.")

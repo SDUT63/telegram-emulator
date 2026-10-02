@@ -1,0 +1,10 @@
+[Unit]
+Description=СДУТ: чистка по срокам хранения раз в сутки
+
+[Timer]
+OnCalendar=*-*-* 03:15:00
+Persistent=true
+RandomizedDelaySec=300
+
+[Install]
+WantedBy=timers.target
