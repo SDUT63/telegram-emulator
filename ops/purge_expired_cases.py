@@ -32,6 +32,18 @@
 вышел срок. Отметка не ставится: если человек обратится снова, он
 должен пройти как новый, а не как заблокированный.
 
+Карточка — это анкета и обращение
+---------------------------------
+С подключением модели обращений (PR #3) данные человека лежат в двух
+местах: разговор и анкета — в `survey_state`, обращение со снимком
+согласия, ответами, событиями и задачами — в `persons`, `cases` и
+связанных таблицах. Срок по-прежнему один (Р5 не принято), но
+«последнее изменение карточки» — это последнее из двух: изменение
+анкеты или событие обращения. Иначе координатор, неделю ведущий
+обращение человека, который сам больше не писал, потерял бы его
+разговор посреди работы. А удаление уносит обращения целиком — иначе
+ответы анкеты и снимок согласия пережили бы срок навсегда.
+
 Запуск — из планировщика (cron/systemd timer), не из веб-запроса:
 
     SDUT_CASE_RETENTION_DAYS=365 python ops/purge_expired_cases.py
@@ -83,9 +95,26 @@ def просроченные(conn, дней: int, предел: int = ПОРЦИ
     сначала.
     """
     строки = conn.execute(
-        "SELECT user_id FROM survey_state "
-        "WHERE updated_at < CURRENT_TIMESTAMP - make_interval(days => %s) "
-        "ORDER BY updated_at LIMIT %s",
+        """
+        WITH обращения AS (
+            SELECT p.channel_user_id AS user_id, max(e.at) AS at
+              FROM persons p
+              JOIN cases c ON c.person_id = p.person_id
+              JOIN case_events e ON e.case_id = c.case_id
+             WHERE p.channel = 'max'
+             GROUP BY p.channel_user_id
+        ), карточки AS (
+            SELECT s.user_id, greatest(s.updated_at, о.at) AS at
+              FROM survey_state s LEFT JOIN обращения о ON о.user_id = s.user_id
+            UNION ALL
+            SELECT о.user_id, о.at
+              FROM обращения о
+             WHERE NOT EXISTS (SELECT 1 FROM survey_state s WHERE s.user_id = о.user_id)
+        )
+        SELECT user_id FROM карточки
+         WHERE at < CURRENT_TIMESTAMP - make_interval(days => %s)
+         ORDER BY at LIMIT %s
+        """,
         (дней, предел),
     ).fetchall()
     return [str(строка[0]) for строка in строки]
@@ -101,6 +130,15 @@ def удалить(conn, user_id: str) -> None:
     conn.execute("DELETE FROM survey_state WHERE user_id=%s", (user_id,))
     conn.execute("DELETE FROM operator_cases WHERE user_id=%s", (user_id,))
     conn.execute("DELETE FROM outbox_messages WHERE user_id=%s", (user_id,))
+    # Обращения — вместе со снимками согласия, анкетами, событиями,
+    # задачами, направлениями, исходами и их автоматическими сообщениями
+    # (каскад); затем сам человек.
+    conn.execute(
+        "DELETE FROM cases WHERE person_id IN "
+        "(SELECT person_id FROM persons WHERE channel='max' AND channel_user_id=%s)",
+        (user_id,),
+    )
+    conn.execute("DELETE FROM persons WHERE channel='max' AND channel_user_id=%s", (user_id,))
     # Идентификатор человека — тоже персональные данные. Само событие
     # остаётся: без него повторная доставка из MAX создала бы карточку
     # заново, уже после того, как срок хранения вышел.

@@ -165,3 +165,90 @@ def test_срок_проверяется_на_разумность(monkeypatch):
         monkeypatch.setenv(purge.ПЕРЕМЕННАЯ, плохое)
         with pytest.raises(SystemExit):
             purge.срок_хранения()
+
+
+# --- Карточка — это анкета и обращение (после подключения модели обращений) ----
+
+ТАБЛИЦЫ_ОБРАЩЕНИЯ = ("cases", "case_consents", "intakes", "case_events", "tasks")
+
+
+def _обращение_в_прошлом(u: str, дней_назад: int):
+    """Обращение, вся работа по которому была `дней_назад` дней назад.
+    События обращения неизменяемы (И3) — состарить их записью нельзя,
+    поэтому время задаётся часами модуля обращений."""
+    from datetime import datetime, timedelta, timezone
+
+    from cases import BOT, NEW, CaseService
+    from cases_postgres import PostgresCaseRepository
+
+    тогда = datetime.now(timezone.utc) - timedelta(days=дней_назад)
+    s = CaseService(PostgresCaseRepository(os.environ["SDUT_DATABASE_URL"]), clock=lambda: тогда)
+    черновик = s.open_draft("max", u, consent_version="1.0", consent_text_hash="h",
+                            questionnaire_version="q-1")
+    case = s.transition(черновик.case_id, NEW, who=BOT, trigger="checkpoint")
+    s.create_task(case.case_id, "first_contact", due_at=тогда + timedelta(days=1), who="anna")
+    return case
+
+
+def _данные_обращения(u: str) -> dict[str, int]:
+    итог = {}
+    with _соединение() as conn:
+        for таблица in ТАБЛИЦЫ_ОБРАЩЕНИЯ:
+            итог[таблица] = conn.execute(
+                f"SELECT count(*) FROM {таблица} t WHERE "
+                + ("t.person_id" if таблица == "cases" else
+                   "t.case_id IN (SELECT case_id FROM cases WHERE person_id")
+                + " IN (SELECT person_id FROM persons WHERE channel_user_id=%s)"
+                + ("" if таблица == "cases" else ")"),
+                (u,),
+            ).fetchone()[0]
+        итог["persons"] = conn.execute(
+            "SELECT count(*) FROM persons WHERE channel_user_id=%s", (u,)).fetchone()[0]
+    return итог
+
+
+def _убрать_обращения(u: str) -> None:
+    with _соединение() as conn:
+        conn.execute("DELETE FROM cases WHERE person_id IN "
+                     "(SELECT person_id FROM persons WHERE channel_user_id=%s)", (u,))
+        conn.execute("DELETE FROM persons WHERE channel_user_id=%s", (u,))
+        conn.commit()
+
+
+def test_просроченная_карточка_уносит_и_обращение(анкета, monkeypatch):
+    """Ответы анкеты и снимок согласия в обращении не должны пережить срок."""
+    monkeypatch.setenv(purge.ПЕРЕМЕННАЯ, "365")
+    u = _обращение(анкета, состарить_на_дней=400)
+    _обращение_в_прошлом(u, 400)
+    assert all(_данные_обращения(u).values())
+
+    assert purge.main([]) == 0
+
+    assert _осталось(u)["survey_state"] == 0
+    assert _данные_обращения(u) == dict.fromkeys((*ТАБЛИЦЫ_ОБРАЩЕНИЯ, "persons"), 0)
+
+
+def test_работа_по_обращению_продлевает_срок_карточки(анкета, monkeypatch):
+    """Человек давно не писал, а координатор ведёт обращение сейчас: карточку
+    не трогаем — иначе разговор пропал бы посреди работы."""
+    monkeypatch.setenv(purge.ПЕРЕМЕННАЯ, "365")
+    u = _обращение(анкета, состарить_на_дней=400)
+    _обращение_в_прошлом(u, 3)
+    try:
+        purge.main([])
+        assert _осталось(u)["survey_state"] == 1
+        assert _данные_обращения(u)["cases"] == 1
+    finally:
+        _убрать_обращения(u)
+        _покой(u)
+
+
+def test_обращение_без_анкеты_тоже_истекает(monkeypatch):
+    """Анкеты уже нет, а обращение осталось — срок считается по нему."""
+    monkeypatch.setenv(purge.ПЕРЕМЕННАЯ, "365")
+    u = f"срок-{uuid.uuid4().hex[:8]}"
+    _обращение_в_прошлом(u, 400)
+
+    purge.main([])
+
+    assert _данные_обращения(u)["persons"] == 0
