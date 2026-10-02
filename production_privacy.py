@@ -5,6 +5,7 @@ from typing import Any, Callable, TypeVar
 from privacy_deletion import UserDeletionMixin
 from production_outbox import DurableProductionPostgresSurvey
 from storage_postgres import _TX_CONNECTION, _TX_USER
+from chatbot_survey import Survey
 from max_case_bridge import MaxCaseBridge
 T=TypeVar("T")
 
@@ -47,11 +48,19 @@ class ProductionPrivacySurvey(UserDeletionMixin, DurableProductionPostgresSurvey
         return original(user_id,event_type,payload,wrapped,duplicate)
 
     def restart_after_consent(self, user_id: str) -> str:
-        """After a closed CASE, a new intake must start with new consent."""
+        """После закрытого обращения новое — только с новым согласием (7.6).
+
+        Открытое обращение есть — «заново» продолжает его, как раньше. Нет —
+        анкета сбрасывается вместе с согласием, и человек получает текст
+        согласия снова; новое согласие откроет новое обращение. self.start()
+        здесь не годится: production-версия намеренно не трогает существующую
+        анкету и отвечала бы «продолжаем с того места» — без согласия
+        и без обращения, так что ответы человека до CRM не доходили бы.
+        """
         uid = str(user_id)
-        if self.case_bridge.open_case(uid) is None:
-            return self.start(uid)
-        return super().restart_after_consent(uid)
+        if self.case_bridge.open_case(uid) is not None:
+            return super().restart_after_consent(uid)
+        return self._mutate(uid, "callback", {"action": "restart"}, lambda: Survey.start(self, uid), "")
 
     def deleted_event_tombstone(self,event_id:str):
         key=str(event_id).strip()

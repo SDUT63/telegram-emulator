@@ -99,3 +99,83 @@ def test_completed_max_intake_suggests_route_once():
         assert again.suggested_route["route"] == "М4"
     finally:
         _cleanup(uid)
+
+
+# --- Через настоящего бота: событие MAX, его транзакция, очередь ответов --------
+
+@pytest.fixture()
+def бот():
+    from production_privacy import ProductionPrivacySurvey
+    люди: list[str] = []
+    survey = ProductionPrivacySurvey()
+    survey._люди = люди
+    yield survey
+    for uid in люди:
+        _cleanup(uid)
+
+
+def _событие(survey, работа):
+    from storage_postgres import _TX_EVENT
+    токен = _TX_EVENT.set(f"e-{uuid.uuid4().hex}")
+    try:
+        return работа()
+    finally:
+        _TX_EVENT.reset(токен)
+
+
+def _человек(survey) -> str:
+    uid = _uid()
+    survey._люди.append(uid)
+    return uid
+
+
+def _ответы_бота(uid: str) -> list[tuple[str, bool]]:
+    with psycopg.connect(DSN) as conn:
+        return [(r[0], r[1]) for r in conn.execute(
+            "SELECT status, automatic FROM outbox_messages WHERE user_id = %s ORDER BY id", (uid,))]
+
+
+def test_согласие_в_боте_открывает_черновик_до_согласия_ничего(бот):
+    uid = _человек(бот)
+    _событие(бот, lambda: бот.handle(uid, "здравствуйте"))
+    assert _service().cases_of("max", uid) == []          # И10: до согласия обращения нет
+    _событие(бот, lambda: бот.grant_consent(uid))
+    case = _service().open_case("max", uid)
+    assert case is not None and case.status == DRAFT
+
+
+def test_закрытое_обращение_не_возобновляется_а_бот_отвечает(бот):
+    from cases import CLOSED, SYSTEM
+    uid = _человек(бот)
+    _событие(бот, lambda: бот.handle(uid, "здравствуйте"))
+    _событие(бот, lambda: бот.grant_consent(uid))
+    старое = _service().open_case("max", uid)
+    _service().transition(старое.case_id, CLOSED, who=SYSTEM, reason="abandoned_draft")
+    до = len(_ответы_бота(uid))
+
+    _событие(бот, lambda: бот.handle(uid, "мама"))
+
+    assert _service().open_case("max", uid) is None       # И7: закрытое не открывается
+    assert [c.case_id for c in _service().cases_of("max", uid)] == [старое.case_id]
+    новые = _ответы_бота(uid)[до:]
+    assert новые and all(status == "pending" and not automatic for status, automatic in новые)
+
+
+def test_заново_после_закрытия_требует_нового_согласия(бот):
+    """7.6: новое обращение после закрытого — только с новым согласием."""
+    from cases import CLOSED, SYSTEM
+    uid = _человек(бот)
+    _событие(бот, lambda: бот.handle(uid, "здравствуйте"))
+    _событие(бот, lambda: бот.grant_consent(uid))
+    старое = _service().open_case("max", uid)
+    _service().transition(старое.case_id, CLOSED, who=SYSTEM, reason="abandoned_draft")
+
+    _событие(бот, lambda: бот.handle(uid, "заново"))
+    assert бот.stage(uid) == "consent"                      # спрашиваем согласие заново
+    assert _service().open_case("max", uid) is None
+
+    _событие(бот, lambda: бот.grant_consent(uid))
+    новое = _service().open_case("max", uid)
+    assert новое is not None and новое.case_id != старое.case_id
+    assert _service().case(старое.case_id).status == CLOSED
+    assert len(_service().consents(новое.case_id)) == 1   # свой снимок согласия

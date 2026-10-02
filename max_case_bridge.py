@@ -13,7 +13,7 @@ from typing import Any
 
 from cases import BOT, DRAFT, NEW, CaseService
 from cases_postgres import PostgresCaseRepository
-from consent_forms import CONSENT_VERSION, CONSENT_FULL
+from chatbot_survey import CONSENT_FULL, CONSENT_VERSION
 from survey_questions import CHECKPOINT_ID
 from routing_rules import route as calculate_route
 
