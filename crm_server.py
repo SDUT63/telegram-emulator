@@ -169,6 +169,15 @@ def _case_crm():
     "mark_call": "operator",
     "undo_call": "supervisor",   # отмена контрольного звонка стирает след работы
     "queue_message": "operator",
+    # Действия над обращением (CASE). Правила переходов держит модуль
+    # обращений; здесь — только кто вправе их вызывать.
+    "case_assign": "operator",
+    "case_contacted": "operator",
+    "case_confirm_route": "operator",
+    "case_refer": "operator",
+    "case_start_service": "operator",
+    "case_close": "operator",
+    "case_reassign": "operator",
 }
 
 
@@ -532,114 +541,109 @@ def api_export():
 def api_domain_case(user_id: str):
     crm = _case_crm()
     if crm is None:
-        return jsonify({"error": "CASE CRM доступен только в PostgreSQL production"}), 503
-    case = crm.get_case(user_id)
-    return jsonify({"case": case})
+        return jsonify({"error": "Обращения (CASE) доступны только с PostgreSQL"}), 503
+    return jsonify({"case": crm.get_case(user_id)})
+
+
+def изменить_обращение(действие: str, user_id: str, **параметры):
+    """Действие координатора над обращением (CASE).
+
+    Те же права и тот же журнал, что у изменить(): действие без проверки
+    роли — ровно та дыра, которую там закрыли. Отказ модели обращения
+    (переход не по таблице 5.2, нет основания, нет открытого обращения)
+    возвращается оператору с причиной, а не пятисотой ошибкой.
+    """
+    from cases import CaseError
+
+    crm = _case_crm()
+    if crm is None:
+        return jsonify({"error": "Обращения (CASE) доступны только с PostgreSQL"}), 503
+    принципал = _principal()
+    принципал.require(ТРЕБУЕМАЯ_РОЛЬ[f"case_{действие}"])
+    access_log.записать(
+        кто=session.get("operator_login", "?"),
+        роль=session.get("operator_role", "?"),
+        действие=f"case_{действие}",
+        обращение=str(user_id),
+    )
+    try:
+        case = getattr(crm, действие)(user_id, operator_id=принципал.operator_id, **параметры)
+    except (CaseError, ValueError) as exc:
+        return jsonify({"error": str(exc)}), 409
+    return jsonify({
+        "case_id": case.case_id, "number": case.number, "status": case.status,
+        "assigned_to": case.assigned_to, "final_route": case.final_route,
+        "referred_at": case.referred_at, "service_started_at": case.service_started_at,
+        "close_reason": case.close_reason,
+    })
+
+
+def _поле(name: str) -> str:
+    return str((request.get_json(silent=True) or {}).get(name) or "").strip()
 
 
 @app.post("/api/case/<user_id>/domain/assign")
 @login_required
 def api_domain_assign(user_id: str):
-    crm = _case_crm()
-    if crm is None:
-        return jsonify({"error": "CASE CRM доступен только в PostgreSQL production"}), 503
-    case = crm.assign(user_id, str(session.get("operator_login") or session.get("operator")))
-    return jsonify({"case_id": case.case_id, "status": case.status, "assigned_to": case.assigned_to})
+    return изменить_обращение("assign", user_id)
 
 
 @app.post("/api/case/<user_id>/domain/contacted")
 @login_required
 def api_domain_contacted(user_id: str):
-    crm = _case_crm()
-    if crm is None:
-        return jsonify({"error": "CASE CRM доступен только в PostgreSQL production"}), 503
-    case = crm.contacted(user_id, str(session.get("operator_login") or session.get("operator")))
-    return jsonify({"case_id": case.case_id, "status": case.status})
+    return изменить_обращение("contacted", user_id)
 
 
 @app.post("/api/case/<user_id>/domain/route")
 @login_required
 def api_domain_route(user_id: str):
-    data = request.get_json(silent=True) or {}
-    route = str(data.get("route") or "")
-    reason = str(data.get("reason") or "").strip()
+    route, reason = _поле("route"), _поле("reason")
     if not route or not reason:
-        return jsonify({"error": "Нужны route и reason"}), 400
-    crm = _case_crm()
-    if crm is None:
-        return jsonify({"error": "CASE CRM доступен только в PostgreSQL production"}), 503
-    case = crm.confirm_route(
-        user_id, route, reason, str(session.get("operator_login") or session.get("operator"))
-    )
-    return jsonify({"case_id": case.case_id, "status": case.status, "final_route": case.final_route})
+        return jsonify({"error": "Нужны маршрут и основание"}), 400
+    return изменить_обращение("confirm_route", user_id, final_route=route, reason=reason)
 
 
 @app.post("/api/case/<user_id>/domain/referral")
 @login_required
 def api_domain_referral(user_id: str):
-    data = request.get_json(silent=True) or {}
     try:
-        directory_entry_id = int(data.get("directory_entry_id"))
+        directory_entry_id = int((request.get_json(silent=True) or {}).get("directory_entry_id"))
     except (TypeError, ValueError):
-        return jsonify({"error": "directory_entry_id обязателен"}), 400
-    channel = str(data.get("channel") or "")
+        return jsonify({"error": "Нужна запись справочника (directory_entry_id)"}), 400
+    channel = _поле("channel")
     if not channel:
-        return jsonify({"error": "channel обязателен"}), 400
-    crm = _case_crm()
-    if crm is None:
-        return jsonify({"error": "CASE CRM доступен только в PostgreSQL production"}), 503
-    case = crm.refer(
-        user_id, directory_entry_id, channel,
-        str(session.get("operator_login") or session.get("operator"))
-    )
-    return jsonify({"case_id": case.case_id, "status": case.status, "referred_at": case.referred_at})
+        return jsonify({"error": "Нужен канал передачи"}), 400
+    return изменить_обращение("refer", user_id, directory_entry_id=directory_entry_id,
+                              channel=channel)
 
 
 @app.post("/api/case/<user_id>/domain/service-start")
 @login_required
 def api_domain_service_start(user_id: str):
-    data = request.get_json(silent=True) or {}
-    started_at = data.get("started_at")
-    value = datetime.fromisoformat(started_at) if started_at else None
-    crm = _case_crm()
-    if crm is None:
-        return jsonify({"error": "CASE CRM доступен только в PostgreSQL production"}), 503
-    case = crm.start_service(
-        user_id, str(session.get("operator_login") or session.get("operator")), value
-    )
-    return jsonify({"case_id": case.case_id, "status": case.status, "service_started_at": case.service_started_at})
+    started_at = _поле("started_at")
+    try:
+        value = datetime.fromisoformat(started_at) if started_at else None
+    except ValueError:
+        return jsonify({"error": "Дата начала помощи — в формате ISO 8601"}), 400
+    return изменить_обращение("start_service", user_id, started_at=value)
 
 
 @app.post("/api/case/<user_id>/domain/close")
 @login_required
 def api_domain_close(user_id: str):
-    data = request.get_json(silent=True) or {}
-    reason = str(data.get("reason") or "").strip()
+    reason = _поле("reason")
     if not reason:
-        return jsonify({"error": "reason обязателен"}), 400
-    crm = _case_crm()
-    if crm is None:
-        return jsonify({"error": "CASE CRM доступен только в PostgreSQL production"}), 503
-    case = crm.close(
-        user_id, reason, str(session.get("operator_login") or session.get("operator"))
-    )
-    return jsonify({"case_id": case.case_id, "status": case.status, "close_reason": case.close_reason})
+        return jsonify({"error": "Нужна причина закрытия"}), 400
+    return изменить_обращение("close", user_id, reason=reason)
 
 
 @app.post("/api/case/<user_id>/domain/reassign")
 @login_required
 def api_domain_reassign(user_id: str):
-    data = request.get_json(silent=True) or {}
-    assigned_to = str(data.get("assigned_to") or "").strip()
+    assigned_to = _поле("assigned_to")
     if not assigned_to:
-        return jsonify({"error": "assigned_to обязателен"}), 400
-    crm = _case_crm()
-    if crm is None:
-        return jsonify({"error": "CASE CRM доступен только в PostgreSQL production"}), 503
-    case = crm.reassign(
-        user_id, assigned_to, str(session.get("operator_login") or session.get("operator"))
-    )
-    return jsonify({"case_id": case.case_id, "status": case.status, "assigned_to": case.assigned_to})
+        return jsonify({"error": "Нужен новый ответственный"}), 400
+    return изменить_обращение("reassign", user_id, assigned_to=assigned_to)
 
 
 @app.post("/api/case/<user_id>/assign")

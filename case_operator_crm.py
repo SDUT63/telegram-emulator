@@ -53,7 +53,9 @@ class CaseOperatorCRM:
                        (SELECT jsonb_agg(o ORDER BY o.outcome_id)
                           FROM outcomes o WHERE o.case_id=c.case_id) AS outcomes,
                        (SELECT jsonb_agg(e ORDER BY e.event_id DESC)
-                          FROM case_events e WHERE e.case_id=c.case_id LIMIT 100) AS events
+                          FROM (SELECT * FROM case_events
+                                 WHERE case_id=c.case_id
+                                 ORDER BY event_id DESC LIMIT 100) e) AS events
                   FROM cases c
                   JOIN persons p ON p.person_id=c.person_id
                  WHERE p.channel='max' AND p.channel_user_id=%s
