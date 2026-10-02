@@ -244,3 +244,50 @@ def test_тревога_важнее_перезапуска_закрытого_�
     _событие(бот, lambda: бот.handle(uid, "мама не дышит"))
     assert "112" in _последний_ответ(uid)     # экстренный ответ, а не текст согласия
     assert бот.stage(uid) != "consent"
+
+
+# --- Р10, режим А (раздел 7, п. 1) ----------------------------------------------
+
+def _счётчик_тревог() -> float:
+    from metrics import METRICS
+    return sum(float(строка.rsplit(" ", 1)[1]) for строка in METRICS.render().splitlines()
+               if строка.startswith("sdut_alerts_before_consent_total{"))
+
+
+def test_р10_режим_а_тревога_до_согласия_ничего_не_оставляет(бот):
+    """Экстренный ответ и снова согласие; ни обращения, ни снимка согласия,
+    ни пометки в анкете — только счётчик в метриках без идентификатора."""
+    from chatbot_survey import CONSENT_SHORT
+    uid = _человек(бот)
+    до = _счётчик_тревог()
+
+    _событие(бот, lambda: бот.handle(uid, "здравствуйте"))
+    _событие(бот, lambda: бот.handle(uid, "мама не дышит"))
+
+    ответ = _последний_ответ(uid)
+    assert "103" in ответ and CONSENT_SHORT in ответ
+    assert _service().cases_of("max", uid) == []
+    with psycopg.connect(DSN) as conn:
+        assert conn.execute("SELECT 1 FROM persons WHERE channel_user_id = %s", (uid,)).fetchone() is None
+        анкета = conn.execute("SELECT state_json FROM survey_state WHERE user_id = %s", (uid,)).fetchone()[0]
+    assert not анкета.get("alerts") and not анкета.get("acked")
+    assert "дыш" not in str(анкета)
+    assert _счётчик_тревог() == до + 1
+
+    # После согласия — обычный путь, без перенесённой пометки.
+    _событие(бот, lambda: бот.grant_consent(uid))
+    case = _service().open_case("max", uid)
+    assert case is not None and case.status == DRAFT
+    assert _service().intakes(case.case_id)[0].alerts == []
+
+
+def test_р10_первое_же_сообщение_тревога_получает_103(бот):
+    """Первое же сообщение — тревога: сразу 103/112 и согласие, обращения
+    нет. (Приветствие без 103/112 было у анкеты на ноутбуке —
+    test_режим_а_до_согласия_пометка_не_пишется; боевой бот загружает
+    пустую анкету до разбора, и у него этого дефекта не было.)"""
+    uid = _человек(бот)
+    _событие(бот, lambda: бот.handle(uid, "мама не дышит"))
+    assert "103" in _последний_ответ(uid)
+    assert бот.stage(uid) == "consent"
+    assert _service().cases_of("max", uid) == []
