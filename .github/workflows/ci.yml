@@ -3,7 +3,7 @@ name: CI
 on:
   workflow_dispatch:
   push:
-    branches: [ master, main, develop, max-bot-complete-2026 ]
+    branches: [ master, main, develop, max-bot-complete-2026, claude/max-bot-complete-analysis-gcgbtm ]
   pull_request:
     branches: [ master, main, develop, max-bot-complete-2026 ]
 
@@ -58,7 +58,7 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
       - name: Run Trivy vulnerability scanner
-        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69c9af683
+        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1
         with:
           scan-type: fs
           scan-ref: .

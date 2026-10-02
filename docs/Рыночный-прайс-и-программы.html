@@ -1,0 +1,274 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Рыночный прайс и чем закрыт разрыв</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Literata:opsz,wght@7..72,600;7..72,700&family=Golos+Text:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+:root{
+  --ground:#F2F5F3; --surface:#FFFFFF; --surface-2:#E9EFEC;
+  --ink:#14201E; --ink-soft:#4B5A56; --ink-faint:#748480;
+  --line:#D9E2DE; --line-strong:#B9C7C2;
+  --accent:#1B5A55; --accent-soft:#D6E6E3;
+  --ok:#2C6647; --ok-bg:#DCEBE2;
+  --warn:#83600F; --warn-bg:#F2E8CE;
+  --stop:#9C382E; --stop-bg:#F5DDD9;
+  --serif:"Literata",Georgia,serif;
+  --sans:"Golos Text","Helvetica Neue",Arial,sans-serif;
+  --mono:"IBM Plex Mono",Consolas,monospace;
+  color-scheme: light dark;
+}
+@media (prefers-color-scheme:dark){:root{
+  --ground:#101614; --surface:#171F1D; --surface-2:#1E2826;
+  --ink:#E5EBE8; --ink-soft:#A8B7B2; --ink-faint:#7E8E89;
+  --line:#293430; --line-strong:#3A4844;
+  --accent:#63B4AB; --accent-soft:#1D302E;
+  --ok:#6DBB8E; --ok-bg:#1A2B22;
+  --warn:#D2A648; --warn-bg:#2C2617;
+  --stop:#DE7A6D; --stop-bg:#2E1C19;
+}}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0}
+body{background:var(--ground);color:var(--ink);font-family:var(--sans);
+  font-size:17px;line-height:1.62;-webkit-text-size-adjust:100%}
+.wrap{max-width:42rem;margin:0 auto;padding-inline:20px;padding-block:2.2rem 4rem}
+.eyebrow{font-family:var(--mono);font-size:.72rem;letter-spacing:.14em;
+  text-transform:uppercase;color:var(--accent);margin:0 0 .7rem}
+h1{font-family:var(--serif);font-weight:700;font-size:clamp(1.75rem,6vw,2.4rem);
+  line-height:1.14;margin:0 0 .6rem;text-wrap:balance}
+.lede{color:var(--ink-soft);margin:0 0 2rem;font-size:1.05rem}
+h2{font-family:var(--serif);font-weight:600;font-size:1.35rem;line-height:1.25;
+  margin:2.8rem 0 .6rem;text-wrap:balance}
+h3{font-size:1rem;font-weight:600;margin:1.8rem 0 .45rem}
+p{margin:0 0 .9rem}
+ul,ol{margin:0 0 1rem;padding-left:1.3rem}
+li{margin-bottom:.45rem}
+code{font-family:var(--mono);font-size:.87em;background:var(--surface-2);
+  padding:.1rem .3rem;border-radius:4px}
+.num{display:inline-block;font-family:var(--mono);font-size:.78rem;font-weight:500;
+  background:var(--accent);color:#fff;border-radius:999px;padding:.12rem .55rem;
+  margin-right:.45rem;vertical-align:.1em}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:9px;
+  padding:1rem 1.1rem;margin-bottom:.9rem}
+.card .h{font-weight:600;display:block;margin-bottom:.35rem}
+.card p{margin:0;color:var(--ink-soft);font-size:.95rem}
+.card p + p{margin-top:.6rem}
+.card.stop{border-left:3px solid var(--stop);background:var(--stop-bg)}
+.card.stop p,.card.stop .h{color:var(--stop)}
+.card.ok{border-left:3px solid var(--ok)}
+.card.note{border-left:3px solid var(--warn);background:var(--warn-bg)}
+.card.note p,.card.note .h{color:var(--warn)}
+.scroll{overflow-x:auto;-webkit-overflow-scrolling:touch;margin-bottom:1.1rem}
+.tbl{width:100%;border-collapse:collapse;font-size:.92rem;min-width:29rem}
+.tbl th{text-align:left;font-family:var(--mono);font-size:.68rem;letter-spacing:.08em;
+  text-transform:uppercase;color:var(--accent);font-weight:500;
+  padding:.4rem .7rem .4rem 0;border-bottom:1px solid var(--line-strong);
+  white-space:nowrap}
+.tbl td{padding:.5rem .7rem .5rem 0;border-bottom:1px solid var(--line);
+  vertical-align:top}
+.tbl td:last-child,.tbl th:last-child{padding-right:0}
+.tbl .r{font-family:var(--mono);font-variant-numeric:tabular-nums;
+  white-space:nowrap;text-align:right}
+.tbl .down{color:var(--ok)}
+.tbl .gray{color:var(--ink-faint);text-decoration:line-through}
+.two{display:flex;height:14px;border-radius:7px;overflow:hidden;margin:.6rem 0 .4rem}
+.two i{display:block;height:100%}
+.two .mine{background:var(--accent)}
+.two .theirs{background:var(--ok)}
+.legend{display:flex;gap:1.2rem;flex-wrap:wrap;font-size:.88rem;
+  color:var(--ink-soft);margin-bottom:1.2rem}
+.legend .k{display:inline-block;width:10px;height:10px;border-radius:2px;
+  margin-right:.35rem}
+.legend .k.mine{background:var(--accent)}
+.legend .k.theirs{background:var(--ok)}
+.big{background:var(--accent-soft);border-radius:9px;padding:1rem 1.1rem;
+  margin-bottom:1.1rem}
+.big .n{font-family:var(--mono);font-size:1.5rem;font-weight:500;color:var(--accent);
+  display:block;line-height:1.2;font-variant-numeric:tabular-nums}
+.big .t{color:var(--ink-soft);font-size:.93rem;display:block;margin-top:.2rem}
+.prog{list-style:none;padding:0;margin:0 0 1.2rem}
+.prog li{padding:.8rem 0;border-bottom:1px solid var(--line)}
+.prog b{display:block;font-weight:600;font-size:.98rem}
+.prog .who{font-family:var(--mono);font-size:.68rem;letter-spacing:.08em;
+  text-transform:uppercase;color:var(--ok);display:block;margin-bottom:.15rem}
+.prog span.t{color:var(--ink-soft);font-size:.91rem;display:block;margin-top:.15rem}
+.prog .law{color:var(--ink-faint);font-size:.83rem;display:block;margin-top:.3rem}
+footer{margin-top:3rem;padding-top:1.3rem;border-top:1px solid var(--line-strong);
+  color:var(--ink-faint);font-size:.85rem}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<p class="eyebrow">АНО «СДУТ» · 17 сентября 2026</p>
+<h1>Рыночный прайс и чем закрыт разрыв</h1>
+<p class="lede">Сначала — почему у вас ничего не изменилось. Потом — прайс, который
+теперь держится в деньгах рынка, и пять программ, которые закрывают разницу между
+ценой и себестоимостью.</p>
+
+<h2><span class="num">1</span>Почему ничего не изменилось</h2>
+
+<div class="card stop">
+  <span class="h">Вы скачали не ту ветку</span>
+  <p><code>max-bot-complete-2026</code> осталась на коммите от 16 сентября — до всей
+  работы. В ней старый <code>index.html</code> (длинное полотно) и старый
+  <code>app.html</code> без калькулятора. Вы выложили ровно то, что там лежало,
+  и поэтому увидели прежнее.</p>
+  <p>Вся работа — четырнадцать коммитов — в ветке
+  <code>claude/max-bot-complete-analysis-gcgbtm</code>.</p>
+</div>
+
+<p>Чтобы не искать по веткам, я приложил к этому сообщению архив
+<code>webapp-для-cloudflare.zip</code>. Распакуйте и перетащите папку <code>webapp</code>
+на Cloudflare целиком. Проверить, что загрузилось нужное, легко: откройте адрес —
+если по корню открывается приложение с поиском и вкладкой «Сколько стоит»,
+а не длинная страница, значит всё встало.</p>
+
+<h2><span class="num">2</span>Прайс теперь рыночный</h2>
+
+<p>Прошлый пересчёт вывел цены из себестоимости — и они оказались выше рынка:
+425 ₽ за час при частных объявлениях от 160 ₽ и агентствах за 250–350 ₽.
+Такой прайс не продаётся. Служба просто не получит клиента и не узнает, почему.</p>
+
+<div class="scroll">
+<table class="tbl">
+  <tr><th>Позиция</th><th>Исходный</th><th>По себестоимости</th><th>Рыночный</th><th>За час</th></tr>
+  <tr><td>Выезд на 1 час</td><td class="r gray">1 100</td><td class="r gray">500</td><td class="r down">450</td><td class="r">450 ₽</td></tr>
+  <tr><td>Визит 2 часа</td><td class="r gray">1 490</td><td class="r gray">850</td><td class="r down">700</td><td class="r">350 ₽</td></tr>
+  <tr><td>Визит 3 часа</td><td class="r gray">1 930</td><td class="r gray">1 200</td><td class="r down">960</td><td class="r">320 ₽</td></tr>
+  <tr><td>Визит 4 часа</td><td class="r gray">2 340</td><td class="r gray">1 550</td><td class="r down">1 200</td><td class="r">300 ₽</td></tr>
+  <tr><td>Смена 8 часов</td><td class="r gray">2 600</td><td class="r gray">2 950</td><td class="r down">2 200</td><td class="r">275 ₽</td></tr>
+  <tr><td>Дневная смена 12 часов</td><td class="r gray">3 700</td><td class="r gray">4 350</td><td class="r down">3 100</td><td class="r">258 ₽</td></tr>
+  <tr><td>Ночная смена 12 часов</td><td class="r gray">4 200</td><td class="r gray">4 820</td><td class="r down">3 550</td><td class="r">296 ₽</td></tr>
+  <tr><td>Круглосуточно, сутки</td><td class="r gray">7 700</td><td class="r gray">9 170</td><td class="r down">6 650</td><td class="r">277 ₽</td></tr>
+  <tr><td>Проживание, сутки</td><td class="r gray">2 700</td><td class="r gray">2 830</td><td class="r down">2 000</td><td class="r">250 ₽</td></tr>
+  <tr><td>Первичный выезд</td><td class="r gray">2 000</td><td class="r gray">1 090</td><td class="r down">900</td><td class="r">600 ₽</td></tr>
+  <tr><td>Пакет 1 уровня, месяц</td><td class="r gray">20 900</td><td class="r gray">22 000</td><td class="r down">17 300</td><td class="r">332 ₽</td></tr>
+  <tr><td>Пакет 2 уровня, месяц</td><td class="r gray">32 600</td><td class="r gray">34 600</td><td class="r down">27 000</td><td class="r">311 ₽</td></tr>
+  <tr><td>Пакет 3 уровня, месяц</td><td class="r gray">40 100</td><td class="r gray">43 600</td><td class="r down">32 800</td><td class="r">290 ₽</td></tr>
+</table>
+</div>
+
+<p>Пакеты попали внутрь рыночного коридора агентств: 290–332 ₽ за час при
+рыночных 250–350. Проживание — 2 000 ₽ при рыночном поле 1 800. Круглосуточный
+уход подешевел с 9 170 до 6 650 ₽ в сутки: цифра, которую хотя бы можно
+назвать вслух.</p>
+
+<h2><span class="num">3</span>Чем закрыт разрыв</h2>
+
+<p>Час при визите на два часа обходится службе в 412 ₽. Семья платит 350.</p>
+
+<div class="two"><i class="mine" style="width:85%"></i><i class="theirs" style="width:15%"></i></div>
+<div class="legend">
+  <span><i class="k mine"></i>семья — 350 ₽ (85 %)</span>
+  <span><i class="k theirs"></i>программы — 62 ₽</span>
+</div>
+
+<p>По всем позициям семья платит 73–93 %, программам остаётся от 34 до 110 ₽
+на час. Для пакета первого уровня это 4 150 ₽ в месяц на клиента, второго —
+6 750 ₽, третьего — 9 700 ₽. Величины, которые регион закрывает без разговоров,
+если служба в реестре.</p>
+
+<p>Это не скидка и не жест доброй воли — это то, ради чего АНО и существует.
+И это не прячется: цифра стоит рядом с каждой позицией в приложении,
+и бот называет её в ответе про цену.</p>
+
+<h3>Пять программ</h3>
+<ul class="prog">
+  <li><span class="who">Признанным нуждающимися в уходе</span>
+    <b>Система долговременного ухода</b>
+    <span class="t">Часы ухода на дому целиком: для человека бесплатно,
+    поставщику платит регион.</span>
+    <span class="law">Приказ Минсоцдемографии Самарской области № 615 от 01.09.2025;
+    объём часов — Приказ Минтруда России № 731 от 23.12.2025</span></li>
+  <li><span class="who">У кого оформлена ИППСУ</span>
+    <b>Реестр поставщиков социальных услуг</b>
+    <span class="t">Возмещение службе за услуги по индивидуальной программе.
+    Семья доплачивает только за часы сверх неё.</span>
+    <span class="law">Статьи 30 и 31 Федерального закона № 442-ФЗ</span></li>
+  <li><span class="who">Не человеку — службе</span>
+    <b>Гранты и целевые программы</b>
+    <span class="t">Обучение помощников и родственников, супервизия, Школа ухода,
+    работа координатора — то, что не оплачивает ни семья, ни регион.</span>
+    <span class="law">Фонд президентских грантов, губернаторские конкурсы,
+    поддержка СО НКО</span></li>
+  <li><span class="who">Кому нечем платить совсем</span>
+    <b>Пожертвования и целевые взносы</b>
+    <span class="t">Часы для семей в трудной ситуации, пока оформляется
+    всё остальное.</span>
+    <span class="law">Целевые поступления по ст. 251 НК РФ</span></li>
+  <li><span class="who">Доход ниже прожиточного минимума</span>
+    <b>Социальный контракт</b>
+    <span class="t">Деньги семье, а не службе, — их можно направить в том числе
+    на уход.</span>
+    <span class="law">Глава 8.1 Федерального закона № 178-ФЗ</span></li>
+</ul>
+
+<div class="card ok">
+  <span class="h">Налоговая деталь в вашу пользу</span>
+  <p>Целевые поступления и целевое финансирование не входят в доход по УСН
+  (пп. 14 п. 1 и п. 2 ст. 251 НК РФ). Налог берётся только с того, что платит
+  семья, — и в расчёте это учтено. То есть рубль программы стоит дороже рубля,
+  полученного от семьи.</p>
+</div>
+
+<h2><span class="num">4</span>Самый неприятный вывод</h2>
+
+<p>Его надо увидеть до того, как начнётся реклама. На рыночной цене вклад
+одного часа в покрытие постоянных расходов — двадцать с небольшим рублей:
+цена минус налог минус прямые расходы.</p>
+
+<div class="big">
+  <span class="n">2 719 часов в месяц</span>
+  <span class="t">столько нужно продать, чтобы выйти в ноль <b>без программ</b> —
+  это около двадцати пяти помощников на полной занятости</span>
+</div>
+<div class="big">
+  <span class="n">605 часов в месяц</span>
+  <span class="t">с программами при среднем покрытии 81 ₽ на час — это примерно
+  шесть клиентов на пакете третьего уровня</span>
+</div>
+
+<p>Разница в четыре с половиной раза. Программы здесь не приятное дополнение
+к модели, а её несущая часть: без включения в реестр поставщиков платный контур
+не выходит в ноль ни при каком реальном объёме. Если из всего этого документа
+делать один вывод — он такой.</p>
+
+<h2><span class="num">5</span>Ошибки, найденные по дороге</h2>
+
+<ul>
+  <li><b>Покрытие пакета считалось по часам месяца вместо длины визита.</b>
+  Дорога помощника делится на часы визита, а не на 52 часа месяца — себестоимость
+  выходила почти без дороги, на шестую часть ниже настоящей.</li>
+  <li><b>Цена пакета делилась на длину визита, а не на оплаченные часы.</b>
+  Получалось восемь тысяч рублей за час, и разрыв обнулялся.</li>
+  <li><b>В приложении у пакетов пропадал блок покрытия.</b> В собранной позиции
+  этих полей просто не было: человек, выбравший пакет, переставал видеть,
+  что часть часа оплачивает не он. Нашлось проверкой в браузере, а не чтением кода.</li>
+</ul>
+
+<h2>Что делать</h2>
+<ol>
+  <li>Распаковать приложенный архив и перетащить папку <code>webapp</code>
+  на Cloudflare. Проверить: по корню должно открываться приложение с поиском,
+  а не длинная страница.</li>
+  <li>Заняться включением в реестр поставщиков социальных услуг Самарской
+  области. Без этого модель не сходится — см. раздел 4.</li>
+  <li>Скачивать из ветки <code>claude/max-bot-complete-analysis-gcgbtm</code>,
+  а не из <code>max-bot-complete-2026</code>. Могу перенести всё в неё —
+  скажите, и перенесу.</li>
+</ol>
+
+<footer>
+АНО «Система долговременного ухода», Тольятти.<br>
+1018 проверок зелёные. Цены в <code>прайс.py</code>, расчёт в <code>экономика.py</code>,
+пересборка — <code>python scripts/собрать_данные.py</code>.
+</footer>
+
+</div>
+</body>
+</html>
