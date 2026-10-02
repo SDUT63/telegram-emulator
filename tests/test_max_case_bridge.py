@@ -291,3 +291,20 @@ def test_р10_первое_же_сообщение_тревога_получае
     assert "103" in _последний_ответ(uid)
     assert бот.stage(uid) == "consent"
     assert _service().cases_of("max", uid) == []
+
+
+def test_время_анкеты_без_пояса_читается_по_часам_сервера(monkeypatch):
+    """Анкета пишет время часами процесса бота без пояса. Мост читал его
+    как UTC, и на сервере в Самаре completed_at уезжал на 4 часа."""
+    import time
+    from datetime import timezone
+
+    monkeypatch.setenv("TZ", "Europe/Samara")
+    time.tzset()
+    try:
+        время = MaxCaseBridge._parse_time("2026-10-01T12:00:00")
+        assert время.astimezone(timezone.utc).hour == 8
+        assert MaxCaseBridge._parse_time("2026-10-01T12:00:00+00:00").hour == 12
+    finally:
+        monkeypatch.undo()
+        time.tzset()
