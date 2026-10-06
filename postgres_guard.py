@@ -10,12 +10,10 @@ import psycopg
 
 ROOT = Path(__file__).resolve().parent
 MIGRATIONS = ROOT / "migrations" / "postgres"
-REQUIRED_MIGRATIONS = {
-    "001_initial.sql", "002_migration_meta.sql", "003_processed_events.sql",
-    "004_outbox_messages.sql", "005_outbox_retention.sql", "006_operator_crm.sql",
-    "007_operator_operations.sql", "008_privacy_outbox.sql", "009_user_deletion.sql",
-    "010_deleted_event_tombstones.sql", "011_outbox_farewell.sql", "012_outbox_attachments.sql",
-}
+# Все миграции из репозитория. Прежде здесь был перечень до 012, и бот
+# запускался без таблиц обращений (014–018): ошибка всплывала только на
+# первом сообщении человека — посреди его разговора, а не при запуске.
+REQUIRED_MIGRATIONS = {path.name for path in MIGRATIONS.glob("*.sql")}
 
 
 def _fingerprint(path: Path) -> str:

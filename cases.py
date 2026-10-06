@@ -126,6 +126,9 @@ P0 = "P0"
 TASK_KINDS = (
     "first_contact", "confirm_route", "referral_followup",
     "control_d7", "control_d30", "control_extra", "escalation",
+    # Связаться по сигналу безопасности: кризис, острое состояние, просьба
+    # близкого дать умереть, «на пределе» (редакция 5, решения по архиву К4).
+    "safety_contact",
 )
 # Контрольные задачи: Д+7 и Д+30 создаёт вход в CONTROL, control_extra —
 # операция продления (И8, 5.5). Только их отменяет уход из CONTROL (5.6).
