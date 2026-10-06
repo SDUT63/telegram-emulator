@@ -1,0 +1,14 @@
+{
+  "id": "P0_medical",
+  "version": 1,
+  "status": "approved",
+  "approved_by": "действующий текст",
+  "approved_at": "2026-10-06",
+  "approved_by_role": "physician",
+  "level": "P0",
+  "kind": "medical",
+  "_примечание": "Действующий экстренный ответ emergency.СКОРАЯ без изменений (решение 4): условный, без обещания звонка.",
+  "minimal": "legacy",
+  "first": null,
+  "steps": []
+}
