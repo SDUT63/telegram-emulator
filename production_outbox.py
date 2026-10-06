@@ -213,6 +213,13 @@ class DurableProductionPostgresSurvey(ProductionPostgresSurvey):
                 return self.restart_after_consent(uid)
             if action == "m":
                 return self.summary(uid)
+            if action == "z" and len(args) == 3:
+                # Кнопка сценария безопасности: z:<сценарий>:<шаг>:<номер>.
+                try:
+                    номер = int(args[2])
+                except ValueError:
+                    return ""
+                return self.ответ_сценарию(uid, args[0], args[1], номер)
             return ""
         return self._mutate(uid, "callback", payload, mutate, "")
 

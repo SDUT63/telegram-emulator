@@ -103,6 +103,16 @@ def layout(survey: Survey, user_id: str) -> list[list[tuple[str, str]]]:
             [("Не согласен", "c:n")],
             [("Просто почитать", "map")],
         ]]
+    # Вопрос сценария безопасности ждёт ответа — на экране только его
+    # кнопки: «Да / Нет / Не хочу отвечать» не должны тонуть среди анкеты.
+    # Состояние — только через user_state, как всё остальное здесь. Без
+    # него сценарий ничего не ждёт: до согласия ожидания не бывает вовсе.
+    читатель = getattr(survey, "user_state", None)
+    ожидание = (читатель(str(user_id)) or {}).get("scenario") if читатель else None
+    if ожидание and len(ожидание) == 3:
+        import scenarios
+        сценарий = scenarios.кнопки((str(ожидание[0]), int(ожидание[1]), str(ожидание[2])))
+        if сценарий: return [[кнопка] for кнопка in сценарий]
     if survey.reading(user_id): rows.append([("Полный текст согласия", "c:full")])
     spot = survey.current(user_id)
     if spot is None:

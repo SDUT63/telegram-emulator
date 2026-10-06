@@ -180,6 +180,15 @@ def build_dispatcher(survey):
             await send(event.bot, chat_id, uid, survey.summary(uid), visible_rows(survey, uid)); return
         if action == "b":
             await send(event.bot, chat_id, uid, survey.handle(uid, "назад"), visible_rows(survey, uid)); return
+        if action == "z" and len(parts) == 4:
+            # Кнопка сценария безопасности. Кнопка с прошлого экрана ничего
+            # не применяет — показываем, где человек сейчас.
+            номер = int(parts[3]) if parts[3].isdigit() else -1
+            reply = survey.ответ_сценарию(uid, parts[1], parts[2], номер)
+            if not reply:
+                await устаревшая_кнопка(event, chat_id, uid, survey)
+                return
+            await send(event.bot, chat_id, uid, reply, visible_rows(survey, uid)); return
 
         # Дальше идут кнопки ответа. Каждая несёт номер своего вопроса, и он
         # обязан совпасть с текущим: сообщения в чате остаются, человек может

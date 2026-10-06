@@ -1,0 +1,576 @@
+{
+ "_описание": "Регрессионный бенчмарк сценариев безопасности (мануал по архиву, §8.1, с поправками docs/РЕШЕНИЯ-ПО-АРХИВУ-И-СЦЕНАРИЯМ.md). Все фразы — пересказ или составные примеры, не цитаты. lead — ведущий сценарий из emergency.оценить; P0_suicide и P0_medical — уровни контракта вместо P1_crisis и URGENT_103 мануала.",
+ "cases": [
+  {
+   "id": "P0S-01",
+   "context": "free_text",
+   "input": "не хочу больше жить, всё бессмысленно",
+   "expect": {
+    "lead": "P0_suicide",
+    "contacts_include": [
+     "crisis_adult"
+    ],
+    "contacts_exclude": [
+     "children_line"
+    ]
+   }
+  },
+  {
+   "id": "P0S-02",
+   "context": "free_text",
+   "input": "иногда думаю, что проще было бы не проснуться",
+   "expect": {
+    "lead": "P0_suicide",
+    "contacts_include": [
+     "crisis_adult"
+    ],
+    "contacts_exclude": [
+     "children_line"
+    ]
+   }
+  },
+  {
+   "id": "P0S-03",
+   "context": "free_text",
+   "input": "хочу уйти из жизни, устала бороться",
+   "expect": {
+    "lead": "P0_suicide",
+    "contacts_include": [
+     "crisis_adult"
+    ],
+    "contacts_exclude": [
+     "children_line"
+    ]
+   }
+  },
+  {
+   "id": "P0S-04",
+   "context": "free_text",
+   "input": "мне кажется, лучше бы меня вообще не было",
+   "expect": {
+    "lead": "P0_suicide",
+    "contacts_include": [
+     "crisis_adult"
+    ],
+    "contacts_exclude": [
+     "children_line"
+    ]
+   }
+  },
+  {
+   "id": "P0S-05",
+   "context": "free_text",
+   "input": "думаю наложить на себя руки",
+   "expect": {
+    "lead": "P0_suicide",
+    "contacts_include": [
+     "crisis_adult"
+    ],
+    "contacts_exclude": [
+     "children_line"
+    ]
+   }
+  },
+  {
+   "id": "P0S-06",
+   "context": "free_text",
+   "input": "жить совсем не хочется",
+   "expect": {
+    "lead": "P0_suicide",
+    "contacts_include": [
+     "crisis_adult"
+    ],
+    "contacts_exclude": [
+     "children_line"
+    ]
+   }
+  },
+  {
+   "id": "P0S-07",
+   "context": "free_text",
+   "input": "я больше не вижу смысла жить",
+   "expect": {
+    "lead": "P0_suicide",
+    "contacts_include": [
+     "crisis_adult"
+    ],
+    "contacts_exclude": [
+     "children_line"
+    ]
+   }
+  },
+  {
+   "id": "P0S-08",
+   "context": "free_text",
+   "input": "больше не могу жить так",
+   "expect": {
+    "lead": "P0_suicide",
+    "contacts_include": [
+     "crisis_adult"
+    ],
+    "contacts_exclude": [
+     "children_line"
+    ]
+   }
+  },
+  {
+   "id": "P0S-09",
+   "context": "free_text",
+   "input": "мне 15, не хочу жить",
+   "expect": {
+    "lead": "P0_suicide",
+    "minor": true,
+    "contacts_include": [
+     "children_line"
+    ]
+   }
+  },
+  {
+   "id": "RA4-01",
+   "context": "free_text",
+   "input": "муж просит дать ему умереть, говорит, что больше не выдержит",
+   "expect": {
+    "lead": "RA4_relative_death_wish",
+    "priority": "P1",
+    "minimal_contacts_include": [
+     "palliative_line"
+    ]
+   }
+  },
+  {
+   "id": "RA4-02",
+   "context": "free_text",
+   "input": "мама каждый день просит, чтобы её отпустили",
+   "expect": {
+    "lead": "RA4_relative_death_wish",
+    "priority": "P1",
+    "minimal_contacts_include": [
+     "palliative_line"
+    ]
+   }
+  },
+  {
+   "id": "RA4-03",
+   "context": "free_text",
+   "input": "папа говорит, что хочет умереть, у него сильные боли",
+   "expect": {
+    "lead": "RA4_relative_death_wish",
+    "priority": "P1",
+    "minimal_contacts_include": [
+     "palliative_line"
+    ]
+   }
+  },
+  {
+   "id": "RA4-04",
+   "context": "free_text",
+   "input": "бабушка просит усыпить её",
+   "expect": {
+    "lead": "RA4_relative_death_wish",
+    "priority": "P1",
+    "minimal_contacts_include": [
+     "palliative_line"
+    ]
+   }
+  },
+  {
+   "id": "RA4-05",
+   "context": "free_text",
+   "input": "он просит эвтаназию, можно ли это где-то сделать",
+   "expect": {
+    "lead": "RA4_relative_death_wish",
+    "priority": "P1",
+    "euthanasia": true,
+    "minimal_contacts_include": [
+     "palliative_line"
+    ]
+   }
+  },
+  {
+   "id": "RA4-06",
+   "context": "free_text",
+   "input": "жена твердит, что не хочет жить, лежит и плачет",
+   "expect": {
+    "lead": "RA4_relative_death_wish",
+    "priority": "P1",
+    "minimal_contacts_include": [
+     "palliative_line"
+    ]
+   }
+  },
+  {
+   "id": "RA4-07",
+   "context": "free_text",
+   "input": "он сказал: не хочу больше жить",
+   "expect": {
+    "lead": "RA4_relative_death_wish",
+    "priority": "P1",
+    "minimal_contacts_include": [
+     "palliative_line"
+    ]
+   }
+  },
+  {
+   "id": "RA4-08",
+   "context": "free_text",
+   "input": "не хочет жить, что нам делать",
+   "expect": {
+    "lead": "RA4_relative_death_wish",
+    "priority": "P1",
+    "minimal_contacts_include": [
+     "palliative_line"
+    ]
+   }
+  },
+  {
+   "id": "U-01",
+   "context": "free_text",
+   "input": "у отца судороги, он не отвечает",
+   "expect": {
+    "lead": "P0_medical",
+    "contacts_include": [
+     "ambulance"
+    ]
+   }
+  },
+  {
+   "id": "U-02",
+   "context": "free_text",
+   "input": "маму трясёт всем телом и она без сознания",
+   "expect": {
+    "lead": "P0_medical",
+    "contacts_include": [
+     "ambulance"
+    ]
+   }
+  },
+  {
+   "id": "U-03",
+   "context": "free_text",
+   "input": "был приступ, упал, сейчас говорит невнятно",
+   "expect": {
+    "lead": "P0_medical",
+    "contacts_include": [
+     "ambulance"
+    ]
+   }
+  },
+  {
+   "id": "U-04",
+   "context": "free_text",
+   "input": "ожог после облучения и температура 39, знобит",
+   "expect": {
+    "lead": "P0_medical",
+    "contacts_include": [
+     "ambulance"
+    ]
+   }
+  },
+  {
+   "id": "U-05",
+   "context": "free_text",
+   "input": "кожа после облучения горячая, и он стал заговариваться",
+   "expect": {
+    "lead": "P0_medical",
+    "contacts_include": [
+     "ambulance"
+    ]
+   }
+  },
+  {
+   "id": "U-06",
+   "context": "free_text",
+   "input": "гипертонический криз, давление за двести",
+   "expect": {
+    "lead": "P0_medical",
+    "contacts_include": [
+     "ambulance"
+    ]
+   }
+  },
+  {
+   "id": "U-07",
+   "context": "free_text",
+   "input": "не справляюсь, у мамы судороги и она не отвечает",
+   "expect": {
+    "lead": "P0_medical",
+    "contacts_include": [
+     "ambulance"
+    ],
+    "also": [
+     "P2_overwhelmed"
+    ]
+   }
+  },
+  {
+   "id": "RA1-01",
+   "context": "free_text",
+   "input": "по ночам сводит икры, это из-за таблеток?",
+   "expect": {
+    "lead": "RA1_convulsions",
+    "contacts_include": [
+     "ambulance"
+    ]
+   }
+  },
+  {
+   "id": "RA1-02",
+   "context": "free_text",
+   "input": "судороги в ногах на тамоксифене",
+   "expect": {
+    "lead": "RA1_convulsions",
+    "contacts_include": [
+     "ambulance"
+    ]
+   }
+  },
+  {
+   "id": "RA1-03",
+   "context": "free_text",
+   "input": "у мамы судороги",
+   "expect": {
+    "lead": "RA1_convulsions",
+    "contacts_include": [
+     "ambulance"
+    ]
+   }
+  },
+  {
+   "id": "RA1-04",
+   "context": "free_text",
+   "input": "свело пальцы на руке и не отпускает",
+   "expect": {
+    "lead": "RA1_convulsions",
+    "contacts_include": [
+     "ambulance"
+    ]
+   }
+  },
+  {
+   "id": "RA1-05",
+   "context": "free_text",
+   "input": "после лучевой кожа мокнет и болит",
+   "expect": {
+    "lead": "RA1_radiation_burn",
+    "contacts_include": [
+     "ambulance"
+    ]
+   }
+  },
+  {
+   "id": "RA1-06",
+   "context": "free_text",
+   "input": "лучевой ожог, слезает кожа под грудью",
+   "expect": {
+    "lead": "RA1_radiation_burn",
+    "contacts_include": [
+     "ambulance"
+    ]
+   }
+  },
+  {
+   "id": "P2-01",
+   "context": "free_text",
+   "input": "я на пределе, не справляюсь",
+   "expect": {
+    "lead": "P2_overwhelmed",
+    "priority": "P2",
+    "contacts_exclude": [
+     "children_line"
+    ],
+    "minimal_contacts_include": [
+     "crisis_adult"
+    ]
+   }
+  },
+  {
+   "id": "P2-02",
+   "context": "free_text",
+   "input": "сил больше нет ухаживать, руки опускаются",
+   "expect": {
+    "lead": "P2_overwhelmed",
+    "priority": "P2",
+    "contacts_exclude": [
+     "children_line"
+    ],
+    "minimal_contacts_include": [
+     "crisis_adult"
+    ]
+   }
+  },
+  {
+   "id": "P2-03",
+   "context": "free_text",
+   "input": "третий месяц почти без сна, я сломалась",
+   "expect": {
+    "lead": "P2_overwhelmed",
+    "priority": "P2",
+    "contacts_exclude": [
+     "children_line"
+    ],
+    "minimal_contacts_include": [
+     "crisis_adult"
+    ]
+   }
+  },
+  {
+   "id": "P2-04",
+   "context": "free_text",
+   "input": "не вывожу уже, всё одна",
+   "expect": {
+    "lead": "P2_overwhelmed",
+    "priority": "P2",
+    "contacts_exclude": [
+     "children_line"
+    ],
+    "minimal_contacts_include": [
+     "crisis_adult"
+    ]
+   }
+  },
+  {
+   "id": "P2-05",
+   "context": "free_text",
+   "input": "больше не могу так",
+   "expect": {
+    "lead": "P2_overwhelmed",
+    "priority": "P2",
+    "contacts_exclude": [
+     "children_line"
+    ],
+    "minimal_contacts_include": [
+     "crisis_adult"
+    ]
+   }
+  },
+  {
+   "id": "P2-06",
+   "context": "free_text",
+   "input": "чувствую, что выгорела полностью",
+   "expect": {
+    "lead": "P2_overwhelmed",
+    "priority": "P2",
+    "contacts_exclude": [
+     "children_line"
+    ],
+    "minimal_contacts_include": [
+     "crisis_adult"
+    ]
+   }
+  },
+  {
+   "id": "P2-07",
+   "context": "questionnaire_burnout",
+   "input": "На пределе",
+   "expect": {
+    "lead": "P2_overwhelmed",
+    "priority": "P2"
+   }
+  },
+  {
+   "id": "P2-08",
+   "context": "questionnaire_burnout",
+   "input": "Не справляемся",
+   "expect": {
+    "lead": "P2_overwhelmed",
+    "priority": "P2"
+   }
+  },
+  {
+   "id": "N-01",
+   "context": "free_text",
+   "input": "в выписном эпикризе указан диагноз",
+   "expect": {
+    "lead": null
+   }
+  },
+  {
+   "id": "N-02",
+   "context": "free_text",
+   "input": "подскажите, где взять эпикриз из стационара",
+   "expect": {
+    "lead": null
+   }
+  },
+  {
+   "id": "N-03",
+   "context": "free_text",
+   "input": "молимся Спасителю за маму",
+   "expect": {
+    "lead": null
+   }
+  },
+  {
+   "id": "N-04",
+   "context": "free_text",
+   "input": "не могу переломить ситуацию с документами",
+   "expect": {
+    "lead": null
+   }
+  },
+  {
+   "id": "N-05",
+   "context": "free_text",
+   "input": "записались к эпилептологу на консультацию",
+   "expect": {
+    "lead": null
+   }
+  },
+  {
+   "id": "N-06",
+   "context": "free_text",
+   "input": "умираю со смеху от внука",
+   "expect": {
+    "lead": null
+   }
+  },
+  {
+   "id": "N-07",
+   "context": "free_text",
+   "input": "у нас в семье сейчас кризис",
+   "expect": {
+    "lead": null
+   }
+  },
+  {
+   "id": "N-08",
+   "context": "free_text",
+   "input": "убить время в очереди к терапевту",
+   "expect": {
+    "lead": null
+   }
+  },
+  {
+   "id": "N-09",
+   "context": "free_text",
+   "input": "мама хочет умереть дома, а не в больнице",
+   "expect": {
+    "lead": null
+   }
+  },
+  {
+   "id": "N-10",
+   "context": "free_text",
+   "input": "больше не могу дозвониться до поликлиники",
+   "expect": {
+    "lead": null
+   }
+  },
+  {
+   "id": "N-11",
+   "context": "free_text",
+   "input": "аппарат ПЭТ сломался, перенесли",
+   "expect": {
+    "lead": null
+   }
+  },
+  {
+   "id": "N-12",
+   "context": "free_text",
+   "input": "приступ кашля ночью",
+   "expect": {
+    "lead": null
+   }
+  }
+ ]
+}
