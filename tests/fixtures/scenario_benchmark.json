@@ -8,7 +8,6 @@
    "expect": {
     "lead": "P0_suicide",
     "contacts_include": [
-     "emergency",
      "crisis_adult"
     ],
     "contacts_exclude": [
@@ -23,7 +22,6 @@
    "expect": {
     "lead": "P0_suicide",
     "contacts_include": [
-     "emergency",
      "crisis_adult"
     ],
     "contacts_exclude": [
@@ -38,7 +36,6 @@
    "expect": {
     "lead": "P0_suicide",
     "contacts_include": [
-     "emergency",
      "crisis_adult"
     ],
     "contacts_exclude": [
@@ -53,7 +50,6 @@
    "expect": {
     "lead": "P0_suicide",
     "contacts_include": [
-     "emergency",
      "crisis_adult"
     ],
     "contacts_exclude": [
@@ -68,7 +64,6 @@
    "expect": {
     "lead": "P0_suicide",
     "contacts_include": [
-     "emergency",
      "crisis_adult"
     ],
     "contacts_exclude": [
@@ -83,7 +78,6 @@
    "expect": {
     "lead": "P0_suicide",
     "contacts_include": [
-     "emergency",
      "crisis_adult"
     ],
     "contacts_exclude": [
@@ -98,7 +92,6 @@
    "expect": {
     "lead": "P0_suicide",
     "contacts_include": [
-     "emergency",
      "crisis_adult"
     ],
     "contacts_exclude": [
@@ -113,7 +106,6 @@
    "expect": {
     "lead": "P0_suicide",
     "contacts_include": [
-     "emergency",
      "crisis_adult"
     ],
     "contacts_exclude": [
@@ -140,7 +132,7 @@
    "expect": {
     "lead": "RA4_relative_death_wish",
     "priority": "P1",
-    "contacts_include": [
+    "minimal_contacts_include": [
      "palliative_line"
     ]
    }
@@ -152,7 +144,7 @@
    "expect": {
     "lead": "RA4_relative_death_wish",
     "priority": "P1",
-    "contacts_include": [
+    "minimal_contacts_include": [
      "palliative_line"
     ]
    }
@@ -164,7 +156,7 @@
    "expect": {
     "lead": "RA4_relative_death_wish",
     "priority": "P1",
-    "contacts_include": [
+    "minimal_contacts_include": [
      "palliative_line"
     ]
    }
@@ -176,7 +168,7 @@
    "expect": {
     "lead": "RA4_relative_death_wish",
     "priority": "P1",
-    "contacts_include": [
+    "minimal_contacts_include": [
      "palliative_line"
     ]
    }
@@ -188,10 +180,10 @@
    "expect": {
     "lead": "RA4_relative_death_wish",
     "priority": "P1",
-    "contacts_include": [
+    "euthanasia": true,
+    "minimal_contacts_include": [
      "palliative_line"
-    ],
-    "euthanasia": true
+    ]
    }
   },
   {
@@ -201,7 +193,7 @@
    "expect": {
     "lead": "RA4_relative_death_wish",
     "priority": "P1",
-    "contacts_include": [
+    "minimal_contacts_include": [
      "palliative_line"
     ]
    }
@@ -213,7 +205,7 @@
    "expect": {
     "lead": "RA4_relative_death_wish",
     "priority": "P1",
-    "contacts_include": [
+    "minimal_contacts_include": [
      "palliative_line"
     ]
    }
@@ -225,7 +217,7 @@
    "expect": {
     "lead": "RA4_relative_death_wish",
     "priority": "P1",
-    "contacts_include": [
+    "minimal_contacts_include": [
      "palliative_line"
     ]
    }
@@ -383,11 +375,11 @@
    "expect": {
     "lead": "P2_overwhelmed",
     "priority": "P2",
-    "contacts_include": [
-     "crisis_adult"
-    ],
     "contacts_exclude": [
      "children_line"
+    ],
+    "minimal_contacts_include": [
+     "crisis_adult"
     ]
    }
   },
@@ -398,11 +390,11 @@
    "expect": {
     "lead": "P2_overwhelmed",
     "priority": "P2",
-    "contacts_include": [
-     "crisis_adult"
-    ],
     "contacts_exclude": [
      "children_line"
+    ],
+    "minimal_contacts_include": [
+     "crisis_adult"
     ]
    }
   },
@@ -413,11 +405,11 @@
    "expect": {
     "lead": "P2_overwhelmed",
     "priority": "P2",
-    "contacts_include": [
-     "crisis_adult"
-    ],
     "contacts_exclude": [
      "children_line"
+    ],
+    "minimal_contacts_include": [
+     "crisis_adult"
     ]
    }
   },
@@ -428,11 +420,11 @@
    "expect": {
     "lead": "P2_overwhelmed",
     "priority": "P2",
-    "contacts_include": [
-     "crisis_adult"
-    ],
     "contacts_exclude": [
      "children_line"
+    ],
+    "minimal_contacts_include": [
+     "crisis_adult"
     ]
    }
   },
@@ -443,11 +435,11 @@
    "expect": {
     "lead": "P2_overwhelmed",
     "priority": "P2",
-    "contacts_include": [
-     "crisis_adult"
-    ],
     "contacts_exclude": [
      "children_line"
+    ],
+    "minimal_contacts_include": [
+     "crisis_adult"
     ]
    }
   },
@@ -458,11 +450,11 @@
    "expect": {
     "lead": "P2_overwhelmed",
     "priority": "P2",
-    "contacts_include": [
-     "crisis_adult"
-    ],
     "contacts_exclude": [
      "children_line"
+    ],
+    "minimal_contacts_include": [
+     "crisis_adult"
     ]
    }
   },
