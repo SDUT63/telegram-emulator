@@ -469,6 +469,12 @@ class Survey:
             "missed": 0,
             # Когда мы в последний раз сказали «записал, передам».
             "acked": None,
+            # Вопрос сценария безопасности, ждущий ответа: [сценарий, версия,
+            # шаг]. Бывает только после согласия (режим А).
+            "scenario": None,
+            # Уровни и события сценариев безопасности для обращения: уровень,
+            # вид, сценарий, версия, шаг — без текста сообщения.
+            "safety": [],
         }
 
     # ------------------------------------------------------- ход по вопросам
@@ -715,6 +721,7 @@ class Survey:
         даже если человек потом не дозаполнил анкету.
         """
         import emergency
+        import scenarios
 
         # Подписи кнопок текущего вопроса: вопрос о тревожных признаках сам
         # содержит «Тяжело дышит» и «Боль». Если человек написал ровно это,
@@ -722,34 +729,139 @@ class Survey:
         место = self.current(user_id)
         варианты = (место[1].get("options") or []) if место else []
 
-        сигнал = emergency.распознать(text, варианты)
-        if сигнал is None:
+        оценка = emergency.оценить(text, варианты)
+        if оценка is None:
+            return None
+        согласие = self.stage(user_id) != "consent"
+
+        # «На пределе» посреди анкеты не перехватывается: о том, как
+        # чувствует себя ухаживающий, спрашивает сама анкета (вопрос
+        # «burnout»), а перехват потерял бы ответ человека. Угроза жизни
+        # перехватывается всегда.
+        if (оценка.ведущий == emergency.P2 and согласие and место is not None
+                and not self.ожидание_сценария(user_id)):
             return None
 
-        person = self.state.get(user_id)
-        if self.stage(user_id) == "consent":
-            # Р10, режим А (раздел 7 контракта): до согласия признак живёт
-            # только во время обработки сообщения. Человек получает
-            # 103/112, в метрики — счётчик по группе признака, без
-            # идентификатора и без текста; в анкету и в CRM — ничего.
-            # Раньше пометка «Угроза жизни» писалась в карточку и до
-            # согласия (Д9) — это сведения о здоровье без основания.
-            from metrics import METRICS
-            METRICS.inc("sdut_alerts_before_consent_total", {"group": сигнал.вид})
-        elif person is not None:
-            пометки = person.setdefault("alerts", [])
-            if сигнал.пометка not in пометки:
-                пометки.append(сигнал.пометка)
-            person["acked"] = datetime.now().isoformat(timespec="seconds")
-            self.save()
+        ответ = scenarios.ответ(оценка, text, согласие=согласие)
+        if ответ is None:
+            return None
+        self._записать_сигнал(user_id, ответ, согласие=согласие)
 
-        ответ = сигнал.ответ
-        if self.stage(user_id) == "consent":
-            return ответ + "\n\n" + "—" * 20 + "\n\n" + CONSENT_SHORT
-        место = self.current(user_id)
-        if место:
-            return ответ + "\n\n" + "—" * 20 + "\n\n" + self.question_text(user_id)
-        return ответ
+        if not согласие:
+            return ответ.текст + "\n\n" + "—" * 20 + "\n\n" + CONSENT_SHORT
+        return self._дальше(user_id, ответ)
+
+    # ------------------------------------------------ сценарии безопасности
+
+    SAFETY_LIMIT = 50
+
+    def ожидание_сценария(self, user_id: str) -> tuple[str, int, str] | None:
+        """Вопрос сценария безопасности, ждущий ответа."""
+        ожидание = (self.state.get(str(user_id)) or {}).get("scenario")
+        if not ожидание or len(ожидание) != 3:
+            return None
+        return str(ожидание[0]), int(ожидание[1]), str(ожидание[2])
+
+    def кнопки_сценария(self, user_id: str) -> list[tuple[str, str]]:
+        import scenarios
+        return scenarios.кнопки(self.ожидание_сценария(user_id))
+
+    def _записать_сигнал(self, user_id: str, ответ: Any, *, согласие: bool) -> None:
+        """Записать уровень, события и ожидающий вопрос — без текста человека.
+
+        Р10, режим А (раздел 7 контракта): до согласия признак живёт только
+        во время обработки сообщения. Человек получает ответ, в метрики —
+        счётчик по группе признака, без идентификатора и без текста; в
+        анкету и в CRM — ничего. Раньше пометка «Угроза жизни» писалась в
+        карточку и до согласия (Д9) — это сведения о здоровье без
+        основания.
+        """
+        if not согласие:
+            from metrics import METRICS
+            METRICS.inc("sdut_alerts_before_consent_total", {"group": ответ.группа})
+            return
+        person = self.state.get(user_id)
+        if person is None:
+            return
+        пометки = person.setdefault("alerts", [])
+        if ответ.пометка and ответ.пометка not in пометки:
+            пометки.append(ответ.пометка)
+        сейчас = datetime.now().isoformat(timespec="seconds")
+        записи = person.setdefault("safety", [])
+        for уровень, вид, сценарий, версия in ответ.уровни:
+            записи.append({"at": сейчас, "level": уровень, "kind": вид,
+                           "scenario": сценарий, "version": версия})
+        for событие, сценарий, версия, шаг in ответ.события:
+            записи.append({"at": сейчас, "event": событие, "scenario": сценарий,
+                           "version": версия, "step": шаг})
+        del записи[:-self.SAFETY_LIMIT]
+        person["scenario"] = list(ответ.ожидание) if ответ.ожидание else None
+        if ответ.уровни:
+            person["acked"] = сейчас
+        self.save()
+
+    def _дальше(self, user_id: str, ответ: Any) -> str:
+        """Текст сценария и — если сценарий ничего не ждёт — вопрос анкеты.
+
+        Сообщение со сценарием не считается ответом на вопрос анкеты:
+        человек писал не про анкету. Поэтому вопрос повторяется —
+        разговор не теряется и не сбрасывается.
+        """
+        текст = ответ.текст
+        if not ответ.ожидание and self.current(user_id):
+            текст += "\n\n" + "—" * 20 + "\n\n" + self.question_text(user_id)
+        return текст
+
+    @staticmethod
+    def _выбор_словами(ожидание: tuple[str, int, str], text: str) -> int | None:
+        """Какую кнопку человек назвал словами: «нет», «да, бывают», «тяжело»."""
+        import scenarios
+        слова = (text or "").lower().replace("ё", "е").replace(",", " ").split()
+        if not слова:
+            return None
+        for номер, (подпись, _) in enumerate(scenarios.кнопки(ожидание)):
+            своя = подпись.lower().replace("ё", "е").split()
+            if слова == своя or (len(своя) == 1 and слова[0] == своя[0]):
+                return номер
+        return None
+
+    def ответ_сценарию(self, user_id: str, сценарий: str, шаг: str, номер: int) -> str:
+        """Нажатие кнопки сценария. Кнопка с прошлого экрана — пустой ответ."""
+        uid = str(user_id)
+        # Под тем же замком, что и сообщение: двойное нажатие не должно
+        # ответить на один вопрос дважды.
+        with self._замок_человека(uid):
+            ожидание = self.ожидание_сценария(uid)
+            if not ожидание or ожидание[0] != сценарий or ожидание[2] != шаг:
+                return ""
+            return self._продолжить_сценарий(uid, ожидание, номер)
+
+    def _продолжить_сценарий(self, user_id: str, ожидание: tuple[str, int, str],
+                             выбор: int | None) -> str:
+        import scenarios
+
+        ответ = scenarios.продолжить(ожидание, выбор, согласие=True)
+        if ответ is None:
+            # Сценарий сменил версию, пока вопрос ждал ответа: вопрос
+            # снимается, разговор продолжается анкетой.
+            person = self._person(user_id)
+            person["scenario"] = None
+            self.save()
+            return self.question_text(user_id) if self.current(user_id) else ""
+        self._записать_сигнал(user_id, ответ, согласие=True)
+        return self._дальше(user_id, ответ)
+
+    def _сигнал_из_анкеты(self, user_id: str) -> None:
+        """«На пределе» или «Не справляемся» в анкете — уровень P2 (Р-А2)."""
+        import emergency
+        import scenarios
+
+        с = scenarios.СЦЕНАРИИ[emergency.P2]
+        ответ = scenarios.Ответ(текст="", уровни=[(с.level, с.kind, с.id, с.version)],
+                                события=[("scenario_entered", с.id, с.version, "questionnaire")])
+        ожидание = self.ожидание_сценария(user_id)
+        ответ.ожидание = ожидание
+        self._записать_сигнал(user_id, ответ, согласие=True)
 
     def handle(self, user_id: str, text: str) -> str:
         """Разобрать сообщение человека и ответить.
@@ -789,6 +901,14 @@ class Survey:
         тревога = self._тревога(user_id, text)
         if тревога:
             return тревога
+
+        # Сценарий безопасности ждёт ответа на свой вопрос, а человек
+        # написал словами. Новый сигнал уже разобран выше; здесь — ответ:
+        # названная кнопка или безопасная ветка сценария.
+        ожидание = self.ожидание_сценария(user_id)
+        if ожидание and self.stage(user_id) != "consent":
+            return self._продолжить_сценарий(user_id, ожидание,
+                                             self._выбор_словами(ожидание, text))
 
         # До согласия анкеты не существует. Никакие другие слова здесь
         # не обрабатываются — иначе получится, что мы что-то собираем
@@ -1176,6 +1296,8 @@ class Survey:
             note = f"{rule.get('label', question['text'])}: {value}"
             if note not in person["alerts"]:
                 person["alerts"].append(note)
+            if question["id"] == "burnout":
+                self._сигнал_из_анкеты(user_id)
 
         # Человек решил не проходить подробную часть
         if question["id"] == CHECKPOINT_ID and value in (STOP_OPTION, APP_OPTION):
